@@ -1,0 +1,57 @@
+name: Build TTMLonger
+
+# Работает в двух вариантах:
+#  1) в репозитории лежат файлы проекта как есть;
+#  2) в корне репозитория лежит один файл ttmlonger.zip — он распакуется сам.
+# Готовый APK появится на вкладке Releases (справа на главной странице репозитория).
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Найти проект
+        run: |
+          if [ -f ttmlonger.zip ]; then unzip -oq ttmlonger.zip; fi
+          if [ -d ttmlonger/app ]; then
+            echo "PROJECT=ttmlonger" >> "$GITHUB_ENV"
+          else
+            echo "PROJECT=." >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Собрать APK
+        working-directory: ${{ env.PROJECT }}
+        run: |
+          gradle --no-daemon :app:assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk TTMLonger.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TTMLonger
+          path: ${{ env.PROJECT }}/TTMLonger.apk
+
+      - name: Опубликовать в Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: TTMLonger, сборка ${{ github.run_number }}
+          body: |
+            Модуль TTMLonger для LSPatch. Скачайте TTMLonger.apk и установите.
+            Как пропатчить TikTok — в README проекта.
+          files: ${{ env.PROJECT }}/TTMLonger.apk
