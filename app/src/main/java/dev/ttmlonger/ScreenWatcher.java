@@ -182,7 +182,7 @@ final class ScreenWatcher {
         // ------------------------------------------------------------ поиск по экрану
 
         private void scan(View v, Scan s, int depth, DisplayInfo di) {
-            if (depth > 60 || v == block || v == avatarButton || v.getVisibility() != View.VISIBLE) return;
+            if (depth > 120 || v == block || v == avatarButton || v.getVisibility() != View.VISIBLE) return;
 
             if (v instanceof TextView) {
                 CharSequence t = ((TextView) v).getText();

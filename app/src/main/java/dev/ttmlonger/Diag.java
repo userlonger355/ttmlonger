@@ -12,9 +12,14 @@ import android.widget.Toast;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Диагностика: что мод видит на экране TikTok. Без ПК и root единственный способ понять, почему
@@ -27,8 +32,8 @@ final class Diag {
     static final String OWN_TAG = "ttmlonger";
 
     private static final int MAX_EVENTS = 80;
-    private static final int MAX_LINES = 450;
-    private static final int MAX_DEPTH = 40;
+    private static final int MAX_LINES = 800;
+    private static final int MAX_DEPTH = 100;
     private static final int MAX_TEXT = 60;
 
     private static final ArrayDeque<String> EVENTS = new ArrayDeque<>();
@@ -88,6 +93,47 @@ final class Diag {
             for (String e : EVENTS) sb.append(e).append('\n');
         }
 
+        sb.append("\n--- окна приложения ---\n");
+        sb.append(windows());
+
+        sb.append("\n--- надписи на экране (сверху вниз) ---\n");
+        try {
+            View decor = a.getWindow().getDecorView();
+            List<Item> items = new ArrayList<>();
+            Map<String, Integer> classes = new HashMap<>();
+            collect(decor, items, classes, 0);
+            Collections.sort(items, new Comparator<Item>() {
+                @Override
+                public int compare(Item x, Item y) {
+                    return x.y != y.y ? Integer.compare(x.y, y.y) : Integer.compare(x.x, y.x);
+                }
+            });
+            int shown = 0;
+            for (Item it : items) {
+                if (shown++ >= 150) {
+                    sb.append("... (ещё ").append(items.size() - 150).append(")\n");
+                    break;
+                }
+                sb.append(it.y).append(',').append(it.x).append("  ").append(it.cls).append("  \"")
+                        .append(it.text).append("\"\n");
+            }
+            if (items.isEmpty()) sb.append("(ни одной TextView с текстом: текст рисуется не через TextView)\n");
+
+            sb.append("\n--- самые частые классы view ---\n");
+            List<Map.Entry<String, Integer>> top = new ArrayList<>(classes.entrySet());
+            Collections.sort(top, new Comparator<Map.Entry<String, Integer>>() {
+                @Override
+                public int compare(Map.Entry<String, Integer> x, Map.Entry<String, Integer> y) {
+                    return y.getValue() - x.getValue();
+                }
+            });
+            for (int i = 0; i < Math.min(15, top.size()); i++) {
+                sb.append(top.get(i).getValue()).append("  ").append(top.get(i).getKey()).append('\n');
+            }
+        } catch (Throwable t) {
+            sb.append("не удалось собрать надписи: ").append(t).append('\n');
+        }
+
         sb.append("\n--- дерево view экрана ---\n");
         try {
             int[] lines = {0};
@@ -97,6 +143,61 @@ final class Diag {
             sb.append("не удалось снять дерево: ").append(t).append('\n');
         }
         return sb.toString();
+    }
+
+    private static final class Item {
+        final int y;
+        final int x;
+        final String cls;
+        final String text;
+
+        Item(int y, int x, String cls, String text) {
+            this.y = y;
+            this.x = x;
+            this.cls = cls;
+            this.text = text;
+        }
+    }
+
+    /** Собирает надписи видимых TextView и считает, сколько каких классов view на экране. */
+    private static void collect(View v, List<Item> out, Map<String, Integer> classes, int depth) {
+        if (depth > MAX_DEPTH || v.getVisibility() != View.VISIBLE || OWN_TAG.equals(v.getTag())) return;
+        String cn = v.getClass().getName();
+        Integer n = classes.get(cn);
+        classes.put(cn, n == null ? 1 : n + 1);
+        if (v instanceof TextView) {
+            CharSequence t = ((TextView) v).getText();
+            if (t != null && t.length() > 0 && v.isShown()) {
+                int[] loc = new int[2];
+                v.getLocationOnScreen(loc);
+                out.add(new Item(loc[1], loc[0], cn, clip(t.toString())));
+            }
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) collect(g.getChildAt(i), out, classes, depth + 1);
+        }
+    }
+
+    /** Все окна приложения (основное, диалоги, всплывающие): так видно, не в отдельном ли окне страница. */
+    private static String windows() {
+        try {
+            Class<?> wmg = Class.forName("android.view.WindowManagerGlobal");
+            Object g = wmg.getMethod("getInstance").invoke(null);
+            String[] names = (String[]) wmg.getMethod("getViewRootNames").invoke(g);
+            Method root = wmg.getMethod("getRootView", String.class);
+            StringBuilder b = new StringBuilder();
+            for (String name : names) {
+                View v = (View) root.invoke(g, name);
+                if (v == null) continue;
+                b.append(name).append("  ").append(v.getClass().getName()).append("  ")
+                        .append(v.getWidth()).append('x').append(v.getHeight())
+                        .append(v.getVisibility() == View.VISIBLE ? "" : " скрыто").append('\n');
+            }
+            return b.length() == 0 ? "(список пуст)\n" : b.toString();
+        } catch (Throwable t) {
+            return "(список окон недоступен: " + t.getClass().getSimpleName() + ")\n";
+        }
     }
 
     private static String tiktokVersion(Activity a) {
@@ -172,7 +273,7 @@ final class Diag {
         if (d != null && d.length() > 0) sb.append(" desc=\"").append(clip(d.toString())).append('"');
         sb.append('\n');
 
-        if (vis == View.GONE || !(v instanceof ViewGroup)) return;
+        if (vis != View.VISIBLE || !(v instanceof ViewGroup)) return;
         ViewGroup g = (ViewGroup) v;
         for (int i = 0; i < g.getChildCount(); i++) dump(g.getChildAt(i), res, sb, depth + 1, lines);
     }

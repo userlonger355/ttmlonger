@@ -49,6 +49,7 @@ final class AppearanceScreen extends Screen {
     @Override
     void build(LinearLayout body) {
         buildAccentCard(body);
+        buildFontCard(body);
         buildIconCard(body);
 
         // Подсказка о перезапуске (появляется после изменений акцента и Amoled).
@@ -187,6 +188,103 @@ final class AppearanceScreen extends Screen {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = ui.dp(6);
         return lp;
+    }
+
+    // ============================================================ шрифт
+
+    private TextView fontName;
+    private TextView fontReset;
+
+    private void buildFontCard(LinearLayout body) {
+        LinearLayout card = card();
+
+        card.addView(ui.text("Шрифт", 20, Ui.WHITE, true), ui.matchWrap());
+        fontName = ui.text("", 17, Ui.MUTED, true);
+        fontName.setPadding(0, ui.dp(6), 0, 0);
+        card.addView(fontName, ui.matchWrap());
+
+        TextView hint = ui.text("Файл .ttf или .otf из памяти телефона. Заменяет шрифт обычного текста "
+                + "в TikTok. Надписи, которые приложение рисует само, остаются прежними. "
+                + "Нужен перезапуск TikTok", 15, Ui.MUTED, true);
+        hint.setPadding(0, ui.dp(8), 0, ui.dp(14));
+        card.addView(hint);
+
+        int accent = Theme.accent();
+        TextView pick = ui.text("Выбрать файл шрифта", 18, Theme.onColor(accent), true);
+        pick.setGravity(Gravity.CENTER);
+        pick.setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(16));
+        pick.setBackground(ui.round(accent, 40));
+        pick.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickFont();
+            }
+        });
+        card.addView(pick, ui.matchWrap());
+
+        fontReset = ui.text("Вернуть шрифт TikTok", 17, Ui.MUTED, true);
+        fontReset.setGravity(Gravity.CENTER);
+        fontReset.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(4));
+        fontReset.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FontHooks.reset();
+                restartCard.setVisibility(View.VISIBLE);
+                refreshFont();
+            }
+        });
+        card.addView(fontReset, ui.matchWrap());
+
+        body.addView(card, sidePadded());
+        refreshFont();
+    }
+
+    private void refreshFont() {
+        boolean set = !Prefs.fontName.isEmpty();
+        fontName.setText(set ? Prefs.fontName : "Стандартный шрифт TikTok");
+        fontReset.setVisibility(set ? View.VISIBLE : View.GONE);
+    }
+
+    private void pickFont() {
+        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+        i.setType("*/*");
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "font/ttf", "font/otf", "font/sfnt", "font/collection",
+                "application/x-font-ttf", "application/x-font-opentype", "application/x-font-otf",
+                "application/font-sfnt", "application/vnd.ms-opentype", "application/octet-stream"});
+        boolean ok = ActivityResults.start(act, i, new ActivityResults.Callback() {
+            @Override
+            public void onResult(int resultCode, Intent data) {
+                if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return;
+                final Uri uri = data.getData();
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            FontHooks.importFont(act, uri);
+                            act.runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    restartCard.setVisibility(View.VISIBLE);
+                                    refreshFont();
+                                    toast("Шрифт сохранён. Перезапустите TikTok");
+                                }
+                            });
+                        } catch (final Throwable t) {
+                            FlagStore.log(t);
+                            act.runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    toast("Не удалось подключить шрифт: " + t.getMessage());
+                                }
+                            });
+                        }
+                    }
+                }, "ttmlonger-font").start();
+            }
+        });
+        if (!ok) toast("Не удалось открыть выбор файла");
     }
 
     // ============================================================ иконка приложения
