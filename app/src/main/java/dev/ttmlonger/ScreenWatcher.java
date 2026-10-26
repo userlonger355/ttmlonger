@@ -62,6 +62,10 @@ final class ScreenWatcher {
                 lastSeen = new WeakReference<>(a);
                 Diag.note("экран: " + a.getClass().getName());
             }
+            // Экраны, которые известны по имени активности, ведут свои классы; обход по тексту
+            // (Watcher ниже) остаётся запасным путём для остальных.
+            if (SettingsHost.matches(a)) SettingsHost.attach(a);
+            if (AvatarScreen.matches(a)) AvatarScreen.attach(a);
             watch(a);
         } catch (Throwable t) {
             FlagStore.log(t);
@@ -145,6 +149,14 @@ final class ScreenWatcher {
         }
 
         private void check() {
+            // Страницу настроек и экран аватарки ведут SettingsHost и AvatarScreen: запасной
+            // обход по тексту там не нужен и дал бы второй блок поверх первого.
+            if (SettingsHost.handles(act) || AvatarScreen.matches(act)) {
+                hideSettingsBlock();
+                hideAvatarButton();
+                Diag.setLastScan("экран ведут SettingsHost/AvatarScreen, обход по тексту не нужен");
+                return;
+            }
             View decor = act.getWindow().getDecorView();
             DisplayInfo di = new DisplayInfo(act);
             Scan s = new Scan();

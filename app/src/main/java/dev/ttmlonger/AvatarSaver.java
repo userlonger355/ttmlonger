@@ -31,7 +31,102 @@ import java.util.Locale;
 final class AvatarSaver {
     private static final int MIN_SIDE = 64;
 
+    private static final int MAX_DOWNLOAD = 20 * 1024 * 1024;
+
     private AvatarSaver() {
+    }
+
+    /**
+     * Кнопка «Сохранить аватар»: сначала скачиваем оригинал по ссылке, которую TikTok читал для
+     * этого аккаунта (AvatarHooks); не вышло — берём картинку, которая сейчас на экране.
+     */
+    static void saveAvatar(final Activity act) {
+        final String url = AvatarHooks.secure(AvatarHooks.bestUrl());
+        final String uid = AvatarHooks.lastUid();
+        if (url == null) {
+            Diag.note("аватар: ссылка не известна, снимаю картинку с экрана");
+            save(act, findAvatarImage(act));
+            return;
+        }
+        toast(act, "Скачиваю аватар…");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    byte[] data = download(url);
+                    String ext = Media.extensionFor(data);
+                    String name = "avatar_" + (uid == null ? "tiktok" : uid.replaceAll("[^0-9A-Za-z_-]", ""))
+                            + "_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date())
+                            + "." + ext;
+                    String where = Media.saveBytes(act, data, name, Media.mimeFor(ext));
+                    Diag.note("аватар сохранён: " + data.length + " байт, " + ext);
+                    toast(act, "Аватар сохранён: " + where);
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                    Diag.note("аватар: скачать не вышло (" + t + "), снимаю картинку с экрана");
+                    act.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            save(act, findAvatarImage(act));
+                        }
+                    });
+                }
+            }
+        }, "ttmlonger-avatar-net").start();
+    }
+
+    private static byte[] download(String address) throws java.io.IOException {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(address).openConnection();
+        try {
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(20000);
+            c.setInstanceFollowRedirects(true);
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
+            int code = c.getResponseCode();
+            if (code != 200) throw new java.io.IOException("HTTP " + code);
+            java.io.InputStream in = c.getInputStream();
+            try {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(64 * 1024);
+                byte[] buf = new byte[16 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    if (out.size() > MAX_DOWNLOAD) throw new java.io.IOException("файл больше 20 МБ");
+                }
+                if (out.size() < 512) throw new java.io.IOException("ответ слишком короткий для картинки");
+                return out.toByteArray();
+            } finally {
+                in.close();
+            }
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /** Самая большая почти квадратная картинка на экране: это аватар. */
+    static ImageView findAvatarImage(Activity act) {
+        int screenW = act.getResources().getDisplayMetrics().widthPixels;
+        ImageView[] best = new ImageView[1];
+        walk(act.getWindow().getDecorView(), screenW, best, 0);
+        return best[0];
+    }
+
+    private static void walk(android.view.View v, int screenW, ImageView[] best, int depth) {
+        if (depth > 100 || v.getVisibility() != android.view.View.VISIBLE
+                || Diag.OWN_TAG.equals(v.getTag())) return;
+        if (v instanceof ImageView) {
+            int w = v.getWidth();
+            int h = v.getHeight();
+            if (w >= screenW * 0.4f && Math.abs(w - h) <= w * 0.15f
+                    && (best[0] == null || (long) w * h > (long) best[0].getWidth() * best[0].getHeight())) {
+                best[0] = (ImageView) v;
+            }
+            return;
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) walk(g.getChildAt(i), screenW, best, depth + 1);
+        }
     }
 
     static void save(final Activity act, final ImageView iv) {

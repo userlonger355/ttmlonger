@@ -47,6 +47,11 @@ public final class MainHook implements IXposedHookLoadPackage {
             FlagStore.log(t);
         }
         try {
+            AvatarHooks.install(cl);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+        try {
             ScreenWatcher.install();
         } catch (Throwable t) {
             FlagStore.log(t);

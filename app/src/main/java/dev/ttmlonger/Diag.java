@@ -86,6 +86,12 @@ final class Diag {
         sb.append("Регион: ").append(Prefs.region.isEmpty() ? "не подменяется" : Prefs.region)
                 .append(", акцент: ").append(Prefs.accent == 0 ? "стандартный" : Integer.toHexString(Prefs.accent))
                 .append(", Amoled: ").append(Prefs.amoled).append('\n');
+        sb.append("Блок в настройках: ").append(SettingsHost.status(a)).append('\n');
+        sb.append("Аватар: ").append(AvatarHooks.status())
+                .append(AvatarScreen.matches(a) ? " (этот экран — просмотр аватарки)" : "").append('\n');
+        sb.append("Оператор для региона: ").append(Prefs.region.isEmpty() ? "-"
+                : (Carriers.mccMnc(Prefs.region) == null ? "нет в таблице, настоящий"
+                : Carriers.mccMnc(Prefs.region) + " " + Carriers.name(Prefs.region))).append('\n');
         sb.append("Последний обход: ").append(lastScan).append('\n');
 
         sb.append("\n--- события ---\n");
