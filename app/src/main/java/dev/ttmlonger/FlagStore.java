@@ -16,10 +16,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -95,11 +97,7 @@ final class FlagStore {
 
     static synchronized void init(Context ctx) {
         if (ready) return;
-        dir = new File(ctx.getFilesDir(), "ttmlonger");
-        //noinspection ResultOfMethodCallIgnored
-        dir.mkdirs();
-        Prefs.init(dir);
-        loadOverrides();
+        loadAll(new File(ctx.getFilesDir(), "ttmlonger"));
         CrashGuard.start(dir);
         ready = true;
         // Каталог может весить мегабайты — читаем не на главном потоке.
@@ -110,6 +108,65 @@ final class FlagStore {
             }
         });
         startCatalogSaver();
+    }
+
+    /** Читает настройки и переопределения из папки данных, подставляет значения мода по умолчанию. */
+    static synchronized void loadAll(File d) {
+        dir = d;
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        Prefs.init(dir);
+        loadOverrides();
+        seedDefaults(Targets.DEFAULT_FLAGS);
+    }
+
+    /**
+     * Значения флагов по умолчанию ({ключ, тип, значение}). Каждый ключ подставляется один раз:
+     * дальше выбор пользователя главнее. Если он сбросит или поменяет флаг, при следующем запуске
+     * мод его не вернёт. Если пользователь уже задал флаг сам, мод его не трогает.
+     */
+    static void seedDefaults(String[][] defaults) {
+        try {
+            File f = new File(dir, "seeded.json");
+            Set<String> seeded = new HashSet<>();
+            if (f.exists()) {
+                JSONArray a = new JSONArray(readFile(f));
+                for (int i = 0; i < a.length(); i++) seeded.add(a.optString(i));
+            }
+            boolean seededChanged = false;
+            boolean overridesChanged = false;
+            for (String[] d : defaults) {
+                String key = d[0];
+                if (seeded.contains(key)) continue;
+                seeded.add(key);
+                seededChanged = true;
+                if (overrides.containsKey(key)) continue;
+                int type = typeByName(d[1]);
+                if (type < 0 || coerce(d[2], type) == null) continue;
+                overrides.put(key, new Patch(type, d[2]));
+                flags.putIfAbsent(key, new Flag(key, type, null));
+                overridesChanged = true;
+            }
+            if (overridesChanged) {
+                catalogDirty = true;
+                saveOverridesAsync();
+            }
+            if (seededChanged) {
+                final String text = new JSONArray(seeded).toString();
+                io.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            writeAtomic(new File(dir, "seeded.json"), text);
+                        } catch (Throwable t) {
+                            log(t);
+                        }
+                    }
+                });
+            }
+        } catch (Throwable t) {
+            log(t);
+        }
     }
 
     /** Папка данных мода (files/ttmlonger); до init() — null. */
@@ -223,6 +280,13 @@ final class FlagStore {
         if (c == float.class || c == Float.class) return FLOAT;
         if (c == double.class || c == Double.class) return DOUBLE;
         if (c == String.class) return STRING;
+        return -1;
+    }
+
+    static int typeByName(String name) {
+        for (int i = 0; i < TYPE_NAMES.length; i++) {
+            if (TYPE_NAMES[i].equals(name)) return i;
+        }
         return -1;
     }
 
