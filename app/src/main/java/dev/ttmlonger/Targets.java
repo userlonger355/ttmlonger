@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.3.1";
+    static final String VERSION = "0.3.2";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -61,6 +61,12 @@ final class Targets {
      */
     static final String[] SETTINGS_ROWS = {
             "Предпочитаемый контент",
+            "Управление публикациями",
+            "Время и благополучие",
+            "Привязка аккаунтов семьи",
+            "Безопасность и разрешения",
+            "Приватный аккаунт",
+            "Заблокированные аккаунты",
             "Мой аккаунт",
             "Контент и отображение",
             "Входящие и обмен сообщениями",
@@ -128,8 +134,17 @@ final class Targets {
         return in(SHARE_PROFILE_N, norm(text));
     }
 
+    /**
+     * Заголовок страницы настроек. Допускается небольшая приписка после заголовка (например,
+     * счётчик или значок в тексте): точное совпадение необязательно.
+     */
     static boolean isSettingsTitle(String text) {
-        return in(SETTINGS_TITLES_N, norm(text));
+        String n = norm(text);
+        for (String t : SETTINGS_TITLES_N) {
+            if (n.equals(t)) return true;
+            if (n.length() > t.length() && n.length() <= t.length() + 6 && n.startsWith(t)) return true;
+        }
+        return false;
     }
 
     /** @param normalized текст, уже пропущенный через {@link #norm} */

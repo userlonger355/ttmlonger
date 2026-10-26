@@ -210,6 +210,15 @@ final class ScreenWatcher {
                 return;
             }
 
+            // Заголовок может быть нарисован не TextView (свой view панели): тогда он есть
+            // хотя бы в описании для доступности.
+            CharSequence cd = v.getContentDescription();
+            if (cd != null && cd.length() > 0 && cd.length() <= 60 && Targets.isSettingsTitle(cd.toString())
+                    && v.isShown()) {
+                Rect cr = new Rect();
+                if (v.getGlobalVisibleRect(cr) && cr.top < di.height * 0.4f) s.settingsTitle = true;
+            }
+
             if (v instanceof ImageView) {
                 int w = v.getWidth();
                 int h = v.getHeight();
