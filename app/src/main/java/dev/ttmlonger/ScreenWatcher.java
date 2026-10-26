@@ -15,6 +15,10 @@ import android.widget.TextView;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
+import java.lang.ref.WeakReference;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Следит за экранами TikTok и добавляет в них элементы мода:
  *
@@ -38,13 +42,30 @@ final class ScreenWatcher {
         XposedHelpers.findAndHookMethod(Activity.class, "onResume", new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
-                try {
-                    watch((Activity) param.thisObject);
-                } catch (Throwable t) {
-                    FlagStore.log(t);
-                }
+                onResumed((Activity) param.thisObject);
             }
         });
+    }
+
+    private static WeakReference<Activity> lastSeen;
+
+    /**
+     * Вызывается и хуком на Activity.onResume, и жизненным циклом приложения (второй путь
+     * работает, даже если хук не встал): повторный вызов безвреден.
+     */
+    static void onResumed(Activity a) {
+        try {
+            MainHook.ensureBoot(a);
+            Diag.announce(a);
+            Activity prev = lastSeen == null ? null : lastSeen.get();
+            if (prev != a) {
+                lastSeen = new WeakReference<>(a);
+                Diag.note("экран: " + a.getClass().getName());
+            }
+            watch(a);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
     }
 
     private static void watch(Activity a) {
@@ -62,6 +83,11 @@ final class ScreenWatcher {
     /** Что нашли на экране за один обход. */
     private static final class Scan {
         boolean settingsTitle;
+        /** Разные подписи пунктов страницы настроек, найденные на экране. */
+        final Set<String> rows = new HashSet<>();
+        /** Цвет текста найденной подписи страницы настроек: по нему понятно, светлая тема или тёмная. */
+        int sampleColor;
+        boolean hasSample;
         View shareLabel;
         ImageView avatar;
         long avatarArea;
@@ -74,6 +100,9 @@ final class ScreenWatcher {
 
         // Блок «Мод» и сдвиг содержимого под ним.
         private View block;
+        private boolean blockLight;
+        private boolean lastPage;
+        private int lastKey = -1;
         private View root;
         private int origTop;
         private int addedTop;
@@ -121,11 +150,33 @@ final class ScreenWatcher {
             Scan s = new Scan();
             scan(decor, s, 0, di);
 
-            if (s.settingsTitle) showSettingsBlock();
+            boolean page = s.settingsTitle || s.rows.size() >= Targets.SETTINGS_ROWS_MIN;
+            report(s, page);
+
+            if (page) showSettingsBlock(s.hasSample && luminance(s.sampleColor) < 0.5f);
             else hideSettingsBlock();
 
             if (s.avatar != null && s.shareLabel != null) showAvatarButton(s);
             else hideAvatarButton();
+        }
+
+        /** Записывает в диагностику, что нашли; строка пересобирается, только когда результат изменился. */
+        private void report(Scan s, boolean page) {
+            int key = (s.settingsTitle ? 1 : 0) | (s.avatar != null ? 2 : 0) | (s.shareLabel != null ? 4 : 0)
+                    | (page ? 8 : 0) | (Math.min(s.rows.size(), 15) << 4);
+            if (key == lastKey) return;
+            lastKey = key;
+            Diag.setLastScan("заголовок настроек: " + s.settingsTitle + ", пунктов настроек: " + s.rows.size()
+                    + ", страница настроек: " + page + ", аватар: " + (s.avatar != null)
+                    + ", «Поделиться профилем»: " + (s.shareLabel != null));
+            if (page != lastPage) {
+                lastPage = page;
+                Diag.note("страница настроек " + (page ? "опознана" : "пропала") + " на " + act.getClass().getName());
+            }
+        }
+
+        private float luminance(int c) {
+            return (0.299f * ((c >> 16) & 0xFF) + 0.587f * ((c >> 8) & 0xFF) + 0.114f * (c & 0xFF)) / 255f;
         }
 
         // ------------------------------------------------------------ поиск по экрану
@@ -136,13 +187,25 @@ final class ScreenWatcher {
             if (v instanceof TextView) {
                 CharSequence t = ((TextView) v).getText();
                 if (t == null || t.length() == 0 || t.length() > 60) return;
-                String str = t.toString();
-                boolean settings = Targets.isSettingsTitle(str);
-                boolean share = !settings && Targets.isShareProfile(str);
-                if ((!settings && !share) || !v.isShown()) return;
+                String n = Targets.norm(t);
+                boolean settings = Targets.isSettingsTitle(n);
+                boolean share = !settings && Targets.isShareProfile(n);
+                boolean row = !settings && !share && Targets.isSettingsRowNorm(n);
+                if ((!settings && !share && !row) || !v.isShown()) return;
                 Rect r = new Rect();
                 if (!v.getGlobalVisibleRect(r)) return;
-                if (settings && r.top < di.height * 0.4f) s.settingsTitle = true;
+                if (settings && r.top < di.height * 0.4f) {
+                    s.settingsTitle = true;
+                    s.sampleColor = ((TextView) v).getCurrentTextColor();
+                    s.hasSample = true;
+                }
+                if (row) {
+                    s.rows.add(n);
+                    if (!s.hasSample) {
+                        s.sampleColor = ((TextView) v).getCurrentTextColor();
+                        s.hasSample = true;
+                    }
+                }
                 if (share && r.top > di.height * 0.45f && s.shareLabel == null) s.shareLabel = v;
                 return;
             }
@@ -169,11 +232,17 @@ final class ScreenWatcher {
 
         // ------------------------------------------------------------ блок «Мод»
 
-        private void showSettingsBlock() {
+        private void showSettingsBlock(boolean light) {
             ViewGroup content = act.findViewById(android.R.id.content);
             if (content == null) return;
 
-            if (block == null) block = buildBlock();
+            if (block == null || blockLight != light) {
+                if (block != null && block.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) block.getParent()).removeView(block);
+                }
+                block = buildBlock(light);
+                blockLight = light;
+            }
             attach(content, block, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
@@ -229,10 +298,16 @@ final class ScreenWatcher {
             addedTop = 0;
         }
 
-        private View buildBlock() {
+        /** @param light true на светлой странице TikTok: блок рисуется светлым, а не чёрным */
+        private View buildBlock(boolean light) {
+            int bg = light ? 0xFFF4F4F4 : Ui.BG;
+            int card = light ? 0xFFFFFFFF : Ui.CARD;
+            int ink = light ? 0xFF000000 : Ui.WHITE;
+
             LinearLayout col = new LinearLayout(act);
+            col.setTag(Diag.OWN_TAG);
             col.setOrientation(LinearLayout.VERTICAL);
-            col.setBackgroundColor(Ui.BG);
+            col.setBackgroundColor(bg);
             col.setClickable(true); // не пропускать касания к содержимому под блоком
             col.setPadding(0, 0, 0, ui.dp(6));
 
@@ -244,7 +319,7 @@ final class ScreenWatcher {
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(ui.dp(20), ui.dp(16), ui.dp(16), ui.dp(16));
-            row.setBackground(ui.round(Ui.CARD, 20));
+            row.setBackground(ui.round(card, 20));
             row.setClickable(true);
             row.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -256,7 +331,7 @@ final class ScreenWatcher {
             TextView gear = ui.text("⚙", 24, Ui.MUTED, false);
             gear.setPadding(0, 0, ui.dp(16), 0);
             row.addView(gear);
-            TextView name = ui.text("Настройки мода", 19, Ui.WHITE, true);
+            TextView name = ui.text("Настройки мода", 19, ink, true);
             row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             row.addView(ui.text("›", 28, Ui.MUTED, false));
 
@@ -309,6 +384,7 @@ final class ScreenWatcher {
         private TextView buildAvatarButton() {
             int accent = Theme.accent();
             TextView b = ui.text("Сохранить аватар", 17, Theme.onColor(accent), false);
+            b.setTag(Diag.OWN_TAG);
             b.setGravity(Gravity.CENTER);
             b.setPadding(ui.dp(34), ui.dp(15), ui.dp(34), ui.dp(15));
             b.setBackground(ui.round(accent, 40));

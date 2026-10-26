@@ -10,15 +10,29 @@ android {
         applicationId = "dev.ttmlonger.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
+    }
+
+    // Постоянный ключ лежит в репозитории: каждая сборка подписана одним и тем же ключом,
+    // поэтому новая версия ставится поверх старой, без удаления. Ключ не секретный: он нужен
+    // только для того, чтобы Android принял обновление, а LSPatch всё равно переподписывает TikTok.
+    signingConfigs {
+        create("ttm") {
+            storeFile = file("ttmlonger.jks")
+            storePassword = "ttmlonger"
+            keyAlias = "ttmlonger"
+            keyPassword = "ttmlonger"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("ttm")
+        }
         release {
             isMinifyEnabled = false
-            // Подпись debug-ключом: APK ставится сразу, а LSPatch всё равно переподписывает TikTok.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("ttm")
         }
     }
 

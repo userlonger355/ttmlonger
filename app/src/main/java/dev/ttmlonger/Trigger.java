@@ -11,8 +11,8 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Открывает экран флагов, если двумя пальцами подержать экран около 1,2 секунды.
- * Встроить пункт в настройки самого TikTok можно позже, когда будет известна версия.
+ * Открывает «Настройки мода», если двумя пальцами подержать экран около 1,2 секунды.
+ * Запасной вход на случай, когда блок «Мод» на странице настроек TikTok не появился.
  */
 final class Trigger {
     private static final long HOLD_MS = 1_200L;
@@ -102,7 +102,7 @@ final class Trigger {
         try {
             activity.getWindow().getDecorView()
                     .performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-            FlagsScreen.show(activity);
+            ModMenu.show(activity);
         } catch (Throwable t) {
             FlagStore.log(t);
         }

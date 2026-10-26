@@ -1,7 +1,9 @@
 package dev.ttmlonger;
 
+import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.os.Bundle;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -17,8 +19,9 @@ public final class MainHook implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
         if (!Targets.isTarget(lp.packageName)) return;
-        // Только главный процесс: экраны мода рисуются поверх его активностей.
-        if (lp.processName != null && !lp.processName.equals(lp.packageName)) return;
+        // Только главный процесс: экраны мода рисуются поверх его активностей. Побочные процессы
+        // называются «пакет:имя»; главный может прийти и под другим именем (зависит от загрузчика).
+        if (lp.processName != null && lp.processName.indexOf(':') >= 0) return;
 
         final ClassLoader cl = lp.classLoader;
 
@@ -70,6 +73,16 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
     }
 
+    /**
+     * Запасной запуск: если хук на Application.attach не сработал, мод стартует с первой же
+     * активности, чтобы жест и экраны всё равно заработали.
+     */
+    static void ensureBoot(Activity a) {
+        if (booted.get()) return;
+        Application app = a.getApplication();
+        boot(app != null ? app : a, a.getClassLoader());
+    }
+
     private static void boot(Context ctx, ClassLoader cl) {
         if (ctx == null || !booted.compareAndSet(false, true)) return;
         try {
@@ -77,6 +90,43 @@ public final class MainHook implements IXposedHookLoadPackage {
             Trigger.install();
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+        // Следим за активностями и без хука на Activity.onResume: жизненный цикл даёт сам Android.
+        try {
+            if (ctx instanceof Application) {
+                ((Application) ctx).registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
+                    @Override
+                    public void onActivityResumed(Activity a) {
+                        ScreenWatcher.onResumed(a);
+                    }
+
+                    @Override
+                    public void onActivityCreated(Activity a, Bundle b) {
+                    }
+
+                    @Override
+                    public void onActivityStarted(Activity a) {
+                    }
+
+                    @Override
+                    public void onActivityPaused(Activity a) {
+                    }
+
+                    @Override
+                    public void onActivityStopped(Activity a) {
+                    }
+
+                    @Override
+                    public void onActivitySaveInstanceState(Activity a, Bundle b) {
+                    }
+
+                    @Override
+                    public void onActivityDestroyed(Activity a) {
+                    }
+                });
+            }
         } catch (Throwable t) {
             FlagStore.log(t);
         }

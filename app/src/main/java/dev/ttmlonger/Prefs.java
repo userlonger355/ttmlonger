@@ -22,6 +22,8 @@ final class Prefs {
     static volatile String iconId = "";
     /** Название ярлыка; пустая строка — название приложения. */
     static volatile String iconLabel = "";
+    /** Показывать подсказку при запуске: по ней видно, что мод загрузился. */
+    static volatile boolean startupToast = true;
 
     private static File file;
 
@@ -40,6 +42,7 @@ final class Prefs {
             amoled = o.optBoolean("amoled", false);
             iconId = o.optString("iconId", "");
             iconLabel = o.optString("iconLabel", "");
+            startupToast = o.optBoolean("startupToast", true);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -76,6 +79,11 @@ final class Prefs {
         save();
     }
 
+    static void setStartupToast(boolean v) {
+        startupToast = v;
+        save();
+    }
+
     private static synchronized void save() {
         if (file == null) return;
         try {
@@ -86,6 +94,7 @@ final class Prefs {
             o.put("amoled", amoled);
             o.put("iconId", iconId);
             o.put("iconLabel", iconLabel);
+            o.put("startupToast", startupToast);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
             FlagStore.log(t);
