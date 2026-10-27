@@ -93,11 +93,31 @@ final class Diag {
                 .append(", качество ").append(DownloadScreen.qualityLabel(Prefs.dlQuality))
                 .append(", стикеры ").append(Prefs.saveStickers).append('\n');
         sb.append("Хуки скачивания: ").append(DownloadHooks.status()).append('\n');
-        sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен").append('\n');
+        sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен")
+                .append(", голосовые комментарии: ")
+                .append(FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS) ? "включены" : "выключены").append('\n');
         sb.append("Оператор для региона: ").append(Prefs.region.isEmpty() ? "-"
                 : (Carriers.mccMnc(Prefs.region) == null ? "нет в таблице, настоящий"
                 : Carriers.mccMnc(Prefs.region) + " " + Carriers.name(Prefs.region))).append('\n');
         sb.append("Последний обход: ").append(lastScan).append('\n');
+
+        sb.append("\n--- флаги TikTok, прочитанные за последние 2 минуты (самые свежие первыми) ---\n");
+        try {
+            List<FlagStore.Flag> recent = FlagStore.recent(120_000L);
+            int shownFlags = 0;
+            for (FlagStore.Flag f : recent) {
+                if (shownFlags++ >= 400) {
+                    sb.append("... (ещё ").append(recent.size() - 400).append(")\n");
+                    break;
+                }
+                FlagStore.Patch o = FlagStore.rawOverride(f.key);
+                sb.append(f.key).append(" = ").append(clip(String.valueOf(f.value)))
+                        .append(o == null ? "" : "  [мой: " + clip(o.raw) + "]").append('\n');
+            }
+            if (recent.isEmpty()) sb.append("(за последние 2 минуты флаги не читались)\n");
+        } catch (Throwable t) {
+            sb.append("не удалось собрать флаги: ").append(t).append('\n');
+        }
 
         sb.append("\n--- события ---\n");
         synchronized (EVENTS) {

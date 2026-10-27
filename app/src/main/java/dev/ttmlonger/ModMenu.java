@@ -61,6 +61,16 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(toggleRow("Голосовые комментарии",
+                "Включает в TikTok запись голосового комментария. Нужен перезапуск TikTok",
+                FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS), new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        FlagStore.setAll(Targets.VOICE_COMMENT_FLAGS, on);
+                        Restart.offer(act);
+                    }
+                }));
+
         body.addView(ui.menuRow("Настройки разработчика TikTok (A/B)", "Просмотр и настройка флагов",
                 "Внутренние флаги функций TikTok для тестирования. "
                         + "Позволяет вручную переключать экспериментальные функции",

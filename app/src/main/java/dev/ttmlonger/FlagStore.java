@@ -54,6 +54,8 @@ final class FlagStore {
         /** Реальное значение, которое вернуло приложение (до подмены). */
         volatile String value;
         volatile boolean readNow;
+        /** Когда приложение читало флаг в последний раз (мс); 0 — не читало. */
+        volatile long lastRead;
 
         Flag(String key, int type, String value) {
             this.key = key;
@@ -185,6 +187,7 @@ final class FlagStore {
             Flag prev = flags.putIfAbsent(key, f);
             if (prev != null) f = prev;
         }
+        f.lastRead = System.currentTimeMillis();
         if (!f.readNow) {
             synchronized (f) {
                 if (!f.readNow) {
@@ -222,23 +225,56 @@ final class FlagStore {
         saveOverridesAsync();
     }
 
-    /** Все ли ключи сейчас включены переопределением (значение 1 или true). */
-    static boolean allOn(String[] keys) {
-        for (String k : keys) {
-            Patch p = overrides.get(k);
-            if (p == null || p.raw == null) return false;
-            String r = p.raw.trim();
-            if (!(r.equals("1") || r.equalsIgnoreCase("true"))) return false;
+    /** Одинаковы ли два значения флага ("1" и "true" — одно и то же, как "0" и "false"). */
+    static boolean sameRaw(String a, String b) {
+        return norm(a).equals(norm(b));
+    }
+
+    private static String norm(String s) {
+        if (s == null) return "";
+        String t = s.trim().toLowerCase(Locale.ROOT);
+        if (t.equals("true")) return "1";
+        if (t.equals("false")) return "0";
+        return t;
+    }
+
+    /**
+     * Включена ли функция: у каждого флага из набора есть переопределение с нужным значением.
+     *
+     * @param specs строки {имя, тип ("bool", "int"...), значение, когда функция включена}
+     */
+    static boolean allOn(String[][] specs) {
+        for (String[] s : specs) {
+            Patch p = overrides.get(s[0]);
+            if (p == null || !sameRaw(p.raw, s[2])) return false;
         }
         return true;
     }
 
-    /** Включает все ключи (значение 1) или снимает их переопределения. */
-    static void setAll(String[] keys, boolean on) {
-        for (String k : keys) {
-            if (on) setOverride(k, INT, "1");
-            else removeOverride(k);
+    /** Включает функцию (ставит значения набора) или выключает (снимает переопределения). */
+    static void setAll(String[][] specs, boolean on) {
+        for (String[] s : specs) {
+            if (on) {
+                int t = typeByName(s[1]);
+                setOverride(s[0], t < 0 ? INT : t, s[2]);
+            } else {
+                removeOverride(s[0]);
+            }
         }
+    }
+
+    /** Флаги, которые приложение читало за последние {@code ms} миллисекунд, самые свежие первыми. */
+    static List<Flag> recent(long ms) {
+        long since = System.currentTimeMillis() - ms;
+        List<Flag> out = new ArrayList<>();
+        for (Flag f : flags.values()) if (f.lastRead >= since && f.lastRead > 0) out.add(f);
+        Collections.sort(out, new Comparator<Flag>() {
+            @Override
+            public int compare(Flag a, Flag b) {
+                return a.lastRead != b.lastRead ? (a.lastRead > b.lastRead ? -1 : 1) : a.key.compareTo(b.key);
+            }
+        });
+        return out;
     }
 
     static void clearOverrides() {

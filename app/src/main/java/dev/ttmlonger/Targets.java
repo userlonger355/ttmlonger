@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.5.0";
+    static final String VERSION = "0.6.0";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -187,10 +187,22 @@ final class Targets {
             // Баннер профиля: установка своей картинки-шапки в «Изменить профиль» (флаги функции profile_bg).
             {"profile_bg_in_allow_list", "int", "1"},
             {"profile_bg_enable_consumption_group", "int", "1"},
+            // Голосовые комментарии: включить запись и убрать запрет входа.
+            {"audio_comment_publish", "int", "1"},
+            {"comment_audio_publish_entry_forbidden", "bool", "false"},
     };
 
     /** Флаги функции «баннер профиля»: переключатель в меню мода включает и выключает их вместе. */
-    static final String[] BANNER_FLAGS = {"profile_bg_in_allow_list", "profile_bg_enable_consumption_group"};
+    static final String[][] BANNER_FLAGS = {
+            {"profile_bg_in_allow_list", "int", "1"},
+            {"profile_bg_enable_consumption_group", "int", "1"},
+    };
+
+    /** Флаги голосовых комментариев (запись голосом в комментарии). */
+    static final String[][] VOICE_COMMENT_FLAGS = {
+            {"audio_comment_publish", "int", "1"},
+            {"comment_audio_publish_entry_forbidden", "bool", "false"},
+    };
 
     static boolean isTarget(String pkg) {
         if (pkg == null) return false;

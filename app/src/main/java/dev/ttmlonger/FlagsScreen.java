@@ -66,6 +66,7 @@ final class FlagsScreen {
     private final int accent = Theme.accent();
     private final boolean[] typeSel = new boolean[4];
     private boolean onlyChanged;
+    private boolean onlyRecent;
     private boolean searchValues;
     private List<FlagStore.Flag> shown = new ArrayList<>();
 
@@ -264,6 +265,16 @@ final class FlagsScreen {
             }
         });
         chips.addView(changed, chipParams());
+        final TextView recent = chip("За 2 минуты");
+        recent.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                onlyRecent = !onlyRecent;
+                styleChip(recent, onlyRecent);
+                refilter();
+            }
+        });
+        chips.addView(recent, chipParams());
         final TextView values = chip("Поиск значений");
         values.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -307,9 +318,11 @@ final class FlagsScreen {
         boolean anyType = !(typeSel[0] || typeSel[1] || typeSel[2] || typeSel[3]);
 
         List<FlagStore.Flag> out = new ArrayList<>();
+        final long recentSince = System.currentTimeMillis() - 120_000L;
         for (FlagStore.Flag f : FlagStore.snapshot()) {
             FlagStore.Patch o = FlagStore.rawOverride(f.key);
             if (onlyChanged && o == null) continue;
+            if (onlyRecent && !(f.lastRead > 0 && f.lastRead >= recentSince)) continue;
             if (!anyType && !typeSel[category(f)]) continue;
             if (!q.isEmpty()) {
                 boolean hit = f.lower.contains(q);
@@ -321,10 +334,12 @@ final class FlagsScreen {
             }
             out.add(f);
         }
-        // Изменённые наверху, дальше по алфавиту.
+        // Изменённые наверху, дальше по алфавиту (при «За 2 минуты» — самые свежие первыми).
+        final boolean byFreshness = onlyRecent;
         Collections.sort(out, new Comparator<FlagStore.Flag>() {
             @Override
             public int compare(FlagStore.Flag a, FlagStore.Flag b) {
+                if (byFreshness && a.lastRead != b.lastRead) return a.lastRead > b.lastRead ? -1 : 1;
                 boolean ao = FlagStore.rawOverride(a.key) != null;
                 boolean bo = FlagStore.rawOverride(b.key) != null;
                 if (ao != bo) return ao ? -1 : 1;
