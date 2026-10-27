@@ -89,6 +89,11 @@ final class Diag {
         sb.append("Блок в настройках: ").append(SettingsHost.status(a)).append('\n');
         sb.append("Аватар: ").append(AvatarHooks.status())
                 .append(AvatarScreen.matches(a) ? " (этот экран — просмотр аватарки)" : "").append('\n');
+        sb.append("Скачивание: без знака ").append(Prefs.dlNoWatermark).append(", всегда ").append(Prefs.dlAlways)
+                .append(", качество ").append(DownloadScreen.qualityLabel(Prefs.dlQuality))
+                .append(", стикеры ").append(Prefs.saveStickers).append('\n');
+        sb.append("Хуки скачивания: ").append(DownloadHooks.status()).append('\n');
+        sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен").append('\n');
         sb.append("Оператор для региона: ").append(Prefs.region.isEmpty() ? "-"
                 : (Carriers.mccMnc(Prefs.region) == null ? "нет в таблице, настоящий"
                 : Carriers.mccMnc(Prefs.region) + " " + Carriers.name(Prefs.region))).append('\n');

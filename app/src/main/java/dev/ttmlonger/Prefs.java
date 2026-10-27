@@ -26,6 +26,14 @@ final class Prefs {
     static volatile boolean startupToast = true;
     /** Название выбранного шрифта; пустая строка — шрифт приложения. */
     static volatile String fontName = "";
+    /** Скачивать видео без водяного знака TikTok. */
+    static volatile boolean dlNoWatermark = true;
+    /** Кнопка «Сохранить» остаётся, даже если автор запретил скачивание. */
+    static volatile boolean dlAlways = true;
+    /** Качество скачивания: 0 как у TikTok, -1 лучшее, -2 наименьшее, иначе потолок по высоте (1080, 720...). */
+    static volatile int dlQuality = -1;
+    /** Кнопка «Сохранить стикер» на листе стикера. */
+    static volatile boolean saveStickers = true;
 
     private static File file;
 
@@ -46,6 +54,10 @@ final class Prefs {
             iconLabel = o.optString("iconLabel", "");
             startupToast = o.optBoolean("startupToast", true);
             fontName = o.optString("fontName", "");
+            dlNoWatermark = o.optBoolean("dlNoWatermark", true);
+            dlAlways = o.optBoolean("dlAlways", true);
+            dlQuality = o.optInt("dlQuality", -1);
+            saveStickers = o.optBoolean("saveStickers", true);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -92,6 +104,26 @@ final class Prefs {
         save();
     }
 
+    static void setDlNoWatermark(boolean v) {
+        dlNoWatermark = v;
+        save();
+    }
+
+    static void setDlAlways(boolean v) {
+        dlAlways = v;
+        save();
+    }
+
+    static void setDlQuality(int v) {
+        dlQuality = v;
+        save();
+    }
+
+    static void setSaveStickers(boolean v) {
+        saveStickers = v;
+        save();
+    }
+
     private static synchronized void save() {
         if (file == null) return;
         try {
@@ -104,6 +136,10 @@ final class Prefs {
             o.put("iconLabel", iconLabel);
             o.put("startupToast", startupToast);
             o.put("fontName", fontName);
+            o.put("dlNoWatermark", dlNoWatermark);
+            o.put("dlAlways", dlAlways);
+            o.put("dlQuality", dlQuality);
+            o.put("saveStickers", saveStickers);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
             FlagStore.log(t);

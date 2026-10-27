@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.4.0";
+    static final String VERSION = "0.5.0";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -184,7 +184,13 @@ final class Targets {
             {"enable_feed_banner_reset_insert_times", "bool", "true"},
             {"feed_common_banner_reset_target_provider_enable", "bool", "true"},
             {"feed_banner_inactive_opt", "int", "1"},
+            // Баннер профиля: установка своей картинки-шапки в «Изменить профиль» (флаги функции profile_bg).
+            {"profile_bg_in_allow_list", "int", "1"},
+            {"profile_bg_enable_consumption_group", "int", "1"},
     };
+
+    /** Флаги функции «баннер профиля»: переключатель в меню мода включает и выключает их вместе. */
+    static final String[] BANNER_FLAGS = {"profile_bg_in_allow_list", "profile_bg_enable_consumption_group"};
 
     static boolean isTarget(String pkg) {
         if (pkg == null) return false;

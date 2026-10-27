@@ -3,6 +3,7 @@ package dev.ttmlonger;
 import android.app.Activity;
 import android.app.Dialog;
 import android.graphics.drawable.ColorDrawable;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -12,11 +13,27 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
+
 /** Полноэкранная страница мода: стрелка назад, крупный заголовок, описание и содержимое. */
 abstract class Screen {
+    /** Диалоги самого мода: хуки на Dialog.show их не трогают. */
+    private static final Set<Dialog> OWN = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<Dialog, Boolean>()));
+
     final Activity act;
     final Ui ui;
     Dialog dialog;
+
+    static boolean isOwn(Dialog d) {
+        return OWN.contains(d);
+    }
+
+    static void markOwn(Dialog d) {
+        OWN.add(d);
+    }
 
     Screen(Activity act) {
         this.act = act;
@@ -28,6 +45,7 @@ abstract class Screen {
 
     final void open(String title, String description) {
         dialog = new Dialog(act, android.R.style.Theme_Material_NoActionBar);
+        markOwn(dialog);
 
         LinearLayout body = new LinearLayout(act);
         body.setOrientation(LinearLayout.VERTICAL);
@@ -86,6 +104,30 @@ abstract class Screen {
             w.setNavigationBarColor(Ui.BG);
         }
         dialog.show();
+    }
+
+    /** Карточка с названием, описанием и переключателем справа. */
+    final LinearLayout toggleRow(String title, String desc, boolean initial, ModSwitch.Listener l) {
+        LinearLayout card = new LinearLayout(act);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(ui.dp(22), ui.dp(18), ui.dp(18), ui.dp(18));
+        card.setBackground(ui.round(Ui.CARD, 24));
+
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(ui.text(title, 21, Ui.WHITE, true));
+        TextView d = ui.text(desc, 16, Ui.MUTED, true);
+        d.setPadding(0, ui.dp(6), ui.dp(12), 0);
+        col.addView(d);
+        card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ModSwitch sw = new ModSwitch(act, initial);
+        sw.setListener(l);
+        card.addView(sw);
+
+        card.setLayoutParams(sidePadded());
+        return card;
     }
 
     final LinearLayout.LayoutParams sidePadded() {

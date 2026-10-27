@@ -222,6 +222,25 @@ final class FlagStore {
         saveOverridesAsync();
     }
 
+    /** Все ли ключи сейчас включены переопределением (значение 1 или true). */
+    static boolean allOn(String[] keys) {
+        for (String k : keys) {
+            Patch p = overrides.get(k);
+            if (p == null || p.raw == null) return false;
+            String r = p.raw.trim();
+            if (!(r.equals("1") || r.equalsIgnoreCase("true"))) return false;
+        }
+        return true;
+    }
+
+    /** Включает все ключи (значение 1) или снимает их переопределения. */
+    static void setAll(String[] keys, boolean on) {
+        for (String k : keys) {
+            if (on) setOverride(k, INT, "1");
+            else removeOverride(k);
+        }
+    }
+
     static void clearOverrides() {
         overrides.clear();
         saveOverridesAsync();

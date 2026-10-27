@@ -46,18 +46,28 @@ final class Media {
         });
     }
 
-    /** Расширение файла по первым байтам: JPEG, PNG, WebP; для остального (и пустого) — jpg. */
+    /** Расширение файла по первым байтам: JPEG, PNG, WebP, GIF; для остального (и пустого) — jpg. */
     static String extensionFor(byte[] d) {
-        if (d == null || d.length < 12) return "jpg";
+        String e = imageExtension(d);
+        return e == null ? "jpg" : e;
+    }
+
+    /** То же, но null, если это не картинка (например, страница с ошибкой вместо файла). */
+    static String imageExtension(byte[] d) {
+        if (d == null || d.length < 12) return null;
         if ((d[0] & 0xFF) == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G') return "png";
         if (d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F'
                 && d[8] == 'W' && d[9] == 'E' && d[10] == 'B' && d[11] == 'P') return "webp";
-        return "jpg";
+        if (d[0] == 'G' && d[1] == 'I' && d[2] == 'F' && d[3] == '8') return "gif";
+        if ((d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8) return "jpg";
+        return null;
     }
 
     static String mimeFor(String ext) {
         if ("png".equals(ext)) return "image/png";
         if ("webp".equals(ext)) return "image/webp";
+        if ("gif".equals(ext)) return "image/gif";
+        if ("mp4".equals(ext)) return "video/mp4";
         return "image/jpeg";
     }
 

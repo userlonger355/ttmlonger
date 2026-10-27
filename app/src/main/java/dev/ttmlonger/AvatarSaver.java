@@ -75,7 +75,7 @@ final class AvatarSaver {
         }, "ttmlonger-avatar-net").start();
     }
 
-    private static byte[] download(String address) throws java.io.IOException {
+    static byte[] download(String address) throws java.io.IOException {
         java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(address).openConnection();
         try {
             c.setConnectTimeout(15000);
@@ -148,6 +148,11 @@ final class AvatarSaver {
     }
 
     // ---------------------------------------------------------------- битмап из Drawable
+
+    /** Битмап из Drawable любой обёртки (для других экранов мода). */
+    static Bitmap bitmapFromDrawable(Drawable d) {
+        return fromDrawable(d, 0);
+    }
 
     private static Bitmap fromDrawable(Drawable d, int depth) {
         if (d == null || depth > 8) return null;
