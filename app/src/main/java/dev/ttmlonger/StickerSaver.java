@@ -19,6 +19,7 @@ import android.widget.Toast;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
@@ -33,16 +34,18 @@ import java.util.Map;
  * Сохранение стикера из переписки или из комментариев. TikTok такой кнопки не даёт: на листе
  * стикера есть «Поделиться» и «Сохранить» (в избранное), а картинку в галерею не положить.
  *
- * Лист стикера — отдельное окно (Dialog) с картинкой и рядом из двух кнопок под ней. Мод ловит
- * показ любого диалога (Dialog.show), и пока лист наполняется (TikTok подгружает его
- * содержимое не сразу), несколько секунд ищет такую пару «картинка + ряд кнопок». Нашёл —
- * дописывает в ряд третью, квадратную кнопку «⬇». Она сохраняет именно эту картинку: адрес
- * берётся из самого view картинки (обходом его полей), а если адрес не нашёлся или по нему
- * не скачалась картинка, снимается то, что нарисовано на экране.
+ * Работает в три слоя, каждый страхует предыдущий:
  *
- * Классы листа в TikTok обфусцированы, поэтому узнаём его по устройству, а не по имени. Если в
- * вашей версии лист устроен иначе, кнопка не появится; «Диагностика» покажет, какой диалог с
- * картинкой видел мод, по этому можно подстроить правило.
+ *  1. Нажатие на стикер перехватывают хуки StickerHooks (методы находит DexScan): из модели стикера
+ *     берётся адрес картинки. Это самый надёжный способ узнать, какой стикер нажат.
+ *  2. Лист стикера в комментариях — окно с картинкой и рядом из двух кнопок под ней. Мод ищет
+ *     такую пару «картинка + ряд кнопок» среди всех окон приложения и дописывает в ряд третью,
+ *     квадратную кнопку «⬇». Это же делается на любом диалоге, показанном приложением.
+ *  3. Если листа с рядом кнопок не нашлось (или в личных сообщениях), поверх экрана на несколько
+ *     секунд появляется плавающая кнопка «Сохранить стикер».
+ *
+ * Классы листа в TikTok обфусцированы, поэтому узнаём его по устройству, а не по имени.
+ * «Диагностика» показывает, что из этого сработало.
  */
 final class StickerSaver {
     private static final int TAG_PLACED = 0x7ff0ad05;
@@ -52,6 +55,19 @@ final class StickerSaver {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private static int unknownLogged;
+
+    /** Адрес последнего нажатого стикера (из хуков) и когда он был получен. */
+    private static volatile String latestUrl;
+    private static volatile long latestAt;
+    private static final long FRESH_MS = 60_000L;
+    private static final long LOOK_MS = 2500L;
+    private static final long PILL_MS = 8000L;
+    private static final long PILL_DELAY_MS = 700L;
+
+    private static final List<WeakReference<View>> decors = new ArrayList<>();
+    private static Runnable looker;
+    private static long lookUntil;
+    private static Dialog pill;
 
     private StickerSaver() {
     }
@@ -64,12 +80,216 @@ final class StickerSaver {
                     if (!Prefs.saveStickers || CrashGuard.tripped) return;
                     Dialog d = (Dialog) param.thisObject;
                     if (Screen.isOwn(d) || d.getWindow() == null) return;
+                    remember(d.getWindow().getDecorView());
                     start(d);
                 } catch (Throwable ignored) {
                     // чужие диалоги не должны ломаться из-за мода
                 }
             }
         });
+    }
+
+    private static void remember(View decor) {
+        synchronized (decors) {
+            for (int i = decors.size() - 1; i >= 0; i--) {
+                View v = decors.get(i).get();
+                if (v == null || v == decor) decors.remove(i);
+            }
+            decors.add(new WeakReference<>(decor));
+            while (decors.size() > 6) decors.remove(0);
+        }
+    }
+
+    // ------------------------------------------------------------ нажатие на стикер (хуки)
+
+    /** Вызывается хуками перед обработкой нажатия по стикеру в TikTok (главный поток). */
+    static void tapped(String label, Object[] args) {
+        if (!Prefs.saveStickers || CrashGuard.tripped || args == null) return;
+        String url = null;
+        boolean viewFirst = args.length > 0 && args[0] instanceof View;
+        for (Object x : args) {
+            if (x == null || x instanceof View) continue;
+            String cn = x.getClass().getName();
+            if (cn.indexOf("Sticker") < 0) continue;
+            String u = modelUrl(x);
+            if (u != null && (url == null || u.length() > url.length())) url = u;
+        }
+        if (url == null) {
+            Diag.note("стикер [" + label + "]: в модели нет адреса картинки");
+        } else {
+            latestUrl = url;
+            latestAt = android.os.SystemClock.uptimeMillis();
+            Diag.note("стикер [" + label + "]: адрес получен (" + host(url) + ")");
+        }
+        if (label.startsWith("comment")) {
+            lookForSheet();
+        } else if (url != null && viewFirst && args.length >= 3) {
+            MAIN.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    offerPill();
+                }
+            }, PILL_DELAY_MS);
+        }
+    }
+
+    private static String freshUrl() {
+        String u = latestUrl;
+        if (u == null || android.os.SystemClock.uptimeMillis() - latestAt > FRESH_MS) return null;
+        return u;
+    }
+
+    private static String modelUrl(Object model) {
+        Map<Object, Boolean> seen = new IdentityHashMap<>();
+        return find(model, seen, new int[]{MAX_OBJECTS}, 0, false);
+    }
+
+    /** Несколько секунд ищет лист стикера среди окон; не нашёл — показывает запасную кнопку. */
+    private static void lookForSheet() {
+        lookUntil = android.os.SystemClock.uptimeMillis() + LOOK_MS;
+        if (looker != null) return;
+        looker = new Runnable() {
+            @Override
+            public void run() {
+                boolean placed = false;
+                try {
+                    placed = placeInWindows();
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                }
+                if (placed) {
+                    looker = null;
+                } else if (android.os.SystemClock.uptimeMillis() < lookUntil) {
+                    MAIN.postDelayed(this, 60L);
+                } else {
+                    looker = null;
+                    Diag.note("стикер: лист с рядом кнопок не найден, показываю запасную кнопку");
+                    offerPill();
+                }
+            }
+        };
+        MAIN.post(looker);
+    }
+
+    /** Все окна приложения, верхнее последним: через WindowManagerGlobal, а если нельзя, то известные. */
+    private static List<View> windows() {
+        List<View> out = new ArrayList<>();
+        try {
+            Class<?> global = Class.forName("android.view.WindowManagerGlobal");
+            Object manager = global.getMethod("getInstance").invoke(null);
+            Field views = global.getDeclaredField("mViews");
+            views.setAccessible(true);
+            Object held = views.get(manager);
+            if (held instanceof List) {
+                for (Object v : new ArrayList<Object>((List<?>) held)) {
+                    if (v instanceof View) out.add((View) v);
+                }
+            }
+        } catch (Throwable ignored) {
+            // скрытый API закрыт: ниже запасной путь
+        }
+        if (!out.isEmpty()) return out;
+        synchronized (decors) {
+            for (WeakReference<View> r : decors) {
+                View v = r.get();
+                if (v != null && v.isShown()) out.add(v);
+            }
+        }
+        android.app.Activity top = ScreenWatcher.top();
+        if (top != null && top.getWindow() != null) out.add(top.getWindow().getDecorView());
+        return out;
+    }
+
+    /** true, когда кнопка стоит в листе (или уже стояла). */
+    private static boolean placeInWindows() {
+        List<View> roots = windows();
+        for (int i = roots.size() - 1; i >= 0; i--) {
+            Found f = find(roots.get(i));
+            if (f.row == null) continue;
+            if (f.row.getTag(TAG_PLACED) != null) return true;
+            if (f.row.getChildAt(0).getHeight() <= 0) return false;
+            add(f.row, f.picture);
+            return true;
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------ запасная плавающая кнопка
+
+    private static void offerPill() {
+        final android.app.Activity act = ScreenWatcher.top();
+        if (act == null || freshUrl() == null) return;
+        try {
+            if (pill != null) {
+                try {
+                    pill.dismiss();
+                } catch (Throwable ignored) {
+                    // уже закрыта
+                }
+            }
+            float d = act.getResources().getDisplayMetrics().density;
+            TextView t = new TextView(act);
+            t.setText("⬇  Сохранить стикер");
+            t.setTextColor(0xFFFFFFFF);
+            t.setTextSize(15);
+            t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD);
+            t.setPadding(Math.round(16 * d), Math.round(11 * d), Math.round(16 * d), Math.round(11 * d));
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0xEE1F1F1F);
+            bg.setCornerRadius(24 * d);
+            bg.setStroke(Math.round(d), 0x55FFFFFF);
+            t.setBackground(bg);
+            t.setTag(Diag.OWN_TAG);
+
+            final Dialog dlg = new Dialog(act);
+            dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+            dlg.setContentView(t);
+            Screen.markOwn(dlg);
+            android.view.Window w = dlg.getWindow();
+            if (w == null) return;
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+            android.view.WindowManager.LayoutParams lp = w.getAttributes();
+            // Явный размер: с WRAP_CONTENT диалог растягивается до минимальной ширины темы и
+            // невидимая часть окна перехватывала бы нажатия.
+            t.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            lp.width = t.getMeasuredWidth();
+            lp.height = t.getMeasuredHeight();
+            lp.gravity = Gravity.TOP | Gravity.END;
+            lp.x = Math.round(12 * d);
+            lp.y = Math.round(act.getResources().getDisplayMetrics().heightPixels * 0.46f);
+            w.setAttributes(lp);
+            t.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    try {
+                        dlg.dismiss();
+                    } catch (Throwable ignored) {
+                        // уже закрыта
+                    }
+                    saveAsync(act.getApplicationContext() != null ? act.getApplicationContext() : act,
+                            freshUrl(), null);
+                }
+            });
+            dlg.show();
+            pill = dlg;
+            Diag.note("стикер: плавающая кнопка показана");
+            MAIN.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (dlg.isShowing()) dlg.dismiss();
+                    } catch (Throwable ignored) {
+                        // уже закрыта
+                    }
+                }
+            }, PILL_MS);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
     }
 
     private static void start(final Dialog d) {
@@ -120,7 +340,7 @@ final class StickerSaver {
     static Found find(View decor) {
         Found f = new Found();
         float d = decor.getResources().getDisplayMetrics().density;
-        walk(decor, f, Math.round(96 * d), 0, new int[]{3000});
+        walk(decor, f, Math.round(64 * d), 0, new int[]{3000});
         return f;
     }
 
@@ -281,12 +501,19 @@ final class StickerSaver {
     private static void save(final ImageView picture) {
         final Context ctx = picture.getContext().getApplicationContext() != null
                 ? picture.getContext().getApplicationContext() : picture.getContext();
-        // Адрес и картинку с экрана берём на главном потоке, скачиваем в фоне.
-        final String url = urlOf(picture);
+        // Адрес и картинку с экрана берём на главном потоке, скачиваем в фоне. Адрес нажатого
+        // стикера (от хука) надёжнее, чем разбор самой картинки.
+        String fromTap = freshUrl();
+        final String url = fromTap != null ? fromTap : urlOf(picture);
         final Bitmap shot = bitmapOf(picture);
-        Diag.note("стикер: ссылка " + (url == null ? "не найдена" : host(url)) + ", картинка с экрана "
-                + (shot == null ? "недоступна" : shot.getWidth() + "x" + shot.getHeight()));
-        toast(ctx, "Сохраняю стикер…");
+        Diag.note("стикер: ссылка " + (url == null ? "не найдена" : host(url) + (fromTap != null ? " (из нажатия)" : " (из картинки)"))
+                + ", картинка с экрана " + (shot == null ? "недоступна" : shot.getWidth() + "x" + shot.getHeight()));
+        saveAsync(ctx, url, shot);
+    }
+
+    private static void saveAsync(final Context ctx, final String url, final Bitmap shot) {
+        toast(ctx, url == null && shot == null ? "Не нашёл, что сохранять" : "Сохраняю стикер…");
+        if (url == null && shot == null) return;
         new Thread(new Runnable() {
             @Override
             public void run() {

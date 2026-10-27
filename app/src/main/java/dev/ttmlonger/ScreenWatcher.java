@@ -49,6 +49,13 @@ final class ScreenWatcher {
 
     private static WeakReference<Activity> lastSeen;
 
+    /** Последняя показанная активность TikTok (или null). */
+    static Activity top() {
+        WeakReference<Activity> r = lastSeen;
+        Activity a = r == null ? null : r.get();
+        return a != null && !a.isFinishing() ? a : null;
+    }
+
     /**
      * Вызывается и хуком на Activity.onResume, и жизненным циклом приложения (второй путь
      * работает, даже если хук не встал): повторный вызов безвреден.

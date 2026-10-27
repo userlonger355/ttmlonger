@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.6.0";
+    static final String VERSION = "0.7.0";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -203,6 +203,82 @@ final class Targets {
             {"audio_comment_publish", "int", "1"},
             {"comment_audio_publish_entry_forbidden", "bool", "false"},
     };
+
+    // ---------------------------------------------------------------- поиск в dex (DexScan)
+
+    /**
+     * Ключи флагов, по которым в dex ищется «читатель флагов» TikTok: каждый из них мод
+     * переопределяет, а значит, через какой метод его читает TikTok, надо знать. Список
+     * собран из флагов функций мода (баннер, голосовые комментарии) и сопутствующих.
+     */
+    static final String[] SCAN_ANCHORS = {
+            "profile_bg_in_allow_list",
+            "profile_bg_enable_consumption_group",
+            "audio_comment_publish",
+            "comment_audio_publish_entry_forbidden",
+            "close_friend_profile_banner_switch",
+            "close_friend_debug_profile_banner_bypass_check",
+            "enable_feed_banner_reset_insert_times",
+            "feed_common_banner_reset_target_provider_enable",
+            "feed_banner_inactive_opt",
+            "tt_audio_comment_repost",
+            "tt_comment_repost",
+            "long_press_speed_up_lock",
+            "comment_multi_photo_group",
+            "profile_left_align",
+            "circle_search_block",
+            "enable_self_repost",
+            "camera_teleprompter_mode",
+    };
+
+    /** Интерфейс обработчика нажатий на стикер в личных сообщениях (реальное имя, не обфусцировано). */
+    static final String STICKER_CLICK_IFACE =
+            "Lcom/ss/android/ugc/aweme/im/messagelist/api/ability/MessageListStickerClickAbility;";
+    /** Модель стикера в личных сообщениях. */
+    static final String STICKER_TEMPLATE =
+            "Lcom/ss/android/ugc/aweme/im/message/template/card/StickerTemplate;";
+    private static final String COMMENT_STICKER = "Lcom/ss/android/ugc/aweme/comment/model/CommentStickerStruct;";
+    private static final String STICKER_ITEM = "Lcom/ss/android/ugc/aweme/im/common/model/StickerItem;";
+    private static final String FN0 = "Lkotlin/jvm/functions/Function0;";
+
+    /**
+     * Точные сигнатуры методов-обработчиков, которые не привязаны к обфусцированному имени класса:
+     * нажатие на стикер в комментарии и лист этого стикера. Если в вашей версии сигнатура другая,
+     * метод не найдётся, а мод покажет кнопку запасным путём.
+     */
+    static final String[][] STICKER_SHAPES = {
+            {"comment-tap", "(Landroid/view/View;" + COMMENT_STICKER
+                    + "ZLjava/lang/String;Ljava/util/Map;Ljava/lang/String;)V"},
+            {"comment-sheet", "(Ljava/lang/String;" + STICKER_ITEM + "Landroid/view/View;ZLjava/lang/String;"
+                    + "Ljava/util/Map;" + FN0 + FN0 + FN0 + ")V"},
+    };
+
+    /**
+     * Подходит ли метод под «читателя флагов» (отдельный класс TikTok, через который читается
+     * большая часть флагов): метод экземпляра, первый параметр — число (область), затем ключ-строка
+     * и числа; если вернуть надо строку, то допустима и вторая строка (значение по умолчанию).
+     *
+     * @return {индекс параметра-ключа, тип FlagStore.*} или null
+     */
+    static int[] matchReader(Method m) {
+        if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) return null;
+        int type = FlagStore.typeOf(m.getReturnType());
+        if (type < 0) return null;
+        Class<?>[] p = m.getParameterTypes();
+        if (p.length < 3 || p.length > 6 || !p[0].isPrimitive()) return null;
+        int key = -1;
+        int strings = 0;
+        for (int i = 0; i < p.length; i++) {
+            if (p[i] == String.class) {
+                strings++;
+                if (key < 0) key = i;
+            } else if (!p[i].isPrimitive()) {
+                return null;
+            }
+        }
+        if (key < 1 || strings > 2 || (strings == 2 && type != FlagStore.STRING)) return null;
+        return new int[]{key, type};
+    }
 
     static boolean isTarget(String pkg) {
         if (pkg == null) return false;

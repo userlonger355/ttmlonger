@@ -93,6 +93,8 @@ final class Diag {
                 .append(", качество ").append(DownloadScreen.qualityLabel(Prefs.dlQuality))
                 .append(", стикеры ").append(Prefs.saveStickers).append('\n');
         sb.append("Хуки скачивания: ").append(DownloadHooks.status()).append('\n');
+        sb.append("Хуки стикеров: ").append(StickerHooks.status()).append('\n');
+        sb.append(DexHooks.report());
         sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен")
                 .append(", голосовые комментарии: ")
                 .append(FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS) ? "включены" : "выключены").append('\n');

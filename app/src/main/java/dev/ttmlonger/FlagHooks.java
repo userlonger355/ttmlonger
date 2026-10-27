@@ -34,13 +34,14 @@ final class FlagHooks {
 
     /** Строка для экрана флагов: сколько методов подцеплено, или почему ничего. */
     static String status() {
+        String second = "\nВторой читатель флагов: " + readerStatus();
         if (count > 0) {
             synchronized (hookedClasses) {
-                return "Хуки: " + count + " " + plural(count) + " · " + join(hookedClasses);
+                return "Хуки: " + count + " " + plural(count) + " · " + join(hookedClasses) + second;
             }
         }
         return "Хуки не установлены: не найден менеджер A/B-настроек (искали "
-                + join(Targets.CLASSES) + " и классы с префиксом " + join(Targets.SCAN_PREFIXES) + ")";
+                + join(Targets.CLASSES) + " и классы с префиксом " + join(Targets.SCAN_PREFIXES) + ")" + second;
     }
 
     static synchronized void install(ClassLoader cl) {
@@ -96,20 +97,71 @@ final class FlagHooks {
         for (Method m : methodsOf(c)) {
             int[] sig = Targets.match(m);
             if (sig == null) continue;
-            if (!hooked.add(m.toString())) continue;
-            try {
-                XposedBridge.hookMethod(m, new GetterHook(sig[0], sig[1]));
-                added++;
-            } catch (Throwable t) {
-                hooked.remove(m.toString());
-                FlagStore.log(t);
-            }
+            if (addHook(m, sig[0], sig[1])) added++;
         }
         if (added > 0) {
             count += added;
             synchronized (hookedClasses) {
                 hookedClasses.add(c.getName());
             }
+        }
+    }
+
+    /** Ставит хук-геттер на один метод; false, если он уже стоит или не встал. */
+    private static boolean addHook(Method m, int keyIndex, int type) {
+        if (!hooked.add(m.toString())) return false;
+        try {
+            XposedBridge.hookMethod(m, new GetterHook(keyIndex, type));
+            return true;
+        } catch (Throwable t) {
+            hooked.remove(m.toString());
+            FlagStore.log(t);
+            return false;
+        }
+    }
+
+    // ---------------------------------------------------------------- второй читатель флагов
+
+    private static final Set<String> readerClasses = new TreeSet<>();
+    private static volatile int readerCount;
+
+    static int readerCount() {
+        return readerCount;
+    }
+
+    static String readerStatus() {
+        synchronized (readerClasses) {
+            if (readerCount == 0) return "не подключён";
+            return readerCount + " " + plural(readerCount) + " · " + join(readerClasses);
+        }
+    }
+
+    /** Подключает все методы «читателя флагов»; возвращает, сколько новых хуков встало. */
+    static int hookReaderClass(Class<?> c) {
+        int added = 0;
+        for (Method m : methodsOf(c)) {
+            int[] sig = Targets.matchReader(m);
+            if (sig == null) continue;
+            if (addHook(m, sig[0], sig[1])) added++;
+        }
+        if (added > 0) noteReader(c.getName(), added);
+        return added;
+    }
+
+    /** Подключает один метод, найденный по ключу флага в коде; false, если нельзя или уже стоит. */
+    static boolean hookKeyed(Method m, int keyIndex) {
+        int type = FlagStore.typeOf(m.getReturnType());
+        if (type < 0 || keyIndex < 0 || keyIndex >= m.getParameterTypes().length) return false;
+        if (m.getParameterTypes()[keyIndex] != String.class) return false;
+        if (!addHook(m, keyIndex, type)) return false;
+        noteReader(m.getDeclaringClass().getName(), 1);
+        return true;
+    }
+
+    private static void noteReader(String cls, int added) {
+        readerCount += added;
+        synchronized (readerClasses) {
+            readerClasses.add(cls);
         }
     }
 

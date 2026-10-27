@@ -110,6 +110,7 @@ public final class MainHook implements IXposedHookLoadPackage {
             Trigger.install();
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);
+            DexHooks.start(ctx, cl);  // второй читатель флагов и нажатия на стикеры: поиск в dex, в фоне
         } catch (Throwable t) {
             FlagStore.log(t);
         }
