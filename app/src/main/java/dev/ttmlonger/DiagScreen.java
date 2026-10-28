@@ -15,6 +15,7 @@ import android.widget.Toast;
 /** «Диагностика»: отчёт о том, что мод видит на экране TikTok, с кнопками «Скопировать» и «Отправить». */
 final class DiagScreen extends Screen {
     private String report;
+    private String shortReport;
     private TextView out;
 
     private DiagScreen(Activity act) {
@@ -30,6 +31,7 @@ final class DiagScreen extends Screen {
     @Override
     void build(LinearLayout body) {
         report = Diag.report(act);
+        shortReport = Diag.shortReport(act);
 
         LinearLayout buttons = new LinearLayout(act);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
@@ -47,6 +49,17 @@ final class DiagScreen extends Screen {
             }
         }), weight());
         body.addView(buttons, ui.matchWrap());
+
+        LinearLayout buttons2 = new LinearLayout(act);
+        buttons2.setOrientation(LinearLayout.HORIZONTAL);
+        buttons2.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(12));
+        buttons2.addView(button("Скопировать кратко", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                copyText(shortReport, "Краткий отчёт скопирован. Вставьте его в чат");
+            }
+        }), weight());
+        body.addView(buttons2, ui.matchWrap());
 
         out = ui.text(report, 11, Ui.MUTED, false);
         out.setTypeface(Typeface.MONOSPACE);
@@ -73,10 +86,14 @@ final class DiagScreen extends Screen {
     }
 
     private void copy() {
+        copyText(report, "Отчёт скопирован. Вставьте его в чат");
+    }
+
+    private void copyText(String text, String done) {
         try {
             ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", report));
-            Toast.makeText(act, "Отчёт скопирован. Вставьте его в чат", Toast.LENGTH_LONG).show();
+            cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", text));
+            Toast.makeText(act, done, Toast.LENGTH_LONG).show();
         } catch (Throwable t) {
             FlagStore.log(t);
             Toast.makeText(act, "Не удалось скопировать", Toast.LENGTH_LONG).show();

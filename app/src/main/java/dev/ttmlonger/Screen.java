@@ -35,6 +35,17 @@ abstract class Screen {
         OWN.add(d);
     }
 
+    /** Корень окна — окно одного из диалогов мода. */
+    static boolean isOwnDecor(View root) {
+        synchronized (OWN) {
+            for (Dialog d : OWN) {
+                Window w = d.getWindow();
+                if (w != null && w.peekDecorView() == root) return true;
+            }
+        }
+        return false;
+    }
+
     Screen(Activity act) {
         this.act = act;
         this.ui = new Ui(act);

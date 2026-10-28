@@ -54,6 +54,7 @@ final class StickerSaver {
     private static final int POLL_TRIES = 30;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
+    private static final java.util.concurrent.atomic.AtomicInteger COUNTER = new java.util.concurrent.atomic.AtomicInteger();
     private static int unknownLogged;
 
     /** Адрес последнего нажатого стикера (из хуков) и когда он был получен. */
@@ -133,7 +134,7 @@ final class StickerSaver {
         }
     }
 
-    private static String freshUrl() {
+    static String freshUrl() {
         String u = latestUrl;
         if (u == null || android.os.SystemClock.uptimeMillis() - latestAt > FRESH_MS) return null;
         return u;
@@ -172,7 +173,7 @@ final class StickerSaver {
     }
 
     /** Все окна приложения, верхнее последним: через WindowManagerGlobal, а если нельзя, то известные. */
-    private static List<View> windows() {
+    static List<View> windows() {
         List<View> out = new ArrayList<>();
         try {
             Class<?> global = Class.forName("android.view.WindowManagerGlobal");
@@ -511,13 +512,14 @@ final class StickerSaver {
         saveAsync(ctx, url, shot);
     }
 
-    private static void saveAsync(final Context ctx, final String url, final Bitmap shot) {
+    static void saveAsync(final Context ctx, final String url, final Bitmap shot) {
         toast(ctx, url == null && shot == null ? "Не нашёл, что сохранять" : "Сохраняю стикер…");
         if (url == null && shot == null) return;
         new Thread(new Runnable() {
             @Override
             public void run() {
-                String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+                String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date())
+                        + "_" + (COUNTER.incrementAndGet() % 1000);
                 try {
                     if (url != null) {
                         String secure = AvatarHooks.secure(url);

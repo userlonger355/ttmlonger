@@ -50,6 +50,14 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow("Стикеры", "Сохранить стикеры, которые сейчас на экране", null,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        StickerScreen.show(act);
+                    }
+                }));
+
         body.addView(toggleRow("Баннер профиля",
                 "Включает в TikTok установку баннера в профиле («Изменить профиль»). "
                         + "Нужен перезапуск TikTok",

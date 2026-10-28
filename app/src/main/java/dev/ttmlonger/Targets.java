@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.7.0";
+    static final String VERSION = "0.7.1";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта

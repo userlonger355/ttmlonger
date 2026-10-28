@@ -72,6 +72,32 @@ final class Diag {
 
     // ---------------------------------------------------------------- отчёт
 
+    /**
+     * Короткий отчёт: только состояние хуков, поиск в dex и события, без дерева экрана и списка
+     * флагов. Его удобно присылать, когда нужно понять, нашлись ли хуки и что сработало.
+     */
+    static String shortReport(Activity a) {
+        StringBuilder sb = new StringBuilder(4096);
+        sb.append("TTMLonger ").append(Targets.VERSION).append(" (кратко)\n");
+        sb.append("Android ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT)
+                .append("), ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
+        sb.append("Пакет: ").append(a.getPackageName()).append(", ").append(tiktokVersion(a)).append('\n');
+        sb.append("Экран: ").append(a.getClass().getName()).append('\n');
+        sb.append("A/B: ").append(FlagHooks.status()).append('\n');
+        sb.append("Стикеры: включено ").append(Prefs.saveStickers)
+                .append(", хуки: ").append(StickerHooks.status())
+                .append("\nСкан экрана: ").append(StickerScan.lastSummary()).append('\n');
+        sb.append(DexHooks.report());
+        sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен")
+                .append(", голосовые комментарии: ")
+                .append(FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS) ? "включены" : "выключены").append('\n');
+        sb.append("\n--- события ---\n");
+        synchronized (EVENTS) {
+            for (String e : EVENTS) sb.append(e).append('\n');
+        }
+        return sb.toString();
+    }
+
     static String report(Activity a) {
         StringBuilder sb = new StringBuilder(8192);
         sb.append("TTMLonger ").append(Targets.VERSION).append('\n');
@@ -94,6 +120,7 @@ final class Diag {
                 .append(", стикеры ").append(Prefs.saveStickers).append('\n');
         sb.append("Хуки скачивания: ").append(DownloadHooks.status()).append('\n');
         sb.append("Хуки стикеров: ").append(StickerHooks.status()).append('\n');
+        sb.append("Скан экрана «Стикеры»: ").append(StickerScan.lastSummary()).append('\n');
         sb.append(DexHooks.report());
         sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен")
                 .append(", голосовые комментарии: ")

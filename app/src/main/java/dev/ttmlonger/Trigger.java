@@ -39,6 +39,33 @@ final class Trigger {
                         }
                     }
                 });
+        installDialogs();
+    }
+
+    /**
+     * Жест в диалогах TikTok (например, в панели комментариев, если она окно): Activity их
+     * касания не получает, поэтому ловим и в Dialog.
+     */
+    private static void installDialogs() {
+        try {
+            XposedHelpers.findAndHookMethod(android.app.Dialog.class, "dispatchTouchEvent", MotionEvent.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                android.app.Dialog d = (android.app.Dialog) param.thisObject;
+                                if (Screen.isOwn(d)) return;
+                                Activity a = d.getOwnerActivity();
+                                if (a == null) a = ScreenWatcher.top();
+                                if (a != null) onTouch(a, (MotionEvent) param.args[0]);
+                            } catch (Throwable ignored) {
+                                // Жест не должен мешать приложению.
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
     }
 
     private static void onTouch(final Activity activity, MotionEvent e) {
