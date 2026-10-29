@@ -220,6 +220,23 @@ final class FlagStore {
         saveOverridesAsync();
     }
 
+    /** Известный флаг (последнее значение, которое вернуло приложение) или null. */
+    static Flag known(String key) {
+        return flags.get(key);
+    }
+
+    /** Ставит много подмен за одну запись на диск (импорт). */
+    static void setOverrides(Map<String, Patch> items) {
+        for (Map.Entry<String, Patch> e : items.entrySet()) {
+            overrides.put(e.getKey(), e.getValue());
+            if (!flags.containsKey(e.getKey())) {
+                flags.putIfAbsent(e.getKey(), new Flag(e.getKey(), e.getValue().type, null));
+            }
+        }
+        catalogDirty = true;
+        saveOverridesAsync();
+    }
+
     static void removeOverride(String key) {
         overrides.remove(key);
         saveOverridesAsync();

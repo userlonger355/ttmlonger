@@ -37,6 +37,11 @@ final class DownloadHooks {
     private static final StringBuilder STATUS = new StringBuilder();
     private static int hooked;
 
+    /** Установлен на время, пока сам мод читает getDownloadAddr: хук тогда ничего не меняет. */
+    static final ThreadLocal<Boolean> QUIET = new ThreadLocal<>();
+    private static volatile String lastCaller = "-";
+    private static volatile int requests;
+
     private DownloadHooks() {
     }
 
@@ -52,16 +57,48 @@ final class DownloadHooks {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
-                        if (CrashGuard.tripped || param.hasThrowable()) return;
-                        Object better = choose(param.thisObject, param.getResult());
-                        if (better != null && better != param.getResult()) param.setResult(better);
+                        if (CrashGuard.tripped || param.hasThrowable() || QUIET.get() != null) return;
+                        Object stamped = param.getResult();
+                        Object v = param.thisObject;
+                        boolean blocked = !hasUrl(stamped) || VideoTracker.isProhibited(v);
+                        requests++;
+                        lastCaller = callerOf(new Throwable());
+                        Object better = choose(v, stamped, blocked);
+                        if (better != null && better != stamped) param.setResult(better);
+                        if (blocked && Prefs.dlAlways && Prefs.dlPill) NativeOffer.maybe(v);
                     } catch (Throwable ignored) {
                         // остаётся ответ TikTok
                     }
                 }
             }));
+            // Какие видео TikTok показывал: для экрана «Видео и истории».
+            count("Video.getPlayAddr→трекер", hookAll(video, "getPlayAddr", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (!CrashGuard.tripped) VideoTracker.played(param.thisObject);
+                    } catch (Throwable ignored) {
+                        // трекер не должен мешать
+                    }
+                }
+            }));
         } else {
             note("Video не найден");
+        }
+
+        if (aweme != null) {
+            count("Aweme.getVideo→трекер", hookAll(aweme, "getVideo", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (!CrashGuard.tripped && !param.hasThrowable()) {
+                            VideoTracker.seen(param.thisObject, param.getResult());
+                        }
+                    } catch (Throwable ignored) {
+                        // трекер не должен мешать
+                    }
+                }
+            }));
         }
 
         if (acl != null) {
@@ -80,7 +117,23 @@ final class DownloadHooks {
                 }
             }
         };
-        if (aweme != null) count("Aweme.isPreventDownload", hookAll(aweme, "isPreventDownload", notPrevented));
+        XC_MethodHook notPreventedPost = new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                try {
+                    // Запоминаем, что автор запретил скачивание: такие видео получают особое обращение.
+                    if (!param.hasThrowable() && Boolean.TRUE.equals(param.getResult())) {
+                        VideoTracker.markProhibited(param.thisObject);
+                    }
+                } catch (Throwable ignored) {
+                    // не страшно
+                }
+                if (Prefs.dlAlways && !CrashGuard.tripped && !param.hasThrowable()) {
+                    param.setResult(Boolean.FALSE);
+                }
+            }
+        };
+        if (aweme != null) count("Aweme.isPreventDownload", hookAll(aweme, "isPreventDownload", notPreventedPost));
         if (user != null) count("User.isPreventDownload", hookAll(user, "isPreventDownload", notPrevented));
 
         // VideoControl.allowDownload — поле, а не геттер, поэтому его ставят в «да» на выходе
@@ -148,7 +201,25 @@ final class DownloadHooks {
 
     /** Какой адрес отдать вместо адреса TikTok; null — оставить как есть. */
     static Object choose(Object video, Object stamped) {
+        return choose(video, stamped, false);
+    }
+
+    /**
+     * @param blocked автор запретил скачивание: собственного адреса для скачивания у видео нет.
+     *                Берём то, что играет плеер, в самом простом виде: основной адрес воспроизведения
+     *                (или размер из обычных h264, без HEVC и DASH). Раньше здесь мог выбраться
+     *                размер, который приложение сохраняло битым.
+     */
+    static Object choose(Object video, Object stamped, boolean blocked) {
         if (video == null) return null;
+        if (blocked) {
+            Object play = call(video, "getPlayAddr");
+            if (Prefs.dlQuality != 0) {
+                Object q = byQualityStrict(video, Prefs.dlQuality);
+                if (q != null) return q;
+            }
+            if (hasUrl(play)) return play;
+        }
         Object base = stamped;
         if (Prefs.dlNoWatermark) {
             Object clean = call(video, "getDownloadNoWatermarkAddr");
@@ -165,6 +236,14 @@ final class DownloadHooks {
             if (q != null) return q;
         }
         return base;
+    }
+
+    /** Как byQuality, но только обычные h264: без HEVC; null, если таких нет. */
+    static Object byQualityStrict(Object video, int mode) {
+        List<Option> pool = new ArrayList<>();
+        for (Option o : options(video)) if (!o.hevc) pool.add(o);
+        Option o = pick(pool, mode);
+        return o == null ? null : o.addr;
     }
 
     /** Один размер видео из списка TikTok. */
@@ -354,6 +433,29 @@ final class DownloadHooks {
 
     private static void note(String s) {
         STATUS.append(s).append("; ");
+    }
+
+    /** Первые «чужие» кадры стека: кто попросил адрес скачивания (для диагностики). */
+    private static String callerOf(Throwable t) {
+        StringBuilder b = new StringBuilder();
+        int n = 0;
+        for (StackTraceElement e : t.getStackTrace()) {
+            String c = e.getClassName();
+            if (c.startsWith("dev.ttmlonger.") || c.startsWith("de.robv.") || c.startsWith("java.lang.reflect.")
+                    || c.startsWith("LSPHooker") || c.contains("LSPHooker") || c.startsWith("org.lsposed.")
+                    || c.startsWith("dalvik.") || c.startsWith("android.os.") || c.startsWith("com.android.internal.os.")) {
+                continue;
+            }
+            if (b.length() > 0) b.append(" < ");
+            b.append(c.substring(c.lastIndexOf('.') + 1)).append('.').append(e.getMethodName());
+            if (++n >= 6) break;
+        }
+        return b.length() == 0 ? "-" : b.toString();
+    }
+
+    /** Для диагностики: сколько раз TikTok просил адрес скачивания и кто. */
+    static String requests() {
+        return requests + " раз(а); последний вызов: " + lastCaller;
     }
 
     static String status() {

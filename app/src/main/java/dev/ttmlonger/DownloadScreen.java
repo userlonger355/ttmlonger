@@ -22,7 +22,7 @@ final class DownloadScreen extends Screen {
     }
 
     static void show(Activity act) {
-        new DownloadScreen(act).open("Скачивание", "Видео, фото и стикеры");
+        new DownloadScreen(act).open("Скачивание", "Видео, истории, фото и стикеры");
     }
 
     /** Название качества для показа (и для проверок). */
@@ -50,6 +50,16 @@ final class DownloadScreen extends Screen {
                     @Override
                     public void onChanged(boolean on) {
                         Prefs.setDlAlways(on);
+                    }
+                }));
+
+        body.addView(toggleRow("Кнопка «Сохранить через мод»",
+                "Когда у видео запрещено скачивание, на несколько секунд появляется кнопка: её файл "
+                        + "проверяется и не бывает битым",
+                Prefs.dlPill, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setDlPill(on);
                     }
                 }));
 

@@ -14,7 +14,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 
-/** Сохранение картинок в галерею (Pictures/TTMLonger). */
+/** Сохранение в галерею: картинки в Pictures/TTMLonger, видео в Movies/TTMLonger. */
 final class Media {
     private Media() {
     }
@@ -46,6 +46,23 @@ final class Media {
         });
     }
 
+    /** Копирует готовый файл в галерею без перекодирования; возвращает путь для показа. */
+    static String saveFile(Context ctx, final File src, String name, String mime) throws Exception {
+        return save(ctx, name, mime, new Sink() {
+            @Override
+            public void write(OutputStream os) throws Exception {
+                java.io.FileInputStream in = new java.io.FileInputStream(src);
+                try {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                } finally {
+                    in.close();
+                }
+            }
+        });
+    }
+
     /** Расширение файла по первым байтам: JPEG, PNG, WebP, GIF; для остального (и пустого) — jpg. */
     static String extensionFor(byte[] d) {
         String e = imageExtension(d);
@@ -68,18 +85,23 @@ final class Media {
         if ("webp".equals(ext)) return "image/webp";
         if ("gif".equals(ext)) return "image/gif";
         if ("mp4".equals(ext)) return "video/mp4";
+        if ("webm".equals(ext)) return "video/webm";
         return "image/jpeg";
     }
 
     private static String save(Context ctx, String name, String mime, Sink sink) throws Exception {
+        boolean video = mime != null && mime.startsWith("video/");
+        String dirType = video ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_PICTURES;
         if (Build.VERSION.SDK_INT >= 29) {
             ContentResolver cr = ctx.getContentResolver();
             ContentValues cv = new ContentValues();
             cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             cv.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/TTMLonger");
+            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, dirType + "/TTMLonger");
             cv.put(MediaStore.MediaColumns.IS_PENDING, 1);
-            Uri uri = cr.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+            Uri collection = video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            Uri uri = cr.insert(collection, cv);
             if (uri == null) throw new IllegalStateException("MediaStore вернул null");
             try {
                 OutputStream os = cr.openOutputStream(uri);
@@ -96,17 +118,16 @@ final class Media {
                 cr.delete(uri, null, null);
                 throw e;
             }
-            return "Pictures/TTMLonger/" + name;
+            return dirType + "/TTMLonger/" + name;
         }
 
         // Android 9 и старше: обычный файл. Нет разрешения на запись — кладём в папку приложения.
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                "TTMLonger");
+        File dir = new File(Environment.getExternalStoragePublicDirectory(dirType), "TTMLonger");
         File file = new File(dir, name);
         try {
             write(dir, file, sink);
         } catch (Exception e) {
-            File alt = ctx.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+            File alt = ctx.getExternalFilesDir(dirType);
             if (alt == null) throw e;
             file = new File(alt, name);
             write(alt, file, sink);

@@ -30,6 +30,8 @@ final class Prefs {
     static volatile boolean dlNoWatermark = true;
     /** Кнопка «Сохранить» остаётся, даже если автор запретил скачивание. */
     static volatile boolean dlAlways = true;
+    /** Подсказка «Сохранить через мод», когда сохраняется видео с запретом скачивания. */
+    static volatile boolean dlPill = true;
     /** Качество скачивания: 0 как у TikTok, -1 лучшее, -2 наименьшее, иначе потолок по высоте (1080, 720...). */
     static volatile int dlQuality = -1;
     /** Кнопка «Сохранить стикер» на листе стикера. */
@@ -57,6 +59,7 @@ final class Prefs {
             dlNoWatermark = o.optBoolean("dlNoWatermark", true);
             dlAlways = o.optBoolean("dlAlways", true);
             dlQuality = o.optInt("dlQuality", -1);
+            dlPill = o.optBoolean("dlPill", true);
             saveStickers = o.optBoolean("saveStickers", true);
         } catch (Throwable t) {
             FlagStore.log(t);
@@ -114,6 +117,11 @@ final class Prefs {
         save();
     }
 
+    static void setDlPill(boolean v) {
+        dlPill = v;
+        save();
+    }
+
     static void setDlQuality(int v) {
         dlQuality = v;
         save();
@@ -139,6 +147,7 @@ final class Prefs {
             o.put("dlNoWatermark", dlNoWatermark);
             o.put("dlAlways", dlAlways);
             o.put("dlQuality", dlQuality);
+            o.put("dlPill", dlPill);
             o.put("saveStickers", saveStickers);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {

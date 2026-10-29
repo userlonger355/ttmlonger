@@ -84,6 +84,11 @@ final class Diag {
         sb.append("Пакет: ").append(a.getPackageName()).append(", ").append(tiktokVersion(a)).append('\n');
         sb.append("Экран: ").append(a.getClass().getName()).append('\n');
         sb.append("A/B: ").append(FlagHooks.status()).append('\n');
+        sb.append("Скачивание: ").append(DownloadHooks.status()).append('\n');
+        sb.append("Запросы адреса скачивания: ").append(DownloadHooks.requests())
+                .append(", подсказок «Сохранить через мод» показано ").append(NativeOffer.shown()).append('\n');
+        sb.append("Видео и истории: ").append(VideoTracker.status())
+                .append(", последняя ошибка загрузки: ").append(VideoSaver.lastError()).append('\n');
         sb.append("Стикеры: включено ").append(Prefs.saveStickers)
                 .append(", хуки: ").append(StickerHooks.status())
                 .append("\nСкан экрана: ").append(StickerScan.lastSummary()).append('\n');
@@ -95,6 +100,8 @@ final class Diag {
         synchronized (EVENTS) {
             for (String e : EVENTS) sb.append(e).append('\n');
         }
+        String dump = StickerSaver.dump();
+        if (!dump.isEmpty()) sb.append("\n--- окна под меню: схема (лист стикера) ---\n").append(dump);
         return sb.toString();
     }
 
@@ -119,6 +126,10 @@ final class Diag {
                 .append(", качество ").append(DownloadScreen.qualityLabel(Prefs.dlQuality))
                 .append(", стикеры ").append(Prefs.saveStickers).append('\n');
         sb.append("Хуки скачивания: ").append(DownloadHooks.status()).append('\n');
+        sb.append("Запросы адреса скачивания: ").append(DownloadHooks.requests())
+                .append(", подсказок «Сохранить через мод» показано ").append(NativeOffer.shown()).append('\n');
+        sb.append("Видео и истории: ").append(VideoTracker.status())
+                .append(", последняя ошибка загрузки: ").append(VideoSaver.lastError()).append('\n');
         sb.append("Хуки стикеров: ").append(StickerHooks.status()).append('\n');
         sb.append("Скан экрана «Стикеры»: ").append(StickerScan.lastSummary()).append('\n');
         sb.append(DexHooks.report());
@@ -152,6 +163,9 @@ final class Diag {
         synchronized (EVENTS) {
             for (String e : EVENTS) sb.append(e).append('\n');
         }
+
+        String sheet = StickerSaver.dump();
+        if (!sheet.isEmpty()) sb.append("\n--- окна под меню: схема (лист стикера) ---\n").append(sheet);
 
         sb.append("\n--- окна приложения ---\n");
         sb.append(windows());

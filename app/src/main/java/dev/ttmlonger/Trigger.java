@@ -80,8 +80,12 @@ final class Trigger {
             case MotionEvent.ACTION_MOVE:
                 if (pending != null && moved(activity, e)) cancel();
                 break;
-            case MotionEvent.ACTION_POINTER_UP:
             case MotionEvent.ACTION_UP:
+                cancel();
+                // Лист стикера открывается сразу после касания: смотрим, не появился ли он.
+                StickerSaver.touched();
+                break;
+            case MotionEvent.ACTION_POINTER_UP:
             case MotionEvent.ACTION_CANCEL:
                 cancel();
                 break;

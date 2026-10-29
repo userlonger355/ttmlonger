@@ -50,6 +50,14 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow("Видео и истории", "Сохранить видео, историю или фото, которые показывал TikTok", null,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        VideoScreen.show(act);
+                    }
+                }));
+
         body.addView(ui.menuRow("Стикеры", "Сохранить стикеры, которые сейчас на экране", null,
                 new View.OnClickListener() {
                     @Override

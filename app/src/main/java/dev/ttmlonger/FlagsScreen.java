@@ -294,6 +294,17 @@ final class FlagsScreen {
                 Exporter.exportAll(act);
             }
         }));
+        h.addView(action("Импорт флагов из JSON", accent, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Importer.start(act, new Runnable() {
+                    @Override
+                    public void run() {
+                        refilter();
+                    }
+                });
+            }
+        }));
         h.addView(action("Добавить флаг вручную", accent, new View.OnClickListener() {
             @Override
             public void onClick(View v) {

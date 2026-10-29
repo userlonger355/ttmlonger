@@ -1,7 +1,9 @@
 package dev.ttmlonger;
 
+import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -34,21 +36,22 @@ import java.util.Map;
  * Сохранение стикера из переписки или из комментариев. TikTok такой кнопки не даёт: на листе
  * стикера есть «Поделиться» и «Сохранить» (в избранное), а картинку в галерею не положить.
  *
- * Работает в три слоя, каждый страхует предыдущий:
+ * Работает в несколько слоёв, каждый страхует предыдущий:
  *
- *  1. Нажатие на стикер перехватывают хуки StickerHooks (методы находит DexScan): из модели стикера
- *     берётся адрес картинки. Это самый надёжный способ узнать, какой стикер нажат.
- *  2. Лист стикера в комментариях — окно с картинкой и рядом из двух кнопок под ней. Мод ищет
- *     такую пару «картинка + ряд кнопок» среди всех окон приложения и дописывает в ряд третью,
- *     квадратную кнопку «⬇». Это же делается на любом диалоге, показанном приложением.
- *  3. Если листа с рядом кнопок не нашлось (или в личных сообщениях), поверх экрана на несколько
+ *  1. Лист стикера в комментариях — окно с крупной картинкой и рядом из двух кнопок под ней. Мод
+ *     ищет такую пару «картинка + ряд кнопок» среди всех окон приложения (SheetFinder) и дописывает
+ *     в ряд третью, круглую кнопку со значком «скачать», как у «Поделиться» и «Сохранить». Ищет
+ *     сразу после любого касания экрана, поэтому хуки TikTok для этого не нужны.
+ *  2. Хуки StickerHooks (методы находит DexScan) сообщают, какой именно стикер нажат: из модели
+ *     берётся адрес картинки, и сохраняется оригинал, а не снимок с экрана.
+ *  3. Если ряд — не горизонтальный LinearLayout, кнопка рисуется отдельным окном над рядом.
+ *  4. Если листа с рядом кнопок не нашлось (или в личных сообщениях), поверх экрана на несколько
  *     секунд появляется плавающая кнопка «Сохранить стикер».
  *
  * Классы листа в TikTok обфусцированы, поэтому узнаём его по устройству, а не по имени.
- * «Диагностика» показывает, что из этого сработало.
+ * «Диагностика» показывает, что из этого сработало, и схему окна, если лист не узнан.
  */
 final class StickerSaver {
-    private static final int TAG_PLACED = 0x7ff0ad05;
     private static final int TAG_POLL = 0x7ff0ad06;
     private static final long POLL_MS = 100L;
     private static final int POLL_TRIES = 30;
@@ -62,15 +65,41 @@ final class StickerSaver {
     private static volatile long latestAt;
     private static final long FRESH_MS = 60_000L;
     private static final long LOOK_MS = 2500L;
+    private static final long TAP_LOOK_MS = 2200L;
     private static final long PILL_MS = 8000L;
     private static final long PILL_DELAY_MS = 700L;
+    /** Картинка листа от ширины окна: по хуку (знаем, что открыт стикер) и просто по касанию. */
+    private static final float PIC_HOOKED = 0.20f;
+    private static final float PIC_TAP = 0.33f;
 
     private static final List<WeakReference<View>> decors = new ArrayList<>();
     private static Runnable looker;
     private static long lookUntil;
+    private static Runnable tapLooker;
+    private static long tapUntil;
     private static Dialog pill;
+    private static Field viewsField;
+    private static volatile String sheetDump = "";
 
     private StickerSaver() {
+    }
+
+    /**
+     * Схема окон под меню мода (для диагностики) и схема, снятая при последнем неудачном поиске
+     * листа. Если лист стикера открыт под отчётом, его устройство видно целиком.
+     */
+    static String dump() {
+        String now = "";
+        try {
+            now = describeWindows();
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+        String before = sheetDump;
+        StringBuilder b = new StringBuilder();
+        if (!now.isEmpty()) b.append("сейчас:\n").append(now);
+        if (!before.isEmpty()) b.append("при последнем поиске листа:\n").append(before);
+        return b.toString();
     }
 
     static void install() {
@@ -99,6 +128,36 @@ final class StickerSaver {
             decors.add(new WeakReference<>(decor));
             while (decors.size() > 6) decors.remove(0);
         }
+    }
+
+    // ------------------------------------------------------------ поиск листа после касания
+
+    /**
+     * Любое касание экрана: сразу после него в течение пары секунд смотрим, не открылся ли лист
+     * стикера. Это не зависит от хуков: даже если TikTok переименовал свои методы, лист узнаётся по
+     * виду. Вызывается из главного потока.
+     */
+    static void touched() {
+        if (!Prefs.saveStickers || CrashGuard.tripped) return;
+        tapUntil = android.os.SystemClock.uptimeMillis() + TAP_LOOK_MS;
+        if (tapLooker != null) return;
+        tapLooker = new Runnable() {
+            @Override
+            public void run() {
+                boolean placed = false;
+                try {
+                    placed = placeInWindows(PIC_TAP);
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                }
+                if (placed || android.os.SystemClock.uptimeMillis() >= tapUntil) {
+                    tapLooker = null;
+                } else {
+                    MAIN.postDelayed(this, 120L);
+                }
+            }
+        };
+        MAIN.postDelayed(tapLooker, 150L);
     }
 
     // ------------------------------------------------------------ нажатие на стикер (хуки)
@@ -154,7 +213,7 @@ final class StickerSaver {
             public void run() {
                 boolean placed = false;
                 try {
-                    placed = placeInWindows();
+                    placed = placeInWindows(PIC_HOOKED);
                 } catch (Throwable t) {
                     FlagStore.log(t);
                 }
@@ -165,6 +224,7 @@ final class StickerSaver {
                 } else {
                     looker = null;
                     Diag.note("стикер: лист с рядом кнопок не найден, показываю запасную кнопку");
+                    dumpWindows();
                     offerPill();
                 }
             }
@@ -176,10 +236,13 @@ final class StickerSaver {
     static List<View> windows() {
         List<View> out = new ArrayList<>();
         try {
-            Class<?> global = Class.forName("android.view.WindowManagerGlobal");
-            Object manager = global.getMethod("getInstance").invoke(null);
-            Field views = global.getDeclaredField("mViews");
-            views.setAccessible(true);
+            Field views = viewsField;
+            Object manager = Class.forName("android.view.WindowManagerGlobal").getMethod("getInstance").invoke(null);
+            if (views == null) {
+                views = Class.forName("android.view.WindowManagerGlobal").getDeclaredField("mViews");
+                views.setAccessible(true);
+                viewsField = views;
+            }
             Object held = views.get(manager);
             if (held instanceof List) {
                 for (Object v : new ArrayList<Object>((List<?>) held)) {
@@ -196,29 +259,57 @@ final class StickerSaver {
                 if (v != null && v.isShown()) out.add(v);
             }
         }
-        android.app.Activity top = ScreenWatcher.top();
+        Activity top = ScreenWatcher.top();
         if (top != null && top.getWindow() != null) out.add(top.getWindow().getDecorView());
         return out;
     }
 
     /** true, когда кнопка стоит в листе (или уже стояла). */
-    private static boolean placeInWindows() {
+    private static boolean placeInWindows(float picFraction) {
         List<View> roots = windows();
         for (int i = roots.size() - 1; i >= 0; i--) {
-            Found f = find(roots.get(i));
-            if (f.row == null) continue;
-            if (f.row.getTag(TAG_PLACED) != null) return true;
-            if (f.row.getChildAt(0).getHeight() <= 0) return false;
-            add(f.row, f.picture);
+            View root = roots.get(i);
+            if (root == null || !root.isShown() || Screen.isOwnDecor(root)) continue;
+            SheetFinder.Scan s = SheetFinder.scan(root, picFraction);
+            if (s.hit == null) continue;
+            if (!s.hit.placed) place(s.hit);
             return true;
         }
         return false;
     }
 
+    /** Схема самого верхнего окна не из мода: по ней видно, чем отличается лист от ожидаемого. */
+    private static void dumpWindows() {
+        try {
+            sheetDump = describeWindows();
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    private static String describeWindows() {
+        List<View> roots = windows();
+        StringBuilder b = new StringBuilder();
+        int shown = 0;
+        for (int i = roots.size() - 1; i >= 0 && shown < 2; i--) {
+            View root = roots.get(i);
+            if (root == null || !root.isShown() || Screen.isOwnDecor(root)) continue;
+            SheetFinder.Scan s = SheetFinder.scan(root, PIC_HOOKED);
+            b.append("окно ").append(i).append(": ").append(SheetFinder.shortName(root))
+                    .append(", крупная картинка ").append(s.bigPicture)
+                    .append(", рядов кнопок ").append(s.rows)
+                    .append(", ждёт измерения ").append(s.waiting)
+                    .append(", кнопки: ").append(SheetFinder.labels(root)).append('\n');
+            b.append(SheetFinder.outline(root, 60));
+            shown++;
+        }
+        return b.toString();
+    }
+
     // ------------------------------------------------------------ запасная плавающая кнопка
 
     private static void offerPill() {
-        final android.app.Activity act = ScreenWatcher.top();
+        final Activity act = ScreenWatcher.top();
         if (act == null || freshUrl() == null) return;
         try {
             if (pill != null) {
@@ -230,7 +321,7 @@ final class StickerSaver {
             }
             float d = act.getResources().getDisplayMetrics().density;
             TextView t = new TextView(act);
-            t.setText("⬇  Сохранить стикер");
+            t.setText("↓  Сохранить стикер");
             t.setTextColor(0xFFFFFFFF);
             t.setTextSize(15);
             t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD);
@@ -307,21 +398,17 @@ final class StickerSaver {
             public void run() {
                 try {
                     if (!d.isShowing()) return;
-                    Found f = find(decor);
-                    if (f.row != null) {
-                        if (f.row.getTag(TAG_PLACED) != null) return;
-                        // Кнопки ещё не измерены: придём, когда у них будет высота.
-                        if (f.row.getChildAt(0).getHeight() > 0) {
-                            add(f.row, f.picture);
-                            return;
-                        }
+                    SheetFinder.Scan s = SheetFinder.scan(decor, PIC_HOOKED);
+                    if (s.hit != null) {
+                        if (!s.hit.placed) place(s.hit);
+                        return;
                     }
-                    sawPicture |= f.bigPicture;
+                    sawPicture |= s.bigPicture;
                     if (++n < POLL_TRIES) {
                         MAIN.postDelayed(this, POLL_MS);
                     } else if (sawPicture && unknownLogged++ < 4) {
                         Diag.note("диалог с картинкой, но не лист стикера: " + d.getClass().getName()
-                                + ", кнопки: " + labels(decor));
+                                + ", кнопки: " + SheetFinder.labels(decor));
                     }
                 } catch (Throwable t) {
                     FlagStore.log(t);
@@ -330,120 +417,56 @@ final class StickerSaver {
         });
     }
 
-    // ------------------------------------------------------------ поиск листа
+    // ------------------------------------------------------------ кнопка
 
-    private static final class Found {
-        LinearLayout row;
-        ImageView picture;
-        boolean bigPicture;
-    }
-
-    static Found find(View decor) {
-        Found f = new Found();
-        float d = decor.getResources().getDisplayMetrics().density;
-        walk(decor, f, Math.round(64 * d), 0, new int[]{3000});
-        return f;
-    }
-
-    private static void walk(View v, Found f, int minPic, int depth, int[] budget) {
-        if (f.row != null || v == null || depth > 40 || --budget[0] < 0
-                || v.getVisibility() != View.VISIBLE) return;
-        if (v instanceof ImageView && v.getWidth() >= minPic && v.getHeight() >= minPic) f.bigPicture = true;
-        if (!(v instanceof ViewGroup)) return;
-        ViewGroup g = (ViewGroup) v;
-        if (g instanceof LinearLayout && ((LinearLayout) g).getOrientation() == LinearLayout.HORIZONTAL
-                && looksLikeButtons(g)) {
-            ImageView pic = pictureNear(g, minPic);
-            if (pic != null) {
-                f.row = (LinearLayout) g;
-                f.picture = pic;
-                return;
-            }
+    private static void place(SheetFinder.Hit h) {
+        if (h.linear) {
+            addToRow((LinearLayout) h.row, h.picture);
+        } else {
+            addFloating(h);
         }
-        for (int i = 0; i < g.getChildCount(); i++) walk(g.getChildAt(i), f, minPic, depth + 1, budget);
     }
 
-    /** Две или три видимые кнопки-надписи в ряд. */
-    private static boolean looksLikeButtons(ViewGroup g) {
-        int visible = 0;
-        for (int i = 0; i < g.getChildCount(); i++) {
-            View c = g.getChildAt(i);
-            if (c.getVisibility() != View.VISIBLE) continue;
-            if (!(c instanceof TextView) || !c.isClickable()) return false;
-            CharSequence t = ((TextView) c).getText();
-            if (t == null || t.length() == 0 || t.length() > 30) return false;
-            visible++;
-        }
-        return visible >= 2 && visible <= 3;
-    }
-
-    /** Большая картинка рядом с рядом кнопок: у него в родителях, не глубже трёх уровней. */
-    private static ImageView pictureNear(View row, int minPic) {
-        View child = row;
-        for (int up = 0; up < 3 && child.getParent() instanceof ViewGroup; up++) {
-            ViewGroup parent = (ViewGroup) child.getParent();
-            ImageView best = null;
-            for (int i = 0; i < parent.getChildCount(); i++) {
-                View c = parent.getChildAt(i);
-                if (c == child) continue;
-                ImageView pic = firstImage(c, minPic, 0);
-                if (pic != null && (best == null || area(pic) > area(best))) best = pic;
+    /** Круглая подложка в стиле кнопок листа: копия фона первой из них, а если нельзя, своя. */
+    private static Drawable groundLike(TextView first, Context ctx, float d) {
+        try {
+            Drawable theirs = first.getBackground();
+            if (theirs != null && theirs.getConstantState() != null) {
+                return theirs.getConstantState().newDrawable(ctx.getResources()).mutate();
             }
-            if (best != null) return best;
-            child = parent;
+        } catch (Throwable ignored) {
+            // нарисуем свою подложку
+        }
+        GradientDrawable plain = new GradientDrawable();
+        plain.setColor((first.getCurrentTextColor() & 0x00FFFFFF) | 0x33000000);
+        plain.setCornerRadius(1000 * d);
+        return plain;
+    }
+
+    private static TextView firstButton(ViewGroup row) {
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View c = row.getChildAt(i);
+            if (c.getVisibility() == View.VISIBLE && c instanceof TextView) return (TextView) c;
         }
         return null;
     }
 
-    private static ImageView firstImage(View v, int minPic, int depth) {
-        if (v == null || depth > 6 || v.getVisibility() != View.VISIBLE) return null;
-        if (v instanceof ImageView) {
-            return v.getWidth() >= minPic && v.getHeight() >= minPic ? (ImageView) v : null;
-        }
-        if (!(v instanceof ViewGroup)) return null;
-        ViewGroup g = (ViewGroup) v;
-        ImageView best = null;
-        for (int i = 0; i < g.getChildCount(); i++) {
-            ImageView p = firstImage(g.getChildAt(i), minPic, depth + 1);
-            if (p != null && (best == null || area(p) > area(best))) best = p;
-        }
-        return best;
-    }
-
-    private static long area(View v) {
-        return (long) v.getWidth() * v.getHeight();
-    }
-
-    private static String labels(View root) {
-        StringBuilder b = new StringBuilder();
-        collectLabels(root, b, 0, new int[]{2000});
-        return b.length() == 0 ? "-" : b.toString();
-    }
-
-    private static void collectLabels(View v, StringBuilder b, int depth, int[] budget) {
-        if (v == null || depth > 40 || --budget[0] < 0 || b.length() > 160 || v.getVisibility() != View.VISIBLE) return;
-        if (v instanceof TextView && v.isClickable()) {
-            CharSequence t = ((TextView) v).getText();
-            if (t != null && t.length() > 0) {
-                if (b.length() > 0) b.append(" | ");
-                b.append(t.length() > 24 ? t.subSequence(0, 24) : t);
-            }
-        }
-        if (v instanceof ViewGroup) {
-            ViewGroup g = (ViewGroup) v;
-            for (int i = 0; i < g.getChildCount(); i++) collectLabels(g.getChildAt(i), b, depth + 1, budget);
-        }
-    }
-
-    // ------------------------------------------------------------ кнопка
-
-    private static void add(LinearLayout row, final ImageView picture) {
+    private static void addToRow(LinearLayout row, final ImageView picture) {
         Context ctx = row.getContext();
         float d = ctx.getResources().getDisplayMetrics().density;
-        TextView first = (TextView) row.getChildAt(0);
-        View second = row.getChildAt(1);
+        TextView first = firstButton(row);
+        if (first == null) return;
+        View second = null;
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View c = row.getChildAt(i);
+            if (c != first && c.getVisibility() == View.VISIBLE) {
+                second = c;
+                break;
+            }
+        }
         int tall = first.getHeight();
-        int gap = Math.max(second.getLeft() - first.getRight(), Math.round(8 * d));
+        int gap = second == null ? Math.round(8 * d)
+                : Math.max(second.getLeft() - first.getRight(), Math.round(8 * d));
 
         // Две кнопки делят ряд поровну; если они растянуты не весом, делаем вес, и для
         // третьей остаётся место.
@@ -458,28 +481,14 @@ final class StickerSaver {
             }
         }
 
-        TextView mine = new TextView(ctx);
-        mine.setText("⬇");
-        mine.setGravity(Gravity.CENTER);
-        mine.setTextSize(20);
-        mine.setTextColor(first.getCurrentTextColor());
+        ImageView mine = new ImageView(ctx);
+        int ink = first.getCurrentTextColor();
+        mine.setBackground(groundLike(first, ctx, d));
+        mine.setImageDrawable(Glyph.download(ink));
+        mine.setScaleType(ImageView.ScaleType.FIT_XY);
+        int inset = Math.max(0, (tall - Math.round(24 * d)) / 2);
+        mine.setPadding(inset, inset, inset, inset);
         mine.setContentDescription("Сохранить стикер");
-        Drawable ground = null;
-        try {
-            Drawable theirs = first.getBackground();
-            if (theirs != null && theirs.getConstantState() != null) {
-                ground = theirs.getConstantState().newDrawable(ctx.getResources()).mutate();
-            }
-        } catch (Throwable ignored) {
-            // нарисуем свою подложку
-        }
-        if (ground == null) {
-            GradientDrawable plain = new GradientDrawable();
-            plain.setColor((first.getCurrentTextColor() & 0x00FFFFFF) | 0x1F000000);
-            plain.setCornerRadius(4 * d);
-            ground = plain;
-        }
-        mine.setBackground(ground);
         mine.setClickable(true);
         mine.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -493,8 +502,101 @@ final class StickerSaver {
         ViewGroup.LayoutParams fl = first.getLayoutParams();
         if (fl instanceof LinearLayout.LayoutParams) lp.gravity = ((LinearLayout.LayoutParams) fl).gravity;
         row.addView(mine, lp);
-        row.setTag(TAG_PLACED, Boolean.TRUE);
-        Diag.note("кнопка «Сохранить стикер» добавлена в лист (" + picture.getClass().getName() + ")");
+        row.setTag(SheetFinder.TAG_PLACED, Boolean.TRUE);
+        Diag.note("кнопка «Сохранить стикер» добавлена в ряд листа (" + picture.getClass().getName() + ")");
+    }
+
+    /**
+     * Ряд не LinearLayout: вставить в него третью кнопку нельзя, не зная его устройства. Рисуем её
+     * отдельным окном над правым краем ряда; окно закрывается вместе с листом.
+     */
+    private static void addFloating(final SheetFinder.Hit h) {
+        final Activity act = activityOf(h.row.getContext());
+        if (act == null) return;
+        try {
+            float d = act.getResources().getDisplayMetrics().density;
+            int size = Math.max(h.tall, Math.round(44 * d));
+            int gap = Math.round(8 * d);
+            int[] loc = new int[2];
+            h.row.getLocationOnScreen(loc);
+
+            final ImageView b = new ImageView(act);
+            TextView first = firstButton(h.row);
+            int ink = first != null ? first.getCurrentTextColor() : 0xFFFFFFFF;
+            b.setBackground(first != null ? groundLike(first, act, d) : ovalGround(d));
+            b.setImageDrawable(Glyph.download(ink));
+            b.setScaleType(ImageView.ScaleType.FIT_XY);
+            int inset = Math.round(size * 0.27f);
+            b.setPadding(inset, inset, inset, inset);
+            b.setContentDescription("Сохранить стикер");
+            b.setTag(Diag.OWN_TAG);
+
+            final Dialog dlg = new Dialog(act);
+            dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+            dlg.setContentView(b);
+            Screen.markOwn(dlg);
+            android.view.Window w = dlg.getWindow();
+            if (w == null) return;
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                    | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
+            android.view.WindowManager.LayoutParams lp = w.getAttributes();
+            lp.width = size;
+            lp.height = size;
+            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.x = Math.max(0, loc[0] + h.row.getWidth() - size);
+            lp.y = Math.max(0, loc[1] - size - gap);
+            w.setAttributes(lp);
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    save(h.picture);
+                }
+            });
+            h.row.setTag(SheetFinder.TAG_PLACED, Boolean.TRUE);
+            dlg.show();
+            Diag.note("кнопка «Сохранить стикер» показана над рядом листа (ряд " + h.row.getClass().getName() + ")");
+
+            // Закрываем, когда лист ушёл с экрана.
+            final long until = android.os.SystemClock.uptimeMillis() + 10 * 60_000L;
+            MAIN.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        boolean gone = !h.row.isAttachedToWindow() || !h.row.isShown()
+                                || android.os.SystemClock.uptimeMillis() > until;
+                        if (gone) {
+                            h.row.setTag(SheetFinder.TAG_PLACED, null);
+                            if (dlg.isShowing()) dlg.dismiss();
+                        } else {
+                            MAIN.postDelayed(this, 400L);
+                        }
+                    } catch (Throwable ignored) {
+                        // окна уже нет
+                    }
+                }
+            }, 400L);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    private static Drawable ovalGround(float d) {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        g.setColor(0xEE333333);
+        return g;
+    }
+
+    private static Activity activityOf(Context c) {
+        for (int i = 0; i < 12 && c != null; i++) {
+            if (c instanceof Activity) return (Activity) c;
+            if (!(c instanceof ContextWrapper)) break;
+            c = ((ContextWrapper) c).getBaseContext();
+        }
+        return ScreenWatcher.top();
     }
 
     // ------------------------------------------------------------ сохранение
