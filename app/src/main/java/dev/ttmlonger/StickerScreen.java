@@ -110,11 +110,7 @@ final class StickerScreen extends Screen {
         col.addView(s);
         card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView btn = ui.text("Сохранить", 15, Color.WHITE, true);
-        btn.setGravity(Gravity.CENTER);
-        btn.setPadding(ui.dp(14), ui.dp(11), ui.dp(14), ui.dp(11));
-        btn.setBackground(ui.round(Ui.RED, 20));
-        btn.setClickable(true);
+        TextView btn = TtStyle.primary(act, "Сохранить", 36f, 14f);
         btn.setOnClickListener(save);
         card.addView(btn);
 

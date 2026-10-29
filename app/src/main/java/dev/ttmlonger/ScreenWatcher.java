@@ -410,13 +410,8 @@ final class ScreenWatcher {
         }
 
         private TextView buildAvatarButton() {
-            int accent = Theme.accent();
-            TextView b = ui.text("Сохранить аватар", 17, Theme.onColor(accent), false);
+            TextView b = TtStyle.primary(act, "Сохранить аватар", 44f, 15.5f);
             b.setTag(Diag.OWN_TAG);
-            b.setGravity(Gravity.CENTER);
-            b.setPadding(ui.dp(34), ui.dp(15), ui.dp(34), ui.dp(15));
-            b.setBackground(ui.round(accent, 40));
-            b.setClickable(true);
             b.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {

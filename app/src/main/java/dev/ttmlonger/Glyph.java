@@ -2,6 +2,7 @@ package dev.ttmlonger;
 
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
+import android.graphics.CornerPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -35,6 +36,7 @@ final class Glyph extends Drawable {
         float x = b.left + (b.width() - s) / 2f;
         float y = b.top + (b.height() - s) / 2f;
         paint.setStrokeWidth(Math.max(1.5f, s * 0.09f));
+        paint.setPathEffect(new CornerPathEffect(s * 0.07f));
 
         path.reset();
         // стрелка вниз

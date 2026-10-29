@@ -178,11 +178,7 @@ final class VideoScreen extends Screen {
         col.addView(row.sub);
         card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        row.button = ui.text(row.photo ? "Сохранить фото" : "Сохранить", 14, Color.WHITE, true);
-        row.button.setGravity(Gravity.CENTER);
-        row.button.setPadding(ui.dp(12), ui.dp(11), ui.dp(12), ui.dp(11));
-        row.button.setBackground(ui.round(Ui.RED, 20));
-        row.button.setClickable(true);
+        row.button = TtStyle.primary(act, row.photo ? "Сохранить фото" : "Сохранить", 36f, 14f);
         row.button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

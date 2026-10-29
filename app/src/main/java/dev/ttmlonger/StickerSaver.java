@@ -320,17 +320,7 @@ final class StickerSaver {
                 }
             }
             float d = act.getResources().getDisplayMetrics().density;
-            TextView t = new TextView(act);
-            t.setText("↓  Сохранить стикер");
-            t.setTextColor(0xFFFFFFFF);
-            t.setTextSize(15);
-            t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD);
-            t.setPadding(Math.round(16 * d), Math.round(11 * d), Math.round(16 * d), Math.round(11 * d));
-            GradientDrawable bg = new GradientDrawable();
-            bg.setColor(0xEE1F1F1F);
-            bg.setCornerRadius(24 * d);
-            bg.setStroke(Math.round(d), 0x55FFFFFF);
-            t.setBackground(bg);
+            TextView t = TtStyle.floating(act, "Сохранить стикер");
             t.setTag(Diag.OWN_TAG);
 
             final Dialog dlg = new Dialog(act);
@@ -340,6 +330,7 @@ final class StickerSaver {
             android.view.Window w = dlg.getWindow();
             if (w == null) return;
             w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            w.setWindowAnimations(android.R.style.Animation_Toast);
             w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             w.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                     | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
@@ -584,10 +575,7 @@ final class StickerSaver {
     }
 
     private static Drawable ovalGround(float d) {
-        GradientDrawable g = new GradientDrawable();
-        g.setShape(GradientDrawable.OVAL);
-        g.setColor(0xEE333333);
-        return g;
+        return TtStyle.roundGround(d);
     }
 
     private static Activity activityOf(Context c) {

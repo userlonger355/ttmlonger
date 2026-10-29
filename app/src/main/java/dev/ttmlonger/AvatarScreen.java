@@ -43,13 +43,8 @@ final class AvatarScreen {
             content.setTag(TAG, Boolean.TRUE);
 
             Ui ui = new Ui(act);
-            int accent = Theme.accent();
-            TextView b = ui.text("Сохранить аватар", 16, Theme.onColor(accent), true);
+            TextView b = TtStyle.primary(act, "Сохранить аватар", 44f, 15.5f);
             b.setTag(Diag.OWN_TAG);
-            b.setGravity(Gravity.CENTER);
-            b.setPadding(ui.dp(26), ui.dp(13), ui.dp(26), ui.dp(13));
-            b.setBackground(ui.round(accent, 40));
-            b.setClickable(true);
             b.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
