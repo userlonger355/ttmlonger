@@ -36,6 +36,8 @@ final class Prefs {
     static volatile int dlQuality = -1;
     /** Кнопка «Сохранить стикер» на листе стикера. */
     static volatile boolean saveStickers = true;
+    /** Набор флагов мода (RefSet): подставляется, пока флаг не переопределён вручную. */
+    static volatile boolean refSet = true;
 
     private static File file;
 
@@ -61,6 +63,7 @@ final class Prefs {
             dlQuality = o.optInt("dlQuality", -1);
             dlPill = o.optBoolean("dlPill", true);
             saveStickers = o.optBoolean("saveStickers", true);
+            refSet = o.optBoolean("refSet", true);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -132,6 +135,11 @@ final class Prefs {
         save();
     }
 
+    static void setRefSet(boolean v) {
+        refSet = v;
+        save();
+    }
+
     private static synchronized void save() {
         if (file == null) return;
         try {
@@ -149,6 +157,7 @@ final class Prefs {
             o.put("dlQuality", dlQuality);
             o.put("dlPill", dlPill);
             o.put("saveStickers", saveStickers);
+            o.put("refSet", refSet);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
             FlagStore.log(t);

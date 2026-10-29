@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.7.2";
+    static final String VERSION = "0.7.3";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -229,6 +229,17 @@ final class Targets {
             "circle_search_block",
             "enable_self_repost",
             "camera_teleprompter_mode",
+            // Флаги набора мода (RefSet): голосовые и пузырь чата в личных сообщениях и другие.
+            "im_voice_message",
+            "dm_customize_message_bubble",
+            "im_chat_wallpaper_chatroom",
+            "comment_photo_publish",
+            "comment_by_shooting",
+            "tt_comment_repost_interaction",
+            "allow_long_video_threshold",
+            "enable_pip_feed",
+            "fyp_auto_scroll",
+            "background_play_enable",
     };
 
     /** Интерфейс обработчика нажатий на стикер в личных сообщениях (реальное имя, не обфусцировано). */

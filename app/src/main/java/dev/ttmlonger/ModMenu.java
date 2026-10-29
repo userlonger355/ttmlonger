@@ -87,6 +87,18 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(toggleRow("Набор флагов мода",
+                "Флаги из референс-мода для TikTok 47.5.3: голосовые и пузырь чата в личных, "
+                        + "без рекламы, длинные видео и другое (" + RefSet.size() + " шт.). "
+                        + "Ваши ручные подмены главнее. Нужен перезапуск TikTok",
+                Prefs.refSet, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setRefSet(on);
+                        Restart.offer(act);
+                    }
+                }));
+
         body.addView(ui.menuRow("Настройки разработчика TikTok (A/B)", "Просмотр и настройка флагов",
                 "Внутренние флаги функций TikTok для тестирования. "
                         + "Позволяет вручную переключать экспериментальные функции",

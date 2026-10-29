@@ -56,6 +56,12 @@ final class FlagStore {
         volatile boolean readNow;
         /** Когда приложение читало флаг в последний раз (мс); 0 — не читало. */
         volatile long lastRead;
+        /** Значение по умолчанию из встроенного каталога (RefCatalog) или null. */
+        volatile String def;
+        /** Во встроенном каталоге этот флаг объявлен как json: хуки мода такие флаги не подменяют. */
+        volatile boolean json;
+        /** Флаг пришёл из встроенного каталога и сам по себе приложением не читался. */
+        volatile boolean bundled;
 
         Flag(String key, int type, String value) {
             this.key = key;
@@ -193,6 +199,7 @@ final class FlagStore {
                 if (!f.readNow) {
                     f.type = type;
                     f.value = str(value);
+                    f.json = false;
                     f.readNow = true;
                     readCount.incrementAndGet();
                     catalogDirty = true;
@@ -203,14 +210,52 @@ final class FlagStore {
 
     /** Переопределение, которое надо применить прямо сейчас (null, если защита сработала). */
     static Patch getOverride(String key) {
-        if (overrides.isEmpty() || CrashGuard.tripped) return null;
-        return overrides.get(key);
+        if (CrashGuard.tripped) return null;
+        Patch p = overrides.get(key);
+        if (p != null) return p;
+        return Prefs.refSet ? RefSet.base(key) : null;
     }
 
     // ---------------------------------------------------------------- для интерфейса
 
     static Patch rawOverride(String key) {
         return overrides.get(key);
+    }
+
+    /** Что будет подставлено на самом деле: своя подмена, а если её нет, значение из набора мода. */
+    static Patch effective(String key) {
+        Patch p = overrides.get(key);
+        if (p != null) return p;
+        return Prefs.refSet ? RefSet.base(key) : null;
+    }
+
+    /** Подмена этого флага идёт из набора мода (своей подмены нет). */
+    static boolean fromSet(String key) {
+        return Prefs.refSet && !overrides.containsKey(key) && RefSet.base(key) != null;
+    }
+
+    /** Сколько подмен из набора мода действует сейчас (с учётом выключателя и своих подмен). */
+    static int setCount() {
+        if (!Prefs.refSet) return 0;
+        int n = 0;
+        for (String k : RefSet.keys()) if (!overrides.containsKey(k)) n++;
+        return n;
+    }
+
+    /**
+     * Добавляет в список флаг из встроенного каталога. Уже известный флаг (читался или переопределён)
+     * не трогает, только запоминает значение по умолчанию.
+     */
+    static void addKnown(String key, int type, String def, boolean json) {
+        Flag f = flags.get(key);
+        if (f == null) {
+            f = new Flag(key, type, null);
+            f.bundled = true;
+            Flag prev = flags.putIfAbsent(key, f);
+            if (prev != null) f = prev;
+        }
+        f.def = def;
+        f.json = json;
     }
 
     static void setOverride(String key, int type, String raw) {
@@ -337,6 +382,9 @@ final class FlagStore {
             e.put("read_this_session", f.readNow);
             Patch o = overrides.get(f.key);
             if (o != null) e.put("override", o.raw);
+            if (f.def != null) e.put("default", f.def);
+            Patch b = o == null && Prefs.refSet ? RefSet.base(f.key) : null;
+            if (b != null) e.put("forced_by_set", b.raw);
             out.put(f.key, e);
         }
         root.put("flags", out);
@@ -359,6 +407,9 @@ final class FlagStore {
         for (int i = 0; i < TYPE_NAMES.length; i++) {
             if (TYPE_NAMES[i].equals(name)) return i;
         }
+        // Так типы названы в экспорте референс-мода.
+        if ("boolean".equals(name)) return BOOL;
+        if ("integer".equals(name)) return INT;
         return -1;
     }
 
@@ -500,6 +551,8 @@ final class FlagStore {
         try {
             JSONObject o = new JSONObject();
             for (Flag f : flags.values()) {
+                // Флаги из встроенного каталога без прочитанного значения берутся из него заново.
+                if (f.bundled && f.value == null && !overrides.containsKey(f.key)) continue;
                 o.put(f.key, new JSONArray().put(f.type).put(f.value == null ? JSONObject.NULL : f.value));
             }
             writeAtomic(new File(dir, "catalog.json"), o.toString());

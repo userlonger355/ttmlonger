@@ -79,6 +79,8 @@ final class FlagsScreen {
     private TextView warn;
     private TextView footer;
     private LinearLayout warnRow;
+    private TextView setRow;
+    private volatile boolean loading;
 
     private FlagsScreen(Activity activity) {
         this.act = activity;
@@ -147,6 +149,32 @@ final class FlagsScreen {
 
         refilter();
         dialog.show();
+        loadBundled();
+    }
+
+    /** Подгружает встроенный каталог (21,5 тыс. флагов) не на главном потоке и обновляет список. */
+    private void loadBundled() {
+        if (RefCatalog.loaded()) return;
+        loading = true;
+        updateHeader();
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    RefCatalog.ensureLoaded();
+                } finally {
+                    loading = false;
+                    act.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (dialog != null && dialog.isShowing()) refilter();
+                        }
+                    });
+                }
+            }
+        }, "ttmlonger-catalog");
+        t.setDaemon(true);
+        t.start();
     }
 
     private View buildHeader() {
@@ -288,6 +316,17 @@ final class FlagsScreen {
         scroll.addView(chips);
         h.addView(scroll);
 
+        setRow = action("", accent, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Prefs.setRefSet(!Prefs.refSet);
+                updateSetRow();
+                refilter();
+                Restart.offer(act);
+            }
+        });
+        updateSetRow();
+        h.addView(setRow);
         h.addView(action("Экспорт всех флагов в JSON", accent, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -330,8 +369,11 @@ final class FlagsScreen {
 
         List<FlagStore.Flag> out = new ArrayList<>();
         final long recentSince = System.currentTimeMillis() - 120_000L;
+        final List<FlagStore.Flag> changedList = new ArrayList<>();
+        final List<FlagStore.Flag> restList = new ArrayList<>();
+        final boolean byFreshness = onlyRecent;
         for (FlagStore.Flag f : FlagStore.snapshot()) {
-            FlagStore.Patch o = FlagStore.rawOverride(f.key);
+            FlagStore.Patch o = FlagStore.effective(f.key);
             if (onlyChanged && o == null) continue;
             if (onlyRecent && !(f.lastRead > 0 && f.lastRead >= recentSince)) continue;
             if (!anyType && !typeSel[category(f)]) continue;
@@ -343,20 +385,35 @@ final class FlagsScreen {
                 }
                 if (!hit) continue;
             }
-            out.add(f);
+            if (byFreshness) out.add(f);
+            else if (o != null) changedList.add(f);
+            else restList.add(f);
         }
         // Изменённые наверху, дальше по алфавиту (при «За 2 минуты» — самые свежие первыми).
-        final boolean byFreshness = onlyRecent;
-        Collections.sort(out, new Comparator<FlagStore.Flag>() {
-            @Override
-            public int compare(FlagStore.Flag a, FlagStore.Flag b) {
-                if (byFreshness && a.lastRead != b.lastRead) return a.lastRead > b.lastRead ? -1 : 1;
-                boolean ao = FlagStore.rawOverride(a.key) != null;
-                boolean bo = FlagStore.rawOverride(b.key) != null;
-                if (ao != bo) return ao ? -1 : 1;
-                return a.lower.compareTo(b.lower);
-            }
-        });
+        // Каталог большой (21,5 тыс.), поэтому без поиска по таблице подмен внутри сортировки.
+        if (byFreshness) {
+            Collections.sort(out, new Comparator<FlagStore.Flag>() {
+                @Override
+                public int compare(FlagStore.Flag a, FlagStore.Flag b) {
+                    if (a.lastRead != b.lastRead) return a.lastRead > b.lastRead ? -1 : 1;
+                    boolean ao = FlagStore.effective(a.key) != null;
+                    boolean bo = FlagStore.effective(b.key) != null;
+                    if (ao != bo) return ao ? -1 : 1;
+                    return a.lower.compareTo(b.lower);
+                }
+            });
+        } else {
+            Comparator<FlagStore.Flag> alpha = new Comparator<FlagStore.Flag>() {
+                @Override
+                public int compare(FlagStore.Flag a, FlagStore.Flag b) {
+                    return a.lower.compareTo(b.lower);
+                }
+            };
+            Collections.sort(changedList, alpha);
+            Collections.sort(restList, alpha);
+            out.addAll(changedList);
+            out.addAll(restList);
+        }
         shown = out;
         if (adapter != null) adapter.notifyDataSetChanged();
         updateHeader();
@@ -364,7 +421,8 @@ final class FlagsScreen {
 
     private void updateHeader() {
         stats.setText(FlagStore.total() + " всего · " + FlagStore.readThisSession()
-                + " прочитано · " + FlagStore.overrideCount() + " переопределено");
+                + " прочитано · " + FlagStore.overrideCount() + " переопределено"
+                + (FlagStore.setCount() > 0 ? " · " + FlagStore.setCount() + " из набора мода" : ""));
         warnRow.setVisibility(CrashGuard.tripped ? View.VISIBLE : View.GONE);
         hooks.setText(FlagHooks.status());
         hooks.setTextColor(FlagHooks.count() > 0 ? MUTED : RED);
@@ -373,10 +431,17 @@ final class FlagsScreen {
             footer.setVisibility(View.GONE);
         } else {
             footer.setVisibility(View.VISIBLE);
-            footer.setText(FlagStore.total() == 0
+            footer.setText(loading ? "Загружаю каталог флагов…"
+                    : FlagStore.total() == 0
                     ? "Флагов пока нет: приложение ещё не прочитало ни одной настройки."
                     : "Ничего не найдено");
         }
+    }
+
+    private void updateSetRow() {
+        if (setRow == null) return;
+        setRow.setText("Набор флагов мода: " + (Prefs.refSet ? "включён" : "выключен")
+                + " (" + RefSet.size() + ")");
     }
 
     private static int category(FlagStore.Flag f) {
@@ -389,7 +454,7 @@ final class FlagsScreen {
             case FlagStore.DOUBLE:
                 return CAT_NUMBER;
             default:
-                return isJson(f.value) ? CAT_JSON : CAT_STRING;
+                return f.json || isJson(f.value) ? CAT_JSON : CAT_STRING;
         }
     }
 
@@ -439,17 +504,26 @@ final class FlagsScreen {
             }
 
             FlagStore.Flag f = shown.get(position);
-            FlagStore.Patch o = FlagStore.rawOverride(f.key);
+            FlagStore.Patch o = FlagStore.effective(f.key);
             h.key.setText(f.key);
             if (o != null) {
                 boolean off = CrashGuard.tripped;
+                String who = FlagStore.fromSet(f.key) ? "Набор мода" : "Включено модом";
                 h.sub.setText(FlagStore.typeName(f.type) + " · " + brief(o.raw, 48) + " · "
-                        + (off ? "Отключено защитой" : "Включено модом"));
+                        + (off ? "Отключено защитой" : who));
                 h.sub.setTextColor(off ? MUTED : accent);
             } else {
-                h.sub.setText(f.value == null
-                        ? FlagStore.typeName(f.type)
-                        : FlagStore.typeName(f.type) + " · " + brief(f.value, 48));
+                String info;
+                if (f.value != null) {
+                    info = FlagStore.typeName(f.type) + " · " + brief(f.value, 48);
+                } else if (f.json) {
+                    info = "json · мод не подменяет";
+                } else if (f.def != null) {
+                    info = FlagStore.typeName(f.type) + " · по умолчанию " + brief(f.def, 40);
+                } else {
+                    info = FlagStore.typeName(f.type);
+                }
+                h.sub.setText(info);
                 h.sub.setTextColor(MUTED);
             }
             h.card.setBackground(corners(position == 0, position == getCount() - 1));
@@ -467,7 +541,18 @@ final class FlagsScreen {
     // ---------------------------------------------------------------- диалоги
 
     private void edit(final FlagStore.Flag f) {
-        final FlagStore.Patch cur = FlagStore.rawOverride(f.key);
+        if (f.json && f.value == null) {
+            new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle(f.key)
+                    .setMessage("Тип: json\nПо умолчанию в коде: " + brief(f.def, 200)
+                            + "\n\nХуки мода подменяют только bool, int, long, float, double и string. "
+                            + "JSON-флаги TikTok читает другим путём, поэтому здесь их менять нельзя.")
+                    .setPositiveButton("Понятно", null)
+                    .show();
+            return;
+        }
+        final FlagStore.Patch own = FlagStore.rawOverride(f.key);
+        final FlagStore.Patch cur = FlagStore.effective(f.key);
         final int type = f.type;
         final boolean jsonLike = type == FlagStore.STRING && isJson(f.value);
 
@@ -476,7 +561,10 @@ final class FlagsScreen {
         box.setPadding(dp(24), dp(8), dp(24), 0);
 
         TextView info = text("Тип: " + FlagStore.typeName(type) + "\nРеальное значение: "
-                + (f.value == null ? "ещё не читалось" : brief(f.value, 200)), 14, MUTED, false);
+                + (f.value == null ? "ещё не читалось" : brief(f.value, 200))
+                + (f.def != null ? "\nПо умолчанию в коде: " + brief(f.def, 200) : "")
+                + (own == null && cur != null ? "\nСейчас подставляет набор мода: " + brief(cur.raw, 200) : ""),
+                14, MUTED, false);
         info.setPadding(0, 0, 0, dp(12));
         box.addView(info);
 
@@ -519,7 +607,7 @@ final class FlagsScreen {
                 .setView(box)
                 .setPositiveButton("Применить", null)
                 .setNegativeButton("Отмена", null);
-        if (cur != null) {
+        if (own != null) {
             b.setNeutralButton("Сбросить", new android.content.DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(android.content.DialogInterface d, int which) {

@@ -75,6 +75,8 @@ final class Importer {
         final List<Item> items = new ArrayList<>();
         /** Записей, которые не удалось разобрать. */
         int skipped;
+        /** Флаги json-типа: мод их не подменяет, поэтому они не импортируются. */
+        int json;
         String format = "?";
     }
 
@@ -103,7 +105,8 @@ final class Importer {
             JSONObject flags = root.optJSONObject("flags");
             boolean export = flags != null;
             JSONObject src = export ? flags : root;
-            p.format = export ? "экспорт флагов" : "словарь «имя: значение»";
+            boolean reference = export && root.has("mod_built");
+            p.format = reference ? "экспорт референс-мода" : export ? "экспорт флагов" : "словарь «имя: значение»";
             Iterator<String> it = src.keys();
             while (it.hasNext() && p.items.size() < MAX_ENTRIES) {
                 String k = it.next();
@@ -130,7 +133,14 @@ final class Importer {
         }
         if (v instanceof JSONObject) {
             JSONObject o = (JSONObject) v;
+            // Экспорт референс-мода: флаги json-типа подменить нельзя; значение, которое мод
+            // принудительно ставит, лежит в forced_by_mod.
+            if ("json".equals(o.optString("type", ""))) {
+                p.json++;
+                return;
+            }
             Object ov = o.opt("override");
+            if (ov == null) ov = o.opt("forced_by_mod");
             Object val = o.opt("value");
             String override = scalar(ov);
             String value = scalar(val);
@@ -257,7 +267,7 @@ final class Importer {
     static void start(final Activity act, final Runnable onChanged) {
         AlertDialog d = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("Импорт флагов из JSON")
-                .setMessage("Подходит файл экспорта из этого мода, словарь {\"имя\": значение} и список "
+                .setMessage("Подходит файл экспорта из этого мода или референс-мода, словарь {\"имя\": значение} и список "
                         + "[{\"key\": \"имя\", \"value\": значение}]. Откуда взять?")
                 .setPositiveButton("Из файла", new DialogInterface.OnClickListener() {
                     @Override
@@ -368,6 +378,7 @@ final class Importer {
 
         String info = "Формат: " + p.format + ". Флагов в файле: " + p.items.size()
                 + (p.skipped > 0 ? ", не разобрано: " + p.skipped : "")
+                + (p.json > 0 ? ", json-флагов пропущено (мод их не подменяет): " + p.json : "")
                 + ".\nФлаги, которых телефон ещё не видел, в режиме «отличающиеся» не считаются. "
                 + "Применённое можно снять кнопкой «Сбросить все переопределения».";
         AlertDialog d = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
