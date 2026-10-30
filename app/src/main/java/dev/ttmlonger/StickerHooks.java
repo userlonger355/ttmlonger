@@ -30,6 +30,8 @@ final class StickerHooks {
     static void apply(DexScan.Result r, ClassLoader cl) {
         int found = 0;
         for (DexScan.Ref ref : r.refs) {
+            // «impl:» и «const:» — находки для огоньков, не методы нажатия.
+            if (ref.label.startsWith("impl:") || ref.label.startsWith("const:")) continue;
             found++;
             Method m = DexHooks.findMethod(cl, ref.cls, ref.name, ref.proto);
             if (m == null) {
@@ -65,6 +67,7 @@ final class StickerHooks {
         protected void beforeHookedMethod(MethodHookParam param) {
             try {
                 StickerSaver.tapped(label, param.args);
+                StreakSticker.offerAny(param.args, "нажатие [" + label + "]");
             } catch (Throwable t) {
                 // Ошибка мода не должна ломать нажатие в TikTok.
             }

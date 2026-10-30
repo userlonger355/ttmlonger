@@ -93,6 +93,7 @@ final class Diag {
                 .append(", хуки: ").append(StickerHooks.status())
                 .append("\nСкан экрана: ").append(StickerScan.lastSummary()).append('\n');
         sb.append(DexHooks.report());
+        sb.append(StreakRunner.report());
         sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен")
                 .append(", голосовые комментарии: ")
                 .append(FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS) ? "включены" : "выключены").append('\n');
@@ -134,6 +135,7 @@ final class Diag {
         sb.append("Хуки стикеров: ").append(StickerHooks.status()).append('\n');
         sb.append("Скан экрана «Стикеры»: ").append(StickerScan.lastSummary()).append('\n');
         sb.append(DexHooks.report());
+        sb.append(StreakRunner.report());
         sb.append("Баннер профиля: ").append(FlagStore.allOn(Targets.BANNER_FLAGS) ? "включён" : "выключен")
                 .append(", голосовые комментарии: ")
                 .append(FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS) ? "включены" : "выключены").append('\n');

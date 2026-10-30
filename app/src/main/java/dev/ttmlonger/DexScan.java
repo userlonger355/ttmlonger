@@ -32,7 +32,7 @@ import java.util.TreeSet;
  */
 final class DexScan {
     /** Меняется при любом изменении правил поиска: старый кэш тогда не используется. */
-    static final int VERSION = 1;
+    static final int VERSION = 2;
 
     private DexScan() {
     }
@@ -57,6 +57,17 @@ final class DexScan {
         String stickerTemplate;
         /** {метка, точная сигнатура метода}, например {"comment-tap", "(Landroid/view/View;...)V"}. */
         String[][] shapes = new String[0][];
+        /**
+         * {метка, дескриптор интерфейса}: классы, которые его реализуют, попадают в результат как
+         * Ref("impl:метка", класс, "", ""). Нужно, когда интерфейс назван по-настоящему, а реализует
+         * его обфусцированный класс (служба огоньков).
+         */
+        String[][] interfaces = new String[0][];
+        /**
+         * Строки, которые встречаются в коде как const-string, например имена констант enum:
+         * метод, где строка найдена, попадает в результат как Ref("const:строка", класс, метод, сигнатура).
+         */
+        String[] consts = new String[0];
         /** Момент (System.currentTimeMillis), после которого разбор прекращается; 0 — без лимита. */
         long deadline;
     }
@@ -318,6 +329,12 @@ final class DexScan {
         int stringType = -1;
         int clickType = -1;
         int templateType = -1;
+        /** Для каждого типа: номер интерфейса из Options.interfaces или -1; null, если интерфейсы не нужны. */
+        int[] ifaceOf;
+        boolean[] isConst;
+        String[] constName;
+        /** Заполняется scanCode: найденные в методе искомые строки. */
+        List<String> constHits;
         char[] typeFirst;
         byte[] readerKind;      // 0 — не читатель, иначе 1 + тип значения (0..5)
         boolean[] hasTemplate;
@@ -467,6 +484,25 @@ final class DexScan {
                 else if (sTemplate != null && templateType < 0 && strIs(s, sTemplate)) templateType = t;
             }
 
+            if (o.interfaces.length > 0) {
+                byte[][] want = new byte[o.interfaces.length][];
+                for (int i = 0; i < want.length; i++) want[i] = o.interfaces[i][1].getBytes(LATIN1);
+                for (int t = 0; t < typN; t++) {
+                    if (typeFirst[t] != 'L') continue;
+                    int s = u32(typOff + 4 * t);
+                    for (int i = 0; i < want.length; i++) {
+                        if (strIs(s, want[i])) {
+                            if (ifaceOf == null) {
+                                ifaceOf = new int[typN];
+                                java.util.Arrays.fill(ifaceOf, -1);
+                            }
+                            ifaceOf[t] = i;
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Метки форм, сгруппированные по «короткой» записи (shorty): так дешёвый предварительный отбор.
             Map<String, List<Integer>> byShorty = new HashMap<>();
             for (int i = 0; i < o.shapes.length; i++) {
@@ -524,6 +560,30 @@ final class DexScan {
                             }
                             isAnchor[s] = true;
                             anchorName[s] = o.anchors[i];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (o.consts.length > 0) {
+                int[] first = new int[256];
+                byte[][] want = new byte[o.consts.length][];
+                for (int i = 0; i < want.length; i++) {
+                    want[i] = o.consts[i].getBytes(LATIN1);
+                    first[want[i][0] & 0xff]++;
+                }
+                for (int s = 0; s < strN; s++) {
+                    int p = strStart(s);
+                    if (first[b[p] & 0xff] == 0) continue;
+                    for (int i = 0; i < want.length; i++) {
+                        if (b[p] == want[i][0] && strIs(s, want[i])) {
+                            if (isConst == null) {
+                                isConst = new boolean[strN];
+                                constName = new String[strN];
+                            }
+                            isConst[s] = true;
+                            constName[s] = o.consts[i];
                             break;
                         }
                     }
@@ -611,6 +671,17 @@ final class DexScan {
                     }
                 }
 
+                if (ifaceOf != null && ifaceOff != 0) {
+                    int n = u32(ifaceOff);
+                    for (int k = 0; k < n && k < 64; k++) {
+                        int want = ifaceOf[u16(ifaceOff + 4 + 2 * k)];
+                        if (want >= 0) {
+                            Ref r = new Ref("impl:" + o.interfaces[want][0], typeDesc(u32(def)), "", "");
+                            if (!refs.containsKey(r.id())) refs.put(r.id(), r);
+                        }
+                    }
+                }
+
                 pos = dataOff;
                 int sf = uleb();
                 int inf = uleb();
@@ -647,7 +718,18 @@ final class DexScan {
                             Ref r = new Ref(label, clsName, name, protoDesc(pro));
                             if (!refs.containsKey(r.id())) refs.put(r.id(), r);
                         }
-                        if (local != null && code != 0 && code < b.length) scanCode(code, res, local);
+                        if ((local != null || isConst != null) && code != 0 && code < b.length) {
+                            scanCode(code, res, local);
+                            if (constHits != null && !constHits.isEmpty()) {
+                                if (clsName == null) clsName = typeDesc(u32(def));
+                                String mname = str(u32(mthOff + 8 * mid + 4));
+                                for (String h : constHits) {
+                                    Ref r = new Ref("const:" + h, clsName, mname, protoDesc(pro));
+                                    if (!refs.containsKey(r.id())) refs.put(r.id(), r);
+                                }
+                                constHits.clear();
+                            }
+                        }
                     }
                 }
                 int kinds = Integer.bitCount(mask);
@@ -717,6 +799,7 @@ final class DexScan {
         }
 
         private void scanCode(int code, Result res, Map<Integer, Anchored> out) {
+            if (out == null && isConst == null) return;
             int size = u32(code + 12);
             int base = code + 16;
             if (size <= 0 || (long) base + 2L * size > b.length) return;
@@ -730,7 +813,11 @@ final class DexScan {
                 if (len < 0) break;
                 if (op == 0x1a || op == 0x1b) {
                     int sidx = op == 0x1a ? u16(base + 2 * (i + 1)) : u32(base + 2 * (i + 1));
-                    if (sidx >= 0 && sidx < strN && isAnchor[sidx]) {
+                    if (isConst != null && sidx >= 0 && sidx < strN && isConst[sidx]) {
+                        if (constHits == null) constHits = new ArrayList<>();
+                        if (!constHits.contains(constName[sidx])) constHits.add(constName[sidx]);
+                    }
+                    if (isAnchor != null && sidx >= 0 && sidx < strN && isAnchor[sidx]) {
                         res.anchorStrings++;
                         int reg = (w >> 8) & 0xff;
                         int slot = -1;

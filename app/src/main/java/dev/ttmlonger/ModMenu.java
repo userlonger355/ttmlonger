@@ -66,6 +66,14 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow("Огонёк", "Автопродление: " + StreakScreen.menuSummary().toLowerCase(),
+                "Само отправляет стикер, когда серия дней в чате вот-вот оборвётся", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        StreakScreen.show(act);
+                    }
+                }));
+
         body.addView(toggleRow("Баннер профиля",
                 "Включает в TikTok установку баннера в профиле («Изменить профиль»). "
                         + "Нужен перезапуск TikTok",

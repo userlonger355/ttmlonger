@@ -132,6 +132,8 @@ final class DexHooks {
             o.clickInterface = Targets.STICKER_CLICK_IFACE;
             o.stickerTemplate = Targets.STICKER_TEMPLATE;
             o.shapes = Targets.STICKER_SHAPES;
+            o.interfaces = new String[][]{{"streak", Targets.STREAK_SERVICE}};
+            o.consts = new String[]{Targets.STREAK_SOURCE};
             o.deadline = System.currentTimeMillis() + SCAN_LIMIT_MS;
             ApkSource src = new ApkSource(apks);
             try {
@@ -149,7 +151,7 @@ final class DexHooks {
             }
         }
         last = r;
-        apply(r, cl);
+        apply(r, cl, ctx);
     }
 
     private static String cacheKey(List<String> apks) {
@@ -164,7 +166,7 @@ final class DexHooks {
 
     // ---------------------------------------------------------------- подключение найденного
 
-    private static void apply(DexScan.Result r, ClassLoader cl) {
+    private static void apply(DexScan.Result r, ClassLoader cl, Context ctx) {
         int readers = 0;
         int keyed = 0;
 
@@ -197,6 +199,11 @@ final class DexHooks {
         }
 
         StickerHooks.apply(r, cl);
+        try {
+            StreakHooks.apply(r, cl, ctx);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
 
         status = "читателей по форме " + r.readers.size() + ", подключено методов " + readers
                 + "; методов по ключам " + r.anchored.size() + ", подключено " + keyed;

@@ -41,6 +41,13 @@ final class Prefs {
     /** Менять акцент и в рисунках, анимациях и цветах из кода (AccentHooks); нужен перезапуск. */
     static volatile boolean accentDeep = true;
 
+    /** Автопродление огонька: само отправляет стикер в чат, где огонёк гаснет. Выключено, пока не включат. */
+    static volatile boolean streakAuto = false;
+    /** true — раз в день отправлять во все огоньки (после времени streakMinute), а не только в гаснущие. */
+    static volatile boolean streakDaily = false;
+    /** Время суток для ежедневной отправки, минут от полуночи. */
+    static volatile int streakMinute = 20 * 60;
+
     private static File file;
 
     private Prefs() {
@@ -67,6 +74,9 @@ final class Prefs {
             saveStickers = o.optBoolean("saveStickers", true);
             refSet = o.optBoolean("refSet", true);
             accentDeep = o.optBoolean("accentDeep", true);
+            streakAuto = o.optBoolean("streakAuto", false);
+            streakDaily = o.optBoolean("streakDaily", false);
+            streakMinute = Math.max(0, Math.min(1439, o.optInt("streakMinute", 20 * 60)));
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -143,6 +153,21 @@ final class Prefs {
         save();
     }
 
+    static void setStreakAuto(boolean v) {
+        streakAuto = v;
+        save();
+    }
+
+    static void setStreakDaily(boolean v) {
+        streakDaily = v;
+        save();
+    }
+
+    static void setStreakMinute(int v) {
+        streakMinute = Math.max(0, Math.min(1439, v));
+        save();
+    }
+
     static void setRefSet(boolean v) {
         refSet = v;
         save();
@@ -167,6 +192,9 @@ final class Prefs {
             o.put("saveStickers", saveStickers);
             o.put("refSet", refSet);
             o.put("accentDeep", accentDeep);
+            o.put("streakAuto", streakAuto);
+            o.put("streakDaily", streakDaily);
+            o.put("streakMinute", streakMinute);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
             FlagStore.log(t);

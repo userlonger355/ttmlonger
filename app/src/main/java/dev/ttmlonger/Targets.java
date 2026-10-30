@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.7.5";
+    static final String VERSION = "0.8.0";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -241,6 +241,19 @@ final class Targets {
             "fyp_auto_scroll",
             "background_play_enable",
     };
+
+    // ---------------------------------------------------------------- огоньки (серия дней в переписке)
+
+    /** Служба огоньков TikTok: имя интерфейса настоящее, имена методов и класса-реализации обфусцированы. */
+    static final String STREAK_SERVICE = "Lcom/ss/android/ugc/aweme/im/streak/api/IStreakService;";
+    /** Данные одного огонька: публичные поля convId, activeBefore, endAt, level, streak. */
+    static final String STREAK_DATA = "com.ss.android.ugc.aweme.im.streak.api.StreakData";
+    /** Модель стикера, которую принимает отправка в личные сообщения. */
+    static final String STICKER_ITEM_CLASS = "com.ss.android.ugc.aweme.im.common.model.StickerItem";
+    /** Точка входа службы стикеров личных сообщений. */
+    static final String STICKER_API = "com.ss.android.ugc.aweme.im.sticker.api.IMStickerApi";
+    /** Имя константы-источника отправки: так TikTok сам помечает автоматические стикеры огоньков. */
+    static final String STREAK_SOURCE = "AUTO_CONSECUTIVE_SA_STICKERS";
 
     /** Интерфейс обработчика нажатий на стикер в личных сообщениях (реальное имя, не обфусцировано). */
     static final String STICKER_CLICK_IFACE =
