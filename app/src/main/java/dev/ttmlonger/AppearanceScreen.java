@@ -98,10 +98,34 @@ final class AppearanceScreen extends Screen {
         scroll.addView(swatchRow);
         card.addView(scroll, ui.matchWrap());
 
-        TextView hint = ui.text("Заменяет розовый акцент TikTok в лайках, кнопках и вкладках. "
-                + "Статичные иконки остаются без изменений", 16, Ui.MUTED, true);
+        TextView hint = ui.text("Заменяет розовый акцент TikTok в лайках, кнопках, вкладках, значках и "
+                + "анимациях, в том числе его оттенки (нажатая кнопка, полупрозрачные заливки). "
+                + "Нужен перезапуск TikTok", 16, Ui.MUTED, true);
         hint.setPadding(0, ui.dp(14), 0, ui.dp(18));
         card.addView(hint);
+
+        LinearLayout deep = new LinearLayout(act);
+        deep.setOrientation(LinearLayout.HORIZONTAL);
+        deep.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout deepTexts = new LinearLayout(act);
+        deepTexts.setOrientation(LinearLayout.VERTICAL);
+        deepTexts.addView(ui.text("Менять цвет и в рисунках", 20, Ui.WHITE, true));
+        TextView deepDesc = ui.text("Перехватывает цвета при отрисовке, в темах, градиентах и растровых "
+                + "иконках, чтобы поменялись и они. Если TikTok стал подтормаживать, выключите", 16, Ui.MUTED, true);
+        deepDesc.setPadding(0, ui.dp(6), ui.dp(12), 0);
+        deepTexts.addView(deepDesc);
+        deep.addView(deepTexts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ModSwitch deepSw = new ModSwitch(act, Prefs.accentDeep);
+        deepSw.setListener(new ModSwitch.Listener() {
+            @Override
+            public void onChanged(boolean on) {
+                Prefs.setAccentDeep(on);
+                restartCard.setVisibility(View.VISIBLE);
+            }
+        });
+        deep.addView(deepSw);
+        card.addView(deep, ui.matchWrap());
+        card.addView(ui.space(18));
 
         LinearLayout amoled = new LinearLayout(act);
         amoled.setOrientation(LinearLayout.HORIZONTAL);

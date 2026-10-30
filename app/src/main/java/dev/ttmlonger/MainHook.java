@@ -107,6 +107,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         if (ctx == null || !booted.compareAndSet(false, true)) return;
         try {
             FlagStore.init(ctx);      // внутри читаются и Prefs
+            AccentHooks.installIfNeeded(); // глубокая подмена акцента: только если акцент выбран
             Trigger.install();
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);

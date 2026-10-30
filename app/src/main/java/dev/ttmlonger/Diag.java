@@ -119,6 +119,7 @@ final class Diag {
         sb.append("Регион: ").append(Prefs.region.isEmpty() ? "не подменяется" : Prefs.region)
                 .append(", акцент: ").append(Prefs.accent == 0 ? "стандартный" : Integer.toHexString(Prefs.accent))
                 .append(", Amoled: ").append(Prefs.amoled).append('\n');
+        sb.append("Глубокая подмена акцента: ").append(AccentHooks.status()).append('\n');
         sb.append("Блок в настройках: ").append(SettingsHost.status(a)).append('\n');
         sb.append("Аватар: ").append(AvatarHooks.status())
                 .append(AvatarScreen.matches(a) ? " (этот экран — просмотр аватарки)" : "").append('\n');

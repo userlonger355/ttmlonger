@@ -38,6 +38,8 @@ final class Prefs {
     static volatile boolean saveStickers = true;
     /** Набор флагов мода (RefSet): подставляется, пока флаг не переопределён вручную. */
     static volatile boolean refSet = true;
+    /** Менять акцент и в рисунках, анимациях и цветах из кода (AccentHooks); нужен перезапуск. */
+    static volatile boolean accentDeep = true;
 
     private static File file;
 
@@ -64,6 +66,7 @@ final class Prefs {
             dlPill = o.optBoolean("dlPill", true);
             saveStickers = o.optBoolean("saveStickers", true);
             refSet = o.optBoolean("refSet", true);
+            accentDeep = o.optBoolean("accentDeep", true);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -135,6 +138,11 @@ final class Prefs {
         save();
     }
 
+    static void setAccentDeep(boolean v) {
+        accentDeep = v;
+        save();
+    }
+
     static void setRefSet(boolean v) {
         refSet = v;
         save();
@@ -158,6 +166,7 @@ final class Prefs {
             o.put("dlPill", dlPill);
             o.put("saveStickers", saveStickers);
             o.put("refSet", refSet);
+            o.put("accentDeep", accentDeep);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
             FlagStore.log(t);

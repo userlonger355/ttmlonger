@@ -102,6 +102,9 @@ final class ColorHooks {
             for (int p : PINKS) {
                 if (rgb == p) return (argb & 0xFF000000) | (accent & 0xFFFFFF);
             }
+            // Остальные оттенки розово-красного: нажатые кнопки, градиенты, полупрозрачные заливки.
+            int shifted = AccentMap.map(argb, accent);
+            if (shifted != argb) return shifted;
         }
         if (night && Prefs.amoled) {
             for (int g : DARK_BG) {
