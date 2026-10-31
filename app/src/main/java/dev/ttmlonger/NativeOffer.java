@@ -41,7 +41,6 @@ final class NativeOffer {
                     if (act == null) return;
                     final Context app = act.getApplicationContext() != null ? act.getApplicationContext() : act;
                     shown++;
-                    Diag.note("запрет скачивания: предложена кнопка «Сохранить через мод»");
                     Pill.show(act, "↓  Сохранить через мод", 0.40f, SHOW_MS, new Runnable() {
                         @Override
                         public void run() {

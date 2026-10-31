@@ -91,7 +91,7 @@ final class SheetFinder {
 
     private static void walk(View v, Scan s, List<ViewGroup> rows, int bigPic, int depth, int[] budget) {
         if (v == null || depth > 45 || --budget[0] < 0 || v.getVisibility() != View.VISIBLE
-                || Diag.OWN_TAG.equals(v.getTag())) return;
+                || Ui.OWN_TAG.equals(v.getTag())) return;
         if (v instanceof ImageView && v.getWidth() >= bigPic && v.getHeight() >= bigPic) s.bigPicture = true;
         if (!(v instanceof ViewGroup)) return;
         ViewGroup g = (ViewGroup) v;
@@ -149,7 +149,7 @@ final class SheetFinder {
     }
 
     private static ImageView biggestImage(View v, int minPic, int depth) {
-        if (v == null || depth > 7 || v.getVisibility() != View.VISIBLE || Diag.OWN_TAG.equals(v.getTag())) return null;
+        if (v == null || depth > 7 || v.getVisibility() != View.VISIBLE || Ui.OWN_TAG.equals(v.getTag())) return null;
         if (v instanceof ImageView) {
             return v.getWidth() >= minPic && v.getHeight() >= minPic ? (ImageView) v : null;
         }
@@ -203,7 +203,7 @@ final class SheetFinder {
 
     private static void outline(View v, StringBuilder b, int depth, int[] budget) {
         if (v == null || budget[0] <= 0 || --budget[1] < 0 || depth > 18 || v.getVisibility() != View.VISIBLE
-                || Diag.OWN_TAG.equals(v.getTag())) return;
+                || Ui.OWN_TAG.equals(v.getTag())) return;
         budget[0]--;
         for (int i = 0; i < depth && i < 18; i++) b.append(' ');
         b.append(shortName(v)).append(' ').append(v.getWidth()).append('x').append(v.getHeight());

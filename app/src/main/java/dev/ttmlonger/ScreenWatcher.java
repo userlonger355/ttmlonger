@@ -63,11 +63,9 @@ final class ScreenWatcher {
     static void onResumed(Activity a) {
         try {
             MainHook.ensureBoot(a);
-            Diag.announce(a);
             Activity prev = lastSeen == null ? null : lastSeen.get();
             if (prev != a) {
                 lastSeen = new WeakReference<>(a);
-                Diag.note("экран: " + a.getClass().getName());
             }
             // Экраны, которые известны по имени активности, ведут свои классы; обход по тексту
             // (Watcher ниже) остаётся запасным путём для остальных.
@@ -161,7 +159,6 @@ final class ScreenWatcher {
             if (SettingsHost.handles(act) || AvatarScreen.matches(act)) {
                 hideSettingsBlock();
                 hideAvatarButton();
-                Diag.setLastScan("экран ведут SettingsHost/AvatarScreen, обход по тексту не нужен");
                 return;
             }
             View decor = act.getWindow().getDecorView();
@@ -185,12 +182,8 @@ final class ScreenWatcher {
                     | (page ? 8 : 0) | (Math.min(s.rows.size(), 15) << 4);
             if (key == lastKey) return;
             lastKey = key;
-            Diag.setLastScan("заголовок настроек: " + s.settingsTitle + ", пунктов настроек: " + s.rows.size()
-                    + ", страница настроек: " + page + ", аватар: " + (s.avatar != null)
-                    + ", «Поделиться профилем»: " + (s.shareLabel != null));
             if (page != lastPage) {
                 lastPage = page;
-                Diag.note("страница настроек " + (page ? "опознана" : "пропала") + " на " + act.getClass().getName());
             }
         }
 
@@ -328,45 +321,7 @@ final class ScreenWatcher {
 
         /** @param light true на светлой странице TikTok: блок рисуется светлым, а не чёрным */
         private View buildBlock(boolean light) {
-            int bg = light ? 0xFFF4F4F4 : Ui.BG;
-            int card = light ? 0xFFFFFFFF : Ui.CARD;
-            int ink = light ? 0xFF000000 : Ui.WHITE;
-
-            LinearLayout col = new LinearLayout(act);
-            col.setTag(Diag.OWN_TAG);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setBackgroundColor(bg);
-            col.setClickable(true); // не пропускать касания к содержимому под блоком
-            col.setPadding(0, 0, 0, ui.dp(6));
-
-            TextView label = ui.text("Мод", 15, Ui.MUTED, true);
-            label.setPadding(ui.dp(24), ui.dp(12), ui.dp(24), ui.dp(8));
-            col.addView(label);
-
-            LinearLayout row = new LinearLayout(act);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(ui.dp(20), ui.dp(16), ui.dp(16), ui.dp(16));
-            row.setBackground(ui.round(card, 20));
-            row.setClickable(true);
-            row.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    ModMenu.show(act);
-                }
-            });
-
-            TextView gear = ui.text("⚙", 24, Ui.MUTED, false);
-            gear.setPadding(0, 0, ui.dp(16), 0);
-            row.addView(gear);
-            TextView name = ui.text("Настройки мода", 19, ink, true);
-            row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            row.addView(ui.text("›", 28, Ui.MUTED, false));
-
-            LinearLayout.LayoutParams lp = ui.matchWrap();
-            lp.setMargins(ui.dp(7), 0, ui.dp(7), 0);
-            col.addView(row, lp);
-            return col;
+            return ModBlock.build(act, ModBlock.Palette.of(light ? 0xFFF4F4F4 : 0xFF000000));
         }
 
         // ------------------------------------------------------------ кнопка «Сохранить аватар»
@@ -411,7 +366,7 @@ final class ScreenWatcher {
 
         private TextView buildAvatarButton() {
             TextView b = TtStyle.primary(act, "Сохранить аватар", 44f, 15.5f);
-            b.setTag(Diag.OWN_TAG);
+            b.setTag(Ui.OWN_TAG);
             b.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {

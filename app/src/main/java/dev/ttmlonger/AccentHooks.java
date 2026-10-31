@@ -66,16 +66,6 @@ final class AccentHooks {
         }
     }
 
-    static String status() {
-        if (!installed) {
-            return Prefs.accent == 0 ? "не нужна (акцент стандартный)"
-                    : !Prefs.accentDeep ? "выключена" : "не установлена";
-        }
-        return "хуков " + hooks + (failed > 0 ? ", не встали " + failed : "")
-                + "; подменено при отрисовке " + mappedDraw.get() + ", в ресурсах " + mappedRes.get()
-                + ", иконок " + mappedBitmaps.get();
-    }
-
     private static void install() {
         // --- цвет при отрисовке и в фильтрах: подменяется первый аргумент-число
         XC_MethodHook firstArg = new XC_MethodHook() {
@@ -199,7 +189,6 @@ final class AccentHooks {
                 }
             }
         });
-        FlagStore.log("акцент: глубокая подмена, хуков " + hooks + ", не встали " + failed);
     }
 
     // ------------------------------------------------------------ подмена

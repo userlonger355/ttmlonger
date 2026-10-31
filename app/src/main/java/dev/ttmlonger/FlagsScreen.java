@@ -6,6 +6,7 @@ import android.app.Dialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
@@ -24,7 +25,6 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -41,12 +41,12 @@ import java.util.List;
  * внутри процесса TikTok ресурсов модуля нет.
  */
 final class FlagsScreen {
-    private static final int BG = 0xFF000000;
-    private static final int CARD = 0xFF141414;
-    private static final int FIELD = 0xFF2B2B2B;
-    private static final int RED = 0xFFFF2D55;
-    private static final int WHITE = 0xFFFFFFFF;
-    private static final int MUTED = 0xFF8A8A8A;
+    private final int BG;
+    private final int CARD;
+    private final int FIELD;
+    private final int RED = Ui.RED;
+    private final int WHITE;
+    private final int MUTED;
 
     // Категории для чипов-фильтров.
     private static final int CAT_BOOL = 0;
@@ -63,7 +63,7 @@ final class FlagsScreen {
 
     private final Activity act;
     private final float density;
-    private final int accent = Theme.accent();
+    private final int accent = TtStyle.primary();
     private final boolean[] typeSel = new boolean[4];
     private boolean onlyChanged;
     private boolean onlyRecent;
@@ -75,22 +75,28 @@ final class FlagsScreen {
     private BaseAdapter adapter;
     private EditText search;
     private TextView stats;
-    private TextView hooks;
     private TextView warn;
     private TextView footer;
     private LinearLayout warnRow;
-    private TextView setRow;
+    private LinearLayout setRow;
     private volatile boolean loading;
 
     private FlagsScreen(Activity activity) {
         this.act = activity;
         this.density = activity.getResources().getDisplayMetrics().density;
+        Ui.ensure(activity);
+        BG = Ui.BG;
+        CARD = Ui.CARD;
+        FIELD = Ui.FIELD;
+        WHITE = Ui.INK;
+        MUTED = Ui.MUTED;
     }
 
     // ---------------------------------------------------------------- окно
 
     private void open() {
-        dialog = new Dialog(act, android.R.style.Theme_Material_NoActionBar);
+        dialog = new Dialog(act, Ui.pageTheme());
+        Screen.markOwn(dialog);
         current = dialog;
 
         list = new ListView(act);
@@ -102,9 +108,9 @@ final class FlagsScreen {
         list.setBackgroundColor(BG);
         list.addHeaderView(buildHeader(), null, false);
 
-        footer = text("", 15, MUTED, false);
+        footer = text("", 14, MUTED, false);
         footer.setGravity(Gravity.CENTER);
-        footer.setPadding(dp(27), dp(24), dp(27), dp(64));
+        footer.setPadding(dp(16), dp(24), dp(16), dp(64));
         list.addFooterView(footer, null, false);
 
         adapter = new FlagAdapter();
@@ -137,6 +143,11 @@ final class FlagsScreen {
             w.setBackgroundDrawable(new ColorDrawable(BG));
             w.setStatusBarColor(BG);
             w.setNavigationBarColor(BG);
+            if (!Ui.DARK) {
+                int fl = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (android.os.Build.VERSION.SDK_INT >= 26) fl |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                w.getDecorView().setSystemUiVisibility(fl);
+            }
             w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                     | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
         }
@@ -182,38 +193,41 @@ final class FlagsScreen {
         h.setOrientation(LinearLayout.VERTICAL);
         h.setBackgroundColor(BG);
 
-        TextView back = text("←", 30, WHITE, false);
-        back.setPadding(dp(27), dp(18), dp(27), dp(18));
+        Ui ui = new Ui(act);
+        FrameLayout bar = new FrameLayout(act);
+        TextView title = text("Настройки разработчика", 17, WHITE, true);
+        title.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        tp.setMargins(dp(56), 0, dp(56), 0);
+        bar.addView(title, tp);
+        FrameLayout back = new FrameLayout(act);
+        back.setBackground(ui.ripple());
+        back.setClickable(true);
         back.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 dialog.dismiss();
             }
         });
-        h.addView(back, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        back.addView(ui.icon(Icons.CHEVRON_LEFT, WHITE, 26), new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+        bar.addView(back, new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.START | Gravity.CENTER_VERTICAL));
+        h.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
 
-        TextView title = text("Настройки разработчика TikTok (A/B)", 32, WHITE, true);
-        title.setPadding(dp(27), dp(8), dp(27), dp(8));
-        h.addView(title);
-
-        TextView desc = text("Внутренние флаги функций TikTok для тестирования. "
-                + "Позволяет вручную переключать экспериментальные функции", 16, MUTED, true);
-        desc.setPadding(dp(27), dp(8), dp(27), dp(8));
+        TextView desc = text("Внутренние флаги функций TikTok (A/B) для тестирования: можно вручную "
+                + "включать и выключать экспериментальные функции. Нужен перезапуск TikTok", 13, MUTED, false);
+        desc.setPadding(dp(16), dp(4), dp(16), dp(8));
         h.addView(desc);
 
         // Предупреждение защиты от крашей + кнопка «Применить снова».
         warnRow = new LinearLayout(act);
         warnRow.setOrientation(LinearLayout.HORIZONTAL);
         warnRow.setGravity(Gravity.CENTER_VERTICAL);
-        warnRow.setPadding(dp(27), dp(12), dp(14), dp(12));
+        warnRow.setPadding(dp(16), dp(10), dp(12), dp(10));
         warn = text("Пользовательские значения временно отключены: TikTok аварийно закрылся "
-                + "три раза подряд вскоре после запуска", 17, RED, true);
+                + "три раза подряд вскоре после запуска", 14, RED, false);
         warnRow.addView(warn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView apply = text("Применить снова", 17, WHITE, true);
-        apply.setGravity(Gravity.CENTER);
-        apply.setPadding(dp(24), dp(16), dp(24), dp(16));
-        apply.setBackground(round(accent, 40));
+        TextView apply = TtStyle.accent(act, "Применить снова", 40f, 14f);
         apply.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -229,22 +243,22 @@ final class FlagsScreen {
         warnRow.addView(apply, alp);
         h.addView(warnRow);
 
-        hooks = text("", 13, MUTED, false);
-        hooks.setPadding(dp(27), dp(8), dp(27), dp(4));
-        h.addView(hooks);
-
-        stats = text("", 16, MUTED, true);
-        stats.setPadding(dp(27), dp(12), dp(27), dp(12));
+        stats = text("", 13, MUTED, false);
+        stats.setPadding(dp(16), dp(8), dp(16), dp(10));
         h.addView(stats);
 
         search = new EditText(act);
         search.setHint("Поиск флагов");
         search.setHintTextColor(MUTED);
         search.setTextColor(WHITE);
-        search.setTextSize(17);
+        search.setTextSize(16);
         search.setSingleLine(true);
-        search.setBackground(round(FIELD, 30));
-        search.setPadding(dp(24), dp(14), dp(24), dp(14));
+        search.setBackground(round(FIELD, 22));
+        search.setPadding(dp(16), dp(10), dp(16), dp(10));
+        Drawable lens = Icons.of(Icons.SEARCH, MUTED);
+        lens.setBounds(0, 0, dp(20), dp(20));
+        search.setCompoundDrawablesRelative(lens, null, null, null);
+        search.setCompoundDrawablePadding(dp(10));
         search.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {
@@ -261,14 +275,14 @@ final class FlagsScreen {
         });
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        slp.setMargins(dp(7), dp(4), dp(7), dp(12));
+        slp.setMargins(dp(16), dp(4), dp(16), dp(10));
         h.addView(search, slp);
 
         HorizontalScrollView scroll = new HorizontalScrollView(act);
         scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = new LinearLayout(act);
         chips.setOrientation(LinearLayout.HORIZONTAL);
-        chips.setPadding(dp(7), 0, dp(7), dp(8));
+        chips.setPadding(dp(16), 0, dp(12), dp(8));
         String[] names = {"Boolean", "Integer", "JSON", "String"};
         for (int i = 0; i < names.length; i++) {
             final int idx = i;
@@ -316,7 +330,7 @@ final class FlagsScreen {
         scroll.addView(chips);
         h.addView(scroll);
 
-        setRow = action("", accent, new View.OnClickListener() {
+        setRow = action(Icons.FLAG, "", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Prefs.setRefSet(!Prefs.refSet);
@@ -327,13 +341,13 @@ final class FlagsScreen {
         });
         updateSetRow();
         h.addView(setRow);
-        h.addView(action("Экспорт всех флагов в JSON", accent, new View.OnClickListener() {
+        h.addView(action(Icons.DOWNLOAD, "Экспорт всех флагов в JSON", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Exporter.exportAll(act);
             }
         }));
-        h.addView(action("Импорт флагов из JSON", accent, new View.OnClickListener() {
+        h.addView(action(Icons.REFRESH, "Импорт флагов из JSON", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Importer.start(act, new Runnable() {
@@ -344,13 +358,13 @@ final class FlagsScreen {
                 });
             }
         }));
-        h.addView(action("Добавить флаг вручную", accent, new View.OnClickListener() {
+        h.addView(action(Icons.FLAG, "Добавить флаг вручную", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 addManual();
             }
         }));
-        h.addView(action("Сбросить все переопределения", RED, new View.OnClickListener() {
+        h.addView(action(Icons.TRASH, "Сбросить все переопределения", true, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 confirmReset();
@@ -424,8 +438,6 @@ final class FlagsScreen {
                 + " прочитано · " + FlagStore.overrideCount() + " переопределено"
                 + (FlagStore.setCount() > 0 ? " · " + FlagStore.setCount() + " из набора мода" : ""));
         warnRow.setVisibility(CrashGuard.tripped ? View.VISIBLE : View.GONE);
-        hooks.setText(FlagHooks.status());
-        hooks.setTextColor(FlagHooks.count() > 0 ? MUTED : RED);
 
         if (!shown.isEmpty()) {
             footer.setVisibility(View.GONE);
@@ -440,7 +452,7 @@ final class FlagsScreen {
 
     private void updateSetRow() {
         if (setRow == null) return;
-        setRow.setText("Набор флагов мода: " + (Prefs.refSet ? "включён" : "выключен")
+        Ui.titleOf(setRow).setText("Набор флагов мода: " + (Prefs.refSet ? "включён" : "выключен")
                 + " (" + RefSet.size() + ")");
     }
 
@@ -486,13 +498,14 @@ final class FlagsScreen {
             if (convertView == null) {
                 h = new Holder();
                 h.outer = new FrameLayout(act);
-                h.outer.setPadding(dp(7), 0, dp(7), 0);
                 h.card = new LinearLayout(act);
                 h.card.setOrientation(LinearLayout.VERTICAL);
-                h.card.setPadding(dp(20), dp(14), dp(20), dp(14));
-                h.key = text("", 19, WHITE, true);
-                h.sub = text("", 16, MUTED, true);
-                h.sub.setPadding(0, dp(4), 0, 0);
+                h.card.setPadding(dp(16), dp(11), dp(16), dp(11));
+                h.card.setBackground(new Ui(act).ripple());
+                h.key = text("", 15.5f, WHITE, false);
+                h.key.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                h.sub = text("", 13, MUTED, false);
+                h.sub.setPadding(0, dp(2), 0, 0);
                 h.card.addView(h.key);
                 h.card.addView(h.sub);
                 h.outer.addView(h.card, new FrameLayout.LayoutParams(
@@ -526,7 +539,6 @@ final class FlagsScreen {
                 h.sub.setText(info);
                 h.sub.setTextColor(MUTED);
             }
-            h.card.setBackground(corners(position == 0, position == getCount() - 1));
             return convertView;
         }
     }
@@ -542,13 +554,16 @@ final class FlagsScreen {
 
     private void edit(final FlagStore.Flag f) {
         if (f.json && f.value == null) {
-            new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+            AlertDialog info = new AlertDialog.Builder(act, Ui.dialogTheme())
                     .setTitle(f.key)
                     .setMessage("Тип: json\nПо умолчанию в коде: " + brief(f.def, 200)
                             + "\n\nХуки мода подменяют только bool, int, long, float, double и string. "
                             + "JSON-флаги TikTok читает другим путём, поэтому здесь их менять нельзя.")
                     .setPositiveButton("Понятно", null)
-                    .show();
+                    .create();
+            Screen.markOwn(info);
+            info.show();
+            Ui.style(info);
             return;
         }
         final FlagStore.Patch own = FlagStore.rawOverride(f.key);
@@ -568,13 +583,17 @@ final class FlagsScreen {
         info.setPadding(0, 0, 0, dp(12));
         box.addView(info);
 
-        final Switch sw;
+        final ModSwitch sw;
         final EditText input;
         if (type == FlagStore.BOOL) {
-            sw = new Switch(act);
-            sw.setText("Значение");
-            sw.setChecked(parseBool(cur != null ? cur.raw : f.value));
-            box.addView(sw);
+            sw = new ModSwitch(act, parseBool(cur != null ? cur.raw : f.value));
+            LinearLayout line = new LinearLayout(act);
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            line.addView(text("Значение", 16, WHITE, false),
+                    new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            line.addView(sw);
+            box.addView(line);
             input = null;
         } else {
             sw = null;
@@ -602,7 +621,7 @@ final class FlagsScreen {
             box.addView(input);
         }
 
-        AlertDialog.Builder b = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder b = new AlertDialog.Builder(act, Ui.dialogTheme())
                 .setTitle(f.key)
                 .setView(box)
                 .setPositiveButton("Применить", null)
@@ -623,7 +642,7 @@ final class FlagsScreen {
                 dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        String raw = sw != null ? String.valueOf(sw.isChecked()) : input.getText().toString();
+                        String raw = sw != null ? String.valueOf(sw.isOn()) : input.getText().toString();
                         String err = validate(type, raw, jsonLike);
                         if (err != null) {
                             toast(err);
@@ -636,7 +655,9 @@ final class FlagsScreen {
                 });
             }
         });
+        Screen.markOwn(dlg);
         dlg.show();
+        Ui.style(dlg);
     }
 
     private void addManual() {
@@ -660,7 +681,7 @@ final class FlagsScreen {
         value.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         box.addView(value);
 
-        final AlertDialog dlg = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+        final AlertDialog dlg = new AlertDialog.Builder(act, Ui.dialogTheme())
                 .setTitle("Новый флаг")
                 .setView(box)
                 .setPositiveButton("Добавить", null)
@@ -692,11 +713,13 @@ final class FlagsScreen {
                 });
             }
         });
+        Screen.markOwn(dlg);
         dlg.show();
+        Ui.style(dlg);
     }
 
     private void confirmReset() {
-        new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog dlg = new AlertDialog.Builder(act, Ui.dialogTheme())
                 .setTitle("Сбросить все переопределения?")
                 .setMessage("Будет снято переопределений: " + FlagStore.overrideCount())
                 .setPositiveButton("Сбросить", new android.content.DialogInterface.OnClickListener() {
@@ -707,7 +730,10 @@ final class FlagsScreen {
                     }
                 })
                 .setNegativeButton("Отмена", null)
-                .show();
+                .create();
+        Screen.markOwn(dlg);
+        dlg.show();
+        Ui.style(dlg);
     }
 
     /** @return текст ошибки или null, если значение подходит */
@@ -766,15 +792,15 @@ final class FlagsScreen {
     }
 
     private TextView chip(String s) {
-        TextView c = text(s, 15, WHITE, true);
+        TextView c = text(s, 14, WHITE, true);
         c.setGravity(Gravity.CENTER);
-        c.setPadding(dp(20), dp(11), dp(20), dp(11));
+        c.setPadding(dp(16), dp(8), dp(16), dp(8));
         styleChip(c, false);
         return c;
     }
 
     private void styleChip(TextView c, boolean on) {
-        c.setBackground(round(on ? accent : CARD, 26));
+        c.setBackground(round(on ? accent : FIELD, 20));
         c.setTextColor(on ? Theme.onColor(accent) : WHITE);
     }
 
@@ -785,27 +811,16 @@ final class FlagsScreen {
         return p;
     }
 
-    private TextView action(String s, int color, View.OnClickListener l) {
-        TextView t = text(s, 19, color, true);
-        t.setPadding(dp(27), dp(16), dp(27), dp(16));
-        t.setOnClickListener(l);
-        return t;
+    private LinearLayout action(int icon, String s, boolean danger, View.OnClickListener l) {
+        LinearLayout r = new Ui(act).row(icon, s, null, null, false, l);
+        if (danger) Ui.tint(r, RED);
+        return r;
     }
 
     private GradientDrawable round(int color, float radiusDp) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(color);
         g.setCornerRadius(dp(radiusDp));
-        return g;
-    }
-
-    private GradientDrawable corners(boolean top, boolean bottom) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(CARD);
-        float r = dp(24);
-        float t = top ? r : 0f;
-        float b = bottom ? r : 0f;
-        g.setCornerRadii(new float[]{t, t, t, t, b, b, b, b});
         return g;
     }
 

@@ -40,10 +40,6 @@ final class VideoSaver {
     private VideoSaver() {
     }
 
-    static String lastError() {
-        return lastError;
-    }
-
     // ------------------------------------------------------------ задания
 
     /** Одно сохранение: экран показывает его состояние. */
@@ -293,7 +289,6 @@ final class VideoSaver {
         lastError = why;
         job.ok = false;
         job.state = "Не вышло: " + why;
-        Diag.note("видео: не сохранено — " + why);
         Toasts.show(app, "Не удалось сохранить: " + why);
     }
 
@@ -320,7 +315,6 @@ final class VideoSaver {
                 } catch (IOException ex) {
                     why = host(url) + ": " + ex.getMessage();
                 }
-                Diag.note("видео: адрес не подошёл — " + why);
             }
             if (used == null) {
                 fail(app, job, why == null ? "нет рабочих адресов" : why);
@@ -339,7 +333,6 @@ final class VideoSaver {
             job.ok = true;
             job.state = "Сохранено: " + where;
             lastError = "-";
-            Diag.note("видео сохранено: " + tmp.length() + " байт, " + host(used) + ", попыток " + tries);
             Toasts.show(app, "Сохранено: " + where);
         } finally {
             //noinspection ResultOfMethodCallIgnored
@@ -446,7 +439,6 @@ final class VideoSaver {
                     why = host(url) + ": " + t.getMessage();
                 }
             }
-            if (!done) Diag.note("фото " + (i + 1) + " не сохранено — " + why);
         }
         if (saved == 0) {
             fail(app, job, why == null ? "нет рабочих адресов" : why);

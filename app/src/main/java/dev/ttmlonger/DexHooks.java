@@ -40,45 +40,6 @@ final class DexHooks {
     private DexHooks() {
     }
 
-    static String status() {
-        return status;
-    }
-
-    /** Подробный отчёт для диагностики. */
-    static String report() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Поиск в dex: ").append(status).append('\n');
-        sb.append("  источник: ").append(how).append('\n');
-        DexScan.Result r = last;
-        if (r != null) {
-            sb.append("  ").append(r.summary()).append(", ключевых строк в коде ").append(r.anchorStrings).append('\n');
-            for (DexScan.ReaderClass c : r.readers) {
-                sb.append("  читатель по форме: ").append(c.cls).append(" (методов ").append(c.methods)
-                        .append(", типов ").append(c.kinds).append(")\n");
-            }
-            int shown = 0;
-            for (DexScan.Anchored a : r.anchored) {
-                if (shown++ >= 12) {
-                    sb.append("  ... ещё методов с ключами: ").append(r.anchored.size() - 12).append('\n');
-                    break;
-                }
-                sb.append("  метод с ключом: ").append(a.cls).append('.').append(a.name).append(a.proto)
-                        .append(a.isStatic ? " static" : "").append(" ключ=параметр ").append(a.keyParam)
-                        .append(" × ").append(a.uses).append(' ').append(a.keys).append('\n');
-            }
-            for (DexScan.Ref ref : r.refs) {
-                sb.append("  по форме [").append(ref.label).append("]: ").append(ref.cls).append('.')
-                        .append(ref.name).append(ref.proto).append('\n');
-            }
-            for (String n : r.notes) sb.append("  заметка: ").append(n).append('\n');
-        }
-        synchronized (log) {
-            for (String l : log) sb.append("  ").append(l).append('\n');
-        }
-        sb.append("Второй читатель: ").append(FlagHooks.readerStatus()).append('\n');
-        return sb.toString();
-    }
-
     static void note(String s) {
         if (log.size() < 80) log.add(s);
         FlagStore.log(s);
@@ -176,12 +137,10 @@ final class DexHooks {
             if (taken++ >= MAX_READERS) break;
             Class<?> c = load(cl, rc.cls);
             if (c == null) {
-                note("читатель " + rc.cls + ": класс не загрузился");
                 continue;
             }
             int n = FlagHooks.hookReaderClass(c);
             readers += n;
-            note("читатель " + rc.cls + ": подключено методов " + n);
         }
 
         int tried = 0;
@@ -190,12 +149,10 @@ final class DexHooks {
             if (foreign(a.cls)) continue;
             Method m = findMethod(cl, a.cls, a.name, a.proto);
             if (m == null) {
-                note("метод с ключом " + a.cls + "." + a.name + ": не найден в загруженном классе");
                 continue;
             }
             if (FlagHooks.hookKeyed(m, a.keyParam)) {
                 keyed++;
-                note("метод с ключом " + a.cls + "." + a.name + a.proto + ": подключён");
             }
         }
 
@@ -208,7 +165,6 @@ final class DexHooks {
 
         status = "читателей по форме " + r.readers.size() + ", подключено методов " + readers
                 + "; методов по ключам " + r.anchored.size() + ", подключено " + keyed;
-        FlagStore.log("dexscan: " + status);
     }
 
     private static boolean foreign(String desc) {

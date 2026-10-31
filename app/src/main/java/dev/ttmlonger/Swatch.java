@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.SweepGradient;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 
 /** Кружок выбора цвета: стандартный (палитра), готовый цвет или свой цвет («+»). */
@@ -29,7 +30,7 @@ final class Swatch extends View {
 
     @Override
     protected void onMeasure(int w, int h) {
-        int s = Math.round(60 * d);
+        int s = Math.round(54 * d);
         setMeasuredDimension(s, s);
     }
 
@@ -42,15 +43,15 @@ final class Swatch extends View {
         int fill = 0xFF000000 | rgb;
 
         if (kind == RESET) {
+            // Стандартный цвет TikTok: красный круг со стрелкой «вернуть».
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(0xFF8F8F8F);
-            rect.set(cx - r, cy - r, cx + r, cy + r);
-            c.drawRoundRect(rect, 14f * d, 14f * d, paint);
-            paint.setColor(0xFFFFFFFF);
-            paint.setTextAlign(Paint.Align.CENTER);
-            paint.setTextSize(26f * d);
-            c.drawText("🎨", cx, cy + 9f * d, paint);
-            if (isSelected()) ring(c, cx, cy, r, 0xFFFFFFFF);
+            paint.setColor(TtStyle.RED);
+            c.drawCircle(cx, cy, isSelected() ? r - 7f * d : r, paint);
+            Drawable ic = Icons.of(Icons.REFRESH, 0xFFFFFFFF);
+            int h = Math.round(22f * d);
+            ic.setBounds(Math.round(cx) - h / 2, Math.round(cy) - h / 2, Math.round(cx) + h / 2, Math.round(cy) + h / 2);
+            ic.draw(c);
+            if (isSelected()) ring(c, cx, cy, r, TtStyle.RED);
             return;
         }
 
@@ -75,7 +76,7 @@ final class Swatch extends View {
             c.drawCircle(cx, cy, r - 10f * d, paint);
         } else {
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(0xFFFFFFFF);
+            paint.setColor(Ui.INK);
             paint.setTextAlign(Paint.Align.CENTER);
             paint.setTextSize(34f * d);
             c.drawText("+", cx, cy + 12f * d, paint);

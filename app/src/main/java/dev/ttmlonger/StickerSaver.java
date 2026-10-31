@@ -175,11 +175,9 @@ final class StickerSaver {
             if (u != null && (url == null || u.length() > url.length())) url = u;
         }
         if (url == null) {
-            Diag.note("стикер [" + label + "]: в модели нет адреса картинки");
         } else {
             latestUrl = url;
             latestAt = android.os.SystemClock.uptimeMillis();
-            Diag.note("стикер [" + label + "]: адрес получен (" + host(url) + ")");
         }
         if (label.startsWith("comment")) {
             lookForSheet();
@@ -223,7 +221,6 @@ final class StickerSaver {
                     MAIN.postDelayed(this, 60L);
                 } else {
                     looker = null;
-                    Diag.note("стикер: лист с рядом кнопок не найден, показываю запасную кнопку");
                     dumpWindows();
                     offerPill();
                 }
@@ -321,7 +318,7 @@ final class StickerSaver {
             }
             float d = act.getResources().getDisplayMetrics().density;
             TextView t = TtStyle.floating(act, "Сохранить стикер");
-            t.setTag(Diag.OWN_TAG);
+            t.setTag(Ui.OWN_TAG);
 
             final Dialog dlg = new Dialog(act);
             dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
@@ -359,7 +356,6 @@ final class StickerSaver {
             });
             dlg.show();
             pill = dlg;
-            Diag.note("стикер: плавающая кнопка показана");
             MAIN.postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -398,8 +394,6 @@ final class StickerSaver {
                     if (++n < POLL_TRIES) {
                         MAIN.postDelayed(this, POLL_MS);
                     } else if (sawPicture && unknownLogged++ < 4) {
-                        Diag.note("диалог с картинкой, но не лист стикера: " + d.getClass().getName()
-                                + ", кнопки: " + SheetFinder.labels(decor));
                     }
                 } catch (Throwable t) {
                     FlagStore.log(t);
@@ -494,7 +488,6 @@ final class StickerSaver {
         if (fl instanceof LinearLayout.LayoutParams) lp.gravity = ((LinearLayout.LayoutParams) fl).gravity;
         row.addView(mine, lp);
         row.setTag(SheetFinder.TAG_PLACED, Boolean.TRUE);
-        Diag.note("кнопка «Сохранить стикер» добавлена в ряд листа (" + picture.getClass().getName() + ")");
     }
 
     /**
@@ -520,7 +513,7 @@ final class StickerSaver {
             int inset = Math.round(size * 0.27f);
             b.setPadding(inset, inset, inset, inset);
             b.setContentDescription("Сохранить стикер");
-            b.setTag(Diag.OWN_TAG);
+            b.setTag(Ui.OWN_TAG);
 
             final Dialog dlg = new Dialog(act);
             dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
@@ -548,7 +541,6 @@ final class StickerSaver {
             });
             h.row.setTag(SheetFinder.TAG_PLACED, Boolean.TRUE);
             dlg.show();
-            Diag.note("кнопка «Сохранить стикер» показана над рядом листа (ряд " + h.row.getClass().getName() + ")");
 
             // Закрываем, когда лист ушёл с экрана.
             final long until = android.os.SystemClock.uptimeMillis() + 10 * 60_000L;
@@ -597,8 +589,6 @@ final class StickerSaver {
         String fromTap = freshUrl();
         final String url = fromTap != null ? fromTap : urlOf(picture);
         final Bitmap shot = bitmapOf(picture);
-        Diag.note("стикер: ссылка " + (url == null ? "не найдена" : host(url) + (fromTap != null ? " (из нажатия)" : " (из картинки)"))
-                + ", картинка с экрана " + (shot == null ? "недоступна" : shot.getWidth() + "x" + shot.getHeight()));
         saveAsync(ctx, url, shot);
     }
 

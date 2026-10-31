@@ -74,10 +74,6 @@ final class StreakHooks {
         return service;
     }
 
-    static String status() {
-        return status;
-    }
-
     private static Class<?> cls(String name) {
         try {
             return Class.forName(name, false, loader);
@@ -127,7 +123,6 @@ final class StreakHooks {
         for (DexScan.Ref ref : r.refs("impl:streak")) {
             Class<?> c = DexHooks.load(cl, ref.cls);
             if (c == null || !ic.isAssignableFrom(c) || c.isInterface()) {
-                DexHooks.note("огонёк: класс " + ref.cls + " не подошёл");
                 continue;
             }
             found++;
@@ -136,7 +131,6 @@ final class StreakHooks {
             try {
                 ms = c.getDeclaredMethods();
             } catch (Throwable t) {
-                DexHooks.note("огонёк: методы " + ref.cls + " недоступны: " + t.getClass().getSimpleName());
                 continue;
             }
             for (Method m : ms) {
@@ -160,7 +154,6 @@ final class StreakHooks {
         status = "реализаций службы " + found + ", хуков " + hookCount
                 + (dataClass == null ? "; класса StreakData нет" : "")
                 + (constClasses.isEmpty() ? "; константы источника в dex нет" : "");
-        DexHooks.note("огонёк: " + status);
         try {
             StickerLibrary.apply(r, cl);
         } catch (Throwable t) {
@@ -617,18 +610,4 @@ final class StreakHooks {
 
     // ---------------------------------------------------------------- отчёт
 
-    static String report() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("  хуки: ").append(status).append('\n');
-        sb.append("  служба получена: ").append(service != null ? service.getClass().getName() : "нет").append('\n');
-        sb.append("  реализации: ").append(implSeen).append('\n');
-        Class<?> dc = dataClass;
-        sb.append("  StreakData: ").append(dc == null ? "нет" : fieldsOf(dc)).append('\n');
-        sb.append("  чтение: ").append(readM != null ? readM.getName() : "не найдено").append(", запросов ").append(reads)
-                .append(", ошибок ").append(readFails).append(", заметка: ").append(readNote).append('\n');
-        sb.append("  статус: ").append(statusNote).append('\n');
-        sb.append("  отправка: ").append(senderNote).append('\n');
-        sb.append("  константа источника в dex: ").append(constClasses).append('\n');
-        return sb.toString();
-    }
 }

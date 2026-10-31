@@ -203,8 +203,4 @@ final class VideoTracker {
         return out;
     }
 
-    /** Строка для диагностики. */
-    static String status() {
-        return "отслежено постов " + size() + " (всего видено " + total + ")";
-    }
 }

@@ -48,27 +48,33 @@ final class AppearanceScreen extends Screen {
 
     @Override
     void build(LinearLayout body) {
-        buildAccentCard(body);
-        buildFontCard(body);
-        buildIconCard(body);
-
-        // Подсказка о перезапуске (появляется после изменений акцента и Amoled).
+        // Подсказка о перезапуске: появляется вверху после изменений, требующих его.
         restartCard = new LinearLayout(act);
-        restartCard.setOrientation(LinearLayout.VERTICAL);
-        restartCard.setBackground(ui.round(Ui.CARD, 24));
-        restartCard.setPadding(ui.dp(22), ui.dp(18), ui.dp(22), ui.dp(18));
+        restartCard.setOrientation(LinearLayout.HORIZONTAL);
+        restartCard.setGravity(Gravity.CENTER_VERTICAL);
+        restartCard.setBackground(ui.round(Ui.FIELD, 14));
+        restartCard.setPadding(ui.dp(16), ui.dp(10), ui.dp(10), ui.dp(10));
         restartCard.setVisibility(View.GONE);
-        restartCard.addView(ui.text("Изменения применятся после перезапуска TikTok", 16, Ui.MUTED, true));
-        TextView btn = ui.text("Перезапустить сейчас", 19, Theme.accent(), true);
-        btn.setPadding(0, ui.dp(10), 0, 0);
+        TextView msg = ui.text("Изменения применятся после перезапуска TikTok", 14f, Ui.INK, false);
+        restartCard.addView(msg, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView btn = TtStyle.accent(act, "Перезапустить", 36f, 14f);
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Restart.now(act);
             }
         });
-        restartCard.addView(btn);
-        body.addView(restartCard, sidePadded());
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        bp.setMarginStart(ui.dp(10));
+        restartCard.addView(btn, bp);
+        LinearLayout.LayoutParams rp = ui.matchWrap();
+        rp.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(4));
+        body.addView(restartCard, rp);
+
+        buildAccentCard(body);
+        buildFontCard(body);
+        buildIconCard(body);
 
         refreshSwatches();
         refreshIcons();
@@ -77,17 +83,15 @@ final class AppearanceScreen extends Screen {
     // ============================================================ акцент и Amoled
 
     private void buildAccentCard(LinearLayout body) {
-        LinearLayout card = card();
-
         LinearLayout head = new LinearLayout(act);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(ui.text("Цветовой акцент", 20, Ui.WHITE, true),
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        hexLabel = ui.text("", 18, Ui.MUTED, true);
+        head.setPadding(0, 0, ui.dp(16), 0);
+        TextView title = ui.header("Цвет акцента");
+        head.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        hexLabel = ui.text("", 13.5f, Ui.MUTED, false);
         head.addView(hexLabel);
-        card.addView(head, ui.matchWrap());
-        card.addView(ui.space(14));
+        body.addView(head, ui.matchWrap());
 
         HorizontalScrollView scroll = new HorizontalScrollView(act);
         scroll.setHorizontalScrollBarEnabled(false);
@@ -95,61 +99,33 @@ final class AppearanceScreen extends Screen {
         swatchRow = new LinearLayout(act);
         swatchRow.setOrientation(LinearLayout.HORIZONTAL);
         swatchRow.setGravity(Gravity.CENTER_VERTICAL);
+        swatchRow.setPadding(ui.dp(12), 0, ui.dp(12), 0);
         scroll.addView(swatchRow);
-        card.addView(scroll, ui.matchWrap());
+        body.addView(scroll, ui.matchWrap());
 
-        TextView hint = ui.text("Заменяет розовый акцент TikTok в лайках, кнопках, вкладках, значках и "
-                + "анимациях, в том числе его оттенки (нажатая кнопка, полупрозрачные заливки). "
-                + "Нужен перезапуск TikTok", 16, Ui.MUTED, true);
-        hint.setPadding(0, ui.dp(14), 0, ui.dp(18));
-        card.addView(hint);
+        body.addView(ui.note("Заменяет розовый акцент TikTok в лайках, кнопках, вкладках, значках и "
+                + "анимациях. Нужен перезапуск TikTok"));
 
-        LinearLayout deep = new LinearLayout(act);
-        deep.setOrientation(LinearLayout.HORIZONTAL);
-        deep.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout deepTexts = new LinearLayout(act);
-        deepTexts.setOrientation(LinearLayout.VERTICAL);
-        deepTexts.addView(ui.text("Менять цвет и в рисунках", 20, Ui.WHITE, true));
-        TextView deepDesc = ui.text("Перехватывает цвета при отрисовке, в темах, градиентах и растровых "
-                + "иконках, чтобы поменялись и они. Если TikTok стал подтормаживать, выключите", 16, Ui.MUTED, true);
-        deepDesc.setPadding(0, ui.dp(6), ui.dp(12), 0);
-        deepTexts.addView(deepDesc);
-        deep.addView(deepTexts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        ModSwitch deepSw = new ModSwitch(act, Prefs.accentDeep);
-        deepSw.setListener(new ModSwitch.Listener() {
-            @Override
-            public void onChanged(boolean on) {
-                Prefs.setAccentDeep(on);
-                restartCard.setVisibility(View.VISIBLE);
-            }
-        });
-        deep.addView(deepSw);
-        card.addView(deep, ui.matchWrap());
-        card.addView(ui.space(18));
+        body.addView(toggleRow("Менять цвет и в рисунках",
+                "Перехватывает цвета при отрисовке, в темах, градиентах и растровых иконках, чтобы "
+                        + "поменялись и они. Если TikTok стал подтормаживать, выключите",
+                Prefs.accentDeep, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setAccentDeep(on);
+                        restartCard.setVisibility(View.VISIBLE);
+                    }
+                }));
 
-        LinearLayout amoled = new LinearLayout(act);
-        amoled.setOrientation(LinearLayout.HORIZONTAL);
-        amoled.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout texts = new LinearLayout(act);
-        texts.setOrientation(LinearLayout.VERTICAL);
-        texts.addView(ui.text("Amoled-тема", 20, Ui.WHITE, true));
-        TextView ad = ui.text("Заменяет тёмно-серый фон на глубокий чёрный в тёмной теме. "
-                + "Не влияет на светлую тему. Нужен перезапуск приложения", 16, Ui.MUTED, true);
-        ad.setPadding(0, ui.dp(6), ui.dp(12), 0);
-        texts.addView(ad);
-        amoled.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        ModSwitch sw = new ModSwitch(act, Prefs.amoled);
-        sw.setListener(new ModSwitch.Listener() {
-            @Override
-            public void onChanged(boolean on) {
-                Prefs.setAmoled(on);
-                restartCard.setVisibility(View.VISIBLE);
-            }
-        });
-        amoled.addView(sw);
-        card.addView(amoled, ui.matchWrap());
-
-        body.addView(card, sidePadded());
+        body.addView(toggleRow("Amoled-тема",
+                "Заменяет тёмно-серый фон на глубокий чёрный в тёмной теме. Светлую тему не трогает",
+                Prefs.amoled, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setAmoled(on);
+                        restartCard.setVisibility(View.VISIBLE);
+                    }
+                }));
     }
 
     private void refreshSwatches() {
@@ -210,45 +186,38 @@ final class AppearanceScreen extends Screen {
     private LinearLayout.LayoutParams swatchParams() {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = ui.dp(6);
+        lp.rightMargin = ui.dp(4);
         return lp;
     }
 
     // ============================================================ шрифт
 
+    private LinearLayout fontRow;
     private TextView fontName;
     private TextView fontReset;
 
     private void buildFontCard(LinearLayout body) {
-        LinearLayout card = card();
+        body.addView(ui.header("Шрифт"));
+        fontRow = ui.row(-1, "Шрифт", null, "", false, null);
+        fontName = Ui.valueOf(fontRow);
+        body.addView(fontRow);
 
-        card.addView(ui.text("Шрифт", 20, Ui.WHITE, true), ui.matchWrap());
-        fontName = ui.text("", 17, Ui.MUTED, true);
-        fontName.setPadding(0, ui.dp(6), 0, 0);
-        card.addView(fontName, ui.matchWrap());
-
-        TextView hint = ui.text("Файл .ttf или .otf из памяти телефона. Заменяет шрифт обычного текста "
+        body.addView(ui.note("Файл .ttf или .otf из памяти телефона. Заменяет шрифт обычного текста "
                 + "в TikTok. Надписи, которые приложение рисует само, остаются прежними. "
-                + "Нужен перезапуск TikTok", 15, Ui.MUTED, true);
-        hint.setPadding(0, ui.dp(8), 0, ui.dp(14));
-        card.addView(hint);
+                + "Нужен перезапуск TikTok"));
 
-        int accent = Theme.accent();
-        TextView pick = ui.text("Выбрать файл шрифта", 18, Theme.onColor(accent), true);
-        pick.setGravity(Gravity.CENTER);
-        pick.setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(16));
-        pick.setBackground(ui.round(accent, 40));
+        TextView pick = TtStyle.accent(act, "Выбрать файл шрифта", 44f, 15f);
         pick.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 pickFont();
             }
         });
-        card.addView(pick, ui.matchWrap());
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(44));
+        pp.setMargins(ui.dp(16), ui.dp(6), ui.dp(16), 0);
+        body.addView(pick, pp);
 
-        fontReset = ui.text("Вернуть шрифт TikTok", 17, Ui.MUTED, true);
-        fontReset.setGravity(Gravity.CENTER);
-        fontReset.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(4));
+        fontReset = TtStyle.neutral(act, "Вернуть шрифт TikTok", 44f, 15f);
         fontReset.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -257,15 +226,15 @@ final class AppearanceScreen extends Screen {
                 refreshFont();
             }
         });
-        card.addView(fontReset, ui.matchWrap());
-
-        body.addView(card, sidePadded());
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(44));
+        rp.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), 0);
+        body.addView(fontReset, rp);
         refreshFont();
     }
 
     private void refreshFont() {
         boolean set = !Prefs.fontName.isEmpty();
-        fontName.setText(set ? Prefs.fontName : "Стандартный шрифт TikTok");
+        fontName.setText(set ? Prefs.fontName : "Стандартный");
         fontReset.setVisibility(set ? View.VISIBLE : View.GONE);
     }
 
@@ -314,44 +283,37 @@ final class AppearanceScreen extends Screen {
     // ============================================================ иконка приложения
 
     private void buildIconCard(LinearLayout body) {
-        LinearLayout card = card();
-
-        card.addView(ui.text("Иконка приложения", 20, Ui.WHITE, true), ui.matchWrap());
-        card.addView(ui.space(14));
+        body.addView(ui.header("Значок приложения"));
 
         HorizontalScrollView scroll = new HorizontalScrollView(act);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         iconRow = new LinearLayout(act);
         iconRow.setOrientation(LinearLayout.HORIZONTAL);
+        iconRow.setPadding(ui.dp(12), 0, ui.dp(12), 0);
         scroll.addView(iconRow);
-        card.addView(scroll, ui.matchWrap());
+        body.addView(scroll, ui.matchWrap());
 
-        TextView hint = ui.text("Android не даёт сменить значок установленного приложения, поэтому "
-                + "мод добавляет на рабочий стол ярлык с выбранной иконкой и названием. "
+        body.addView(ui.note("Android не даёт сменить значок установленного приложения, поэтому "
+                + "мод добавляет на рабочий стол ярлык с выбранным значком и названием. "
                 + "Исходный значок TikTok остаётся в меню приложений. "
-                + "Чтобы удалить свою иконку, зажмите её", 15, Ui.MUTED, true);
-        hint.setPadding(0, ui.dp(8), 0, ui.dp(14));
-        card.addView(hint);
+                + "Чтобы удалить свой значок, зажмите его"));
 
         labelField = new EditText(act);
         labelField.setSingleLine(true);
         labelField.setHint("Название ярлыка");
         labelField.setHintTextColor(Ui.MUTED);
-        labelField.setTextColor(Ui.WHITE);
-        labelField.setTextSize(18);
+        labelField.setTextColor(Ui.INK);
+        labelField.setTextSize(16);
         labelField.setText(Prefs.iconLabel);
         labelField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        labelField.setBackground(ui.round(Ui.FIELD, 20));
-        labelField.setPadding(ui.dp(20), ui.dp(14), ui.dp(20), ui.dp(14));
-        card.addView(labelField, ui.matchWrap());
-        card.addView(ui.space(14));
+        labelField.setBackground(ui.round(Ui.FIELD, 12));
+        labelField.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12));
+        LinearLayout.LayoutParams fp = ui.matchWrap();
+        fp.setMargins(ui.dp(16), ui.dp(6), ui.dp(16), 0);
+        body.addView(labelField, fp);
 
-        int accent = Theme.accent();
-        TextView apply = ui.text("Добавить ярлык на рабочий стол", 18, Theme.onColor(accent), true);
-        apply.setGravity(Gravity.CENTER);
-        apply.setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(16));
-        apply.setBackground(ui.round(accent, 40));
+        TextView apply = TtStyle.accent(act, "Добавить ярлык на рабочий стол", 44f, 15f);
         apply.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -359,9 +321,9 @@ final class AppearanceScreen extends Screen {
                 toast(IconStore.pin(act, Prefs.iconId, Prefs.iconLabel));
             }
         });
-        card.addView(apply, ui.matchWrap());
-
-        body.addView(card, sidePadded());
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(44));
+        ap.setMargins(ui.dp(16), ui.dp(12), ui.dp(16), 0);
+        body.addView(apply, ap);
     }
 
     private void refreshIcons() {
@@ -427,7 +389,7 @@ final class AppearanceScreen extends Screen {
         box.addView(iv, ip);
         col.addView(box, new LinearLayout.LayoutParams(ui.dp(76), ui.dp(76)));
 
-        TextView t = ui.text(caption, 14, selected ? accent : Ui.MUTED, true);
+        TextView t = ui.text(caption, 13, selected ? accent : Ui.MUTED, false);
         t.setGravity(Gravity.CENTER);
         t.setPadding(0, ui.dp(6), 0, 0);
         t.setSingleLine(true);
@@ -444,14 +406,14 @@ final class AppearanceScreen extends Screen {
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         col.setPadding(ui.dp(4), 0, ui.dp(4), 0);
 
-        TextView plus = ui.text("+", 34, Ui.WHITE, false);
+        TextView plus = ui.text("+", 34, Ui.INK, false);
         plus.setGravity(Gravity.CENTER);
         plus.setBackground(ui.round(Ui.FIELD, 18));
         LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(ui.dp(62), ui.dp(62));
         pp.setMargins(ui.dp(7), ui.dp(7), ui.dp(7), ui.dp(7));
         col.addView(plus, pp);
 
-        TextView t = ui.text("Загрузить", 14, Ui.MUTED, true);
+        TextView t = ui.text("Загрузить", 13, Ui.MUTED, false);
         t.setGravity(Gravity.CENTER);
         t.setPadding(0, ui.dp(6), 0, 0);
         t.setSingleLine(true);
@@ -483,7 +445,7 @@ final class AppearanceScreen extends Screen {
 
     private void pickImage() {
         if (IconStore.ids().size() >= IconStore.MAX) {
-            toast("Максимум " + IconStore.MAX + " иконок. Зажмите ненужную, чтобы удалить");
+            toast("Максимум " + IconStore.MAX + " значков. Зажмите ненужный, чтобы удалить");
             return;
         }
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
@@ -524,8 +486,8 @@ final class AppearanceScreen extends Screen {
     }
 
     private void confirmDelete(final String id) {
-        new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Удалить иконку?")
+        AlertDialog dlg = new AlertDialog.Builder(act, Ui.dialogTheme())
+                .setTitle("Удалить значок?")
                 .setPositiveButton("Удалить", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface d, int which) {
@@ -535,18 +497,13 @@ final class AppearanceScreen extends Screen {
                     }
                 })
                 .setNegativeButton("Отмена", null)
-                .show();
+                .create();
+        markOwn(dlg);
+        dlg.show();
+        Ui.style(dlg);
     }
 
     // ============================================================ общее
-
-    private LinearLayout card() {
-        LinearLayout card = new LinearLayout(act);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(ui.round(Ui.CARD, 24));
-        card.setPadding(ui.dp(22), ui.dp(22), ui.dp(22), ui.dp(22));
-        return card;
-    }
 
     private void toast(String msg) {
         Toast.makeText(act, msg, Toast.LENGTH_LONG).show();

@@ -265,7 +265,7 @@ final class Importer {
 
     /** Спрашивает, откуда брать JSON, и ведёт дальше. */
     static void start(final Activity act, final Runnable onChanged) {
-        AlertDialog d = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme())
                 .setTitle("Импорт флагов из JSON")
                 .setMessage("Подходит файл экспорта из этого мода или референс-мода, словарь {\"имя\": значение} и список "
                         + "[{\"key\": \"имя\", \"value\": значение}]. Откуда взять?")
@@ -285,6 +285,7 @@ final class Importer {
                 .create();
         Screen.markOwn(d);
         d.show();
+        Ui.style(d);
     }
 
     private static void fromClipboard(Activity act, Runnable onChanged) {
@@ -381,7 +382,7 @@ final class Importer {
                 + (p.json > 0 ? ", json-флагов пропущено (мод их не подменяет): " + p.json : "")
                 + ".\nФлаги, которых телефон ещё не видел, в режиме «отличающиеся» не считаются. "
                 + "Применённое можно снять кнопкой «Сбросить все переопределения».";
-        AlertDialog d = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme())
                 .setTitle("Что импортировать?")
                 .setMessage(info)
                 .setSingleChoiceItems(labels, first, new DialogInterface.OnClickListener() {
@@ -400,7 +401,6 @@ final class Importer {
                             return;
                         }
                         int n = apply(plan);
-                        Diag.note("импорт флагов: применено " + n + ", не подошли по типу " + plan.incompatible);
                         toast(act, "Применено флагов: " + n
                                 + (plan.incompatible > 0 ? ", не подошли по типу: " + plan.incompatible : ""));
                         if (onChanged != null) onChanged.run();
@@ -411,6 +411,7 @@ final class Importer {
                 .create();
         Screen.markOwn(d);
         d.show();
+        Ui.style(d);
     }
 
     private static void toast(final Activity act, final String msg) {

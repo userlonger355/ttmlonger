@@ -44,7 +44,6 @@ final class AvatarSaver {
         final String url = AvatarHooks.secure(AvatarHooks.bestUrl());
         final String uid = AvatarHooks.lastUid();
         if (url == null) {
-            Diag.note("аватар: ссылка не известна, снимаю картинку с экрана");
             save(act, findAvatarImage(act));
             return;
         }
@@ -59,11 +58,9 @@ final class AvatarSaver {
                             + "_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date())
                             + "." + ext;
                     String where = Media.saveBytes(act, data, name, Media.mimeFor(ext));
-                    Diag.note("аватар сохранён: " + data.length + " байт, " + ext);
                     toast(act, "Аватар сохранён: " + where);
                 } catch (Throwable t) {
                     FlagStore.log(t);
-                    Diag.note("аватар: скачать не вышло (" + t + "), снимаю картинку с экрана");
                     act.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -113,7 +110,7 @@ final class AvatarSaver {
 
     private static void walk(android.view.View v, int screenW, ImageView[] best, int depth) {
         if (depth > 100 || v.getVisibility() != android.view.View.VISIBLE
-                || Diag.OWN_TAG.equals(v.getTag())) return;
+                || Ui.OWN_TAG.equals(v.getTag())) return;
         if (v instanceof ImageView) {
             int w = v.getWidth();
             int h = v.getHeight();

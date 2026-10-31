@@ -38,7 +38,6 @@ final class ColorHooks {
         } catch (Throwable t) {
             fColors = null;
             fDefault = null;
-            FlagStore.log("ColorStateList: поля недоступны, подменяется только основной цвет селекторов");
         }
 
         XC_MethodHook hook = new XC_MethodHook() {

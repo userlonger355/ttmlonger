@@ -31,7 +31,7 @@ final class RegionSheet {
     private final Activity act;
     private final Ui ui;
     private final Runnable onClose;
-    private final int accent = Theme.accent();
+    private final int accent = TtStyle.primary();
 
     /** null в списке — пункт «Не подменять». */
     private List<Regions.Item> shown = new ArrayList<>();
@@ -52,88 +52,72 @@ final class RegionSheet {
     private void open() {
         final Dialog dialog = new Dialog(act);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        Screen.markOwn(dialog);
 
         LinearLayout sheet = new LinearLayout(act);
         sheet.setOrientation(LinearLayout.VERTICAL);
-        sheet.setBackground(ui.corners(Ui.CARD, 28, 0));
+        sheet.setBackground(ui.corners(Ui.DARK ? Ui.CARD : Ui.BG, 16, 0));
 
         // Ручка.
         View grab = new View(act);
-        grab.setBackground(ui.round(0xFF4A4A4A, 3));
-        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ui.dp(44), ui.dp(5));
+        grab.setBackground(ui.round(Ui.alpha(Ui.INK, 0x40), 3));
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ui.dp(36), ui.dp(4));
         gp.gravity = Gravity.CENTER_HORIZONTAL;
-        gp.topMargin = ui.dp(10);
+        gp.topMargin = ui.dp(8);
         sheet.addView(grab, gp);
 
         // Заголовок и крестик.
         FrameLayout head = new FrameLayout(act);
-        TextView title = ui.text("Регион", 26, Ui.WHITE, true);
+        TextView title = ui.text("Регион", 17, Ui.INK, true);
         title.setGravity(Gravity.CENTER);
         head.addView(title, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        TextView close = ui.text("✕", 24, Ui.MUTED, false);
-        close.setPadding(ui.dp(16), ui.dp(6), ui.dp(16), ui.dp(6));
+                ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(48)));
+        FrameLayout close = new FrameLayout(act);
+        close.setBackground(ui.ripple());
+        close.setClickable(true);
+        close.addView(ui.icon(Icons.CLOSE, Ui.INK, 22), new FrameLayout.LayoutParams(ui.dp(22), ui.dp(22), Gravity.CENTER));
         close.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 dialog.dismiss();
             }
         });
-        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END);
-        head.addView(close, cp);
-        LinearLayout.LayoutParams hp = ui.matchWrap();
-        hp.topMargin = ui.dp(14);
-        sheet.addView(head, hp);
+        head.addView(close, new FrameLayout.LayoutParams(ui.dp(48), ui.dp(48), Gravity.END));
+        sheet.addView(head, ui.matchWrap());
 
-        TextView desc = ui.text("Регион SIM-карты: от него зависят лента и рекомендации. "
-                + "Регион аккаунта для звонков и групп в личных сообщениях меняется в TikTok, а не здесь",
-                16, Ui.MUTED, true);
-        desc.setGravity(Gravity.CENTER);
-        desc.setPadding(ui.dp(24), ui.dp(14), ui.dp(24), ui.dp(14));
-        sheet.addView(desc, ui.matchWrap());
+        TextView desc = ui.note("Регион SIM-карты: от него зависят лента и рекомендации. "
+                + "Регион аккаунта для звонков и групп в личных сообщениях меняется в TikTok, а не здесь");
+        sheet.addView(desc);
 
         // Переключатель языка.
-        LinearLayout lang = new LinearLayout(act);
-        lang.setOrientation(LinearLayout.HORIZONTAL);
-        lang.setGravity(Gravity.CENTER_VERTICAL);
-        lang.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(12));
-        TextView globe = ui.text("🌐", 26, Ui.MUTED, false);
-        globe.setPadding(0, 0, ui.dp(16), 0);
-        lang.addView(globe);
-        LinearLayout lt = new LinearLayout(act);
-        lt.setOrientation(LinearLayout.VERTICAL);
-        lt.addView(ui.text("Сохранять язык рекомендаций", 19, Ui.WHITE, true));
-        TextView ld = ui.text("При подмене региона TikTok может изменить язык ленты. "
-                + "Включение этой опции сохраняет язык устройства для рекомендаций", 15, Ui.MUTED, true);
-        ld.setPadding(0, ui.dp(6), ui.dp(10), 0);
-        lt.addView(ld);
-        lang.addView(lt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        ModSwitch sw = new ModSwitch(act, Prefs.keepLanguage);
-        sw.setListener(new ModSwitch.Listener() {
-            @Override
-            public void onChanged(boolean on) {
-                Prefs.setKeepLanguage(on);
-                changed = true;
-                if (!on && !Prefs.region.isEmpty()) {
-                    Toast.makeText(act, "Страна локали подменяется после перезапуска TikTok",
-                            Toast.LENGTH_LONG).show();
-                }
-            }
-        });
-        lang.addView(sw);
-        sheet.addView(lang, ui.matchWrap());
+        sheet.addView(ui.toggleRow(Icons.GLOBE, "Сохранять язык рекомендаций",
+                "При подмене региона TikTok может изменить язык ленты. Включение сохраняет язык устройства",
+                Prefs.keepLanguage, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setKeepLanguage(on);
+                        changed = true;
+                        if (!on && !Prefs.region.isEmpty()) {
+                            Toast.makeText(act, "Страна локали подменяется после перезапуска TikTok",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    }
+                }));
 
         // Поиск.
         EditText search = new EditText(act);
         search.setHint("Поиск региона");
         search.setHintTextColor(Ui.MUTED);
-        search.setTextColor(Ui.WHITE);
-        search.setTextSize(18);
+        search.setTextColor(Ui.INK);
+        search.setTextSize(16);
         search.setSingleLine(true);
         search.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        search.setBackground(ui.round(Ui.FIELD, 30));
-        search.setPadding(ui.dp(24), ui.dp(14), ui.dp(24), ui.dp(14));
+        search.setBackground(ui.round(Ui.FIELD, 22));
+        search.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10));
+        android.graphics.drawable.Drawable lens = Icons.of(Icons.SEARCH, Ui.MUTED);
+        lens.setBounds(0, 0, ui.dp(20), ui.dp(20));
+        search.setCompoundDrawablesRelative(lens, null, null, null);
+        search.setCompoundDrawablePadding(ui.dp(10));
         search.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {
@@ -149,7 +133,7 @@ final class RegionSheet {
             }
         });
         LinearLayout.LayoutParams sp = ui.matchWrap();
-        sp.setMargins(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(8));
+        sp.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8));
         sheet.addView(search, sp);
 
         // Список.
@@ -172,18 +156,15 @@ final class RegionSheet {
         sheet.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         // Кнопка «Закрыть».
-        TextView btn = ui.text("Закрыть", 22, Theme.onColor(accent), true);
-        btn.setGravity(Gravity.CENTER);
-        btn.setPadding(0, ui.dp(18), 0, ui.dp(18));
-        btn.setBackground(ui.round(accent, 40));
+        TextView btn = TtStyle.accent(act, "Закрыть", 48f, 16f);
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 dialog.dismiss();
             }
         });
-        LinearLayout.LayoutParams bp = ui.matchWrap();
-        bp.setMargins(ui.dp(18), ui.dp(10), ui.dp(18), ui.dp(18));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(48));
+        bp.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(16));
         sheet.addView(btn, bp);
 
         filter("");
@@ -243,26 +224,28 @@ final class RegionSheet {
             LinearLayout row;
             TextView flag;
             TextView name;
-            TextView mark;
+            View mark;
             if (convertView == null) {
                 row = new LinearLayout(act);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(ui.dp(24), ui.dp(16), ui.dp(24), ui.dp(16));
-                flag = ui.text("", 26, Ui.WHITE, false);
+                row.setMinimumHeight(ui.dp(52));
+                row.setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8));
+                row.setBackground(ui.ripple());
+                flag = ui.text("", 24, Ui.INK, false);
                 flag.setGravity(Gravity.CENTER);
-                row.addView(flag, new LinearLayout.LayoutParams(ui.dp(46), ViewGroup.LayoutParams.WRAP_CONTENT));
-                name = ui.text("", 20, Ui.WHITE, true);
-                name.setPadding(ui.dp(16), 0, 0, 0);
+                row.addView(flag, new LinearLayout.LayoutParams(ui.dp(40), ViewGroup.LayoutParams.WRAP_CONTENT));
+                name = ui.medium("", 16f, Ui.INK);
+                name.setPadding(ui.dp(12), 0, 0, 0);
                 row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-                mark = ui.text("✓", 22, accent, true);
+                mark = ui.icon(Icons.CHECK, accent, 22);
                 row.addView(mark);
-                row.setTag(new TextView[]{flag, name, mark});
+                row.setTag(new View[]{flag, name, mark});
             } else {
                 row = (LinearLayout) convertView;
-                TextView[] t = (TextView[]) row.getTag();
-                flag = t[0];
-                name = t[1];
+                View[] t = (View[]) row.getTag();
+                flag = (TextView) t[0];
+                name = (TextView) t[1];
                 mark = t[2];
             }
 
@@ -270,7 +253,7 @@ final class RegionSheet {
             boolean selected;
             if (it == null) {
                 flag.setText("🌍");
-                name.setText("Не подменять (реальный регион)");
+                name.setText("Не менять (реальный регион)");
                 selected = Prefs.region.isEmpty();
             } else {
                 flag.setText(it.flag);

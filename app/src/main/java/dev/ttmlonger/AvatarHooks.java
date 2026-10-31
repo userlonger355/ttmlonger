@@ -38,7 +38,6 @@ final class AvatarHooks {
     static void install(ClassLoader cl) {
         Class<?> user = XposedHelpers.findClassIfExists(USER, cl);
         if (user == null) {
-            Diag.note("аватар: класс User не найден");
             return;
         }
         for (final String g : GETTERS) {
@@ -58,7 +57,6 @@ final class AvatarHooks {
                 FlagStore.log(t);
             }
         }
-        Diag.note("аватар: перехвачено методов User: " + hooked);
     }
 
     private static synchronized void remember(Object user, String getter, Object model) {

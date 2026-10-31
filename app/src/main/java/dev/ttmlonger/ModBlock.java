@@ -1,9 +1,7 @@
 package dev.ttmlonger;
 
 import android.app.Activity;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -18,17 +16,21 @@ final class ModBlock {
     private ModBlock() {
     }
 
-    /** Цвета блока, подобранные под фон страницы. */
+    /** Цвета мода, подобранные под фон страницы TikTok. */
     static final class Palette {
         final int bg;
         final int card;
+        final int field;
+        final int divider;
         final int ink;
         final int muted;
         final boolean light;
 
-        private Palette(int bg, int card, int ink, int muted, boolean light) {
+        private Palette(int bg, int card, int field, int divider, int ink, int muted, boolean light) {
             this.bg = bg;
             this.card = card;
+            this.field = field;
+            this.divider = divider;
             this.ink = ink;
             this.muted = muted;
             this.light = light;
@@ -38,15 +40,15 @@ final class ModBlock {
         static Palette of(int pageBg) {
             int bg = 0xFF000000 | (pageBg & 0xFFFFFF);
             boolean light = luminance(bg) >= 0.5f;
-            int card;
             if (light) {
+                int ink = 0xFF161823; // цвет текста TikTok в светлой теме
                 // На почти белой странице карточка чуть темнее, на сероватой — белая.
-                card = luminance(bg) > 0.97f ? 0xFFF4F4F4 : 0xFFFFFFFF;
-            } else {
-                card = mix(bg, 0xFFFFFFFF, 0.09f);
+                int card = luminance(bg) > 0.97f ? 0xFFF4F4F4 : 0xFFFFFFFF;
+                return new Palette(bg, card, mix(bg, ink, 0.06f), mix(bg, ink, 0.10f), ink,
+                        mix(bg, ink, 0.55f), true);
             }
-            return new Palette(bg, card, light ? 0xFF000000 : 0xFFFFFFFF,
-                    light ? 0xFF6B6B6B : 0xFF8A8A8A, light);
+            return new Palette(bg, mix(bg, 0xFFFFFFFF, 0.09f), mix(bg, 0xFFFFFFFF, 0.13f),
+                    mix(bg, 0xFFFFFFFF, 0.10f), 0xFFFFFFFF, mix(bg, 0xFFFFFFFF, 0.54f), false);
         }
 
         boolean sameAs(Palette o) {
@@ -91,44 +93,28 @@ final class ModBlock {
         return 0xFF000000 | best;
     }
 
-    /** Блок целиком: подпись «Мод» и карточка «Настройки мода». Отступ под строку состояния ставит хозяин. */
+    /** Блок целиком: подпись «Мод» и строка «Настройки мода». Отступ под строку состояния ставит хозяин. */
     static LinearLayout build(final Activity act, Palette p) {
+        Ui.use(p); // экраны мода берут цвета оттуда же, откуда этот блок
         Ui ui = new Ui(act);
 
         LinearLayout col = new LinearLayout(act);
-        col.setTag(Diag.OWN_TAG);
+        col.setTag(Ui.OWN_TAG);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setBackgroundColor(p.bg);
         col.setClickable(true); // не пропускать касания к содержимому под блоком
-        col.setPadding(0, 0, 0, ui.dp(6));
+        col.setPadding(0, 0, 0, ui.dp(4));
 
-        TextView label = ui.text("Мод", 15, p.muted, true);
-        label.setPadding(ui.dp(24), ui.dp(12), ui.dp(24), ui.dp(8));
+        TextView label = ui.header("Мод");
+        label.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(2));
         col.addView(label);
 
-        LinearLayout row = new LinearLayout(act);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ui.dp(20), ui.dp(16), ui.dp(16), ui.dp(16));
-        row.setBackground(ui.round(p.card, 20));
-        row.setClickable(true);
-        row.setOnClickListener(new View.OnClickListener() {
+        col.addView(ui.menuRow(Icons.SLIDERS, "Настройки мода", null, null, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 ModMenu.show(act);
             }
-        });
-
-        TextView gear = ui.text("⚙", 24, p.muted, false);
-        gear.setPadding(0, 0, ui.dp(16), 0);
-        row.addView(gear);
-        TextView name = ui.text("Настройки мода", 19, p.ink, true);
-        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(ui.text("›", 28, p.muted, false));
-
-        LinearLayout.LayoutParams lp = ui.matchWrap();
-        lp.setMargins(ui.dp(7), 0, ui.dp(7), 0);
-        col.addView(row, lp);
+        }));
         return col;
     }
 

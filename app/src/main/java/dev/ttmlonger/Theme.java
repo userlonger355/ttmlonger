@@ -2,9 +2,9 @@ package dev.ttmlonger;
 
 import android.graphics.Color;
 
-/** Цвета самого мода. Акцент мода совпадает с выбранным акцентом TikTok. */
+/** Цвета самого мода. Акцент мода совпадает с выбранным акцентом TikTok (по умолчанию красный TikTok). */
 final class Theme {
-    static final int DEFAULT_ACCENT = 0xFF00C853;
+    static final int DEFAULT_ACCENT = TtStyle.RED;
 
     private Theme() {
     }

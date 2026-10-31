@@ -34,8 +34,8 @@ final class StickerPickScreen extends Screen {
 
     @Override
     void build(LinearLayout body) {
-        body.addView(ui.menuRow("Выбрать отправкой", "Нажмите, затем отправьте любой стикер в чате", null,
-                new View.OnClickListener() {
+        body.addView(ui.menuRow(Icons.STICKER, "Выбрать отправкой", "Нажмите, затем отправьте любой стикер в чате",
+                null, new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         StreakSticker.arm();
@@ -44,17 +44,16 @@ final class StickerPickScreen extends Screen {
                         if (onChosen != null) onChosen.run();
                     }
                 }));
-        body.addView(ui.menuRow("Обновить избранные", "Попросить TikTok загрузить избранные стикеры", null,
-                new View.OnClickListener() {
+        body.addView(ui.menuRow(Icons.REFRESH, "Обновить избранные", "Попросить TikTok загрузить избранные стикеры",
+                null, new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         load();
                     }
                 }));
 
-        status = ui.text("", 13, Ui.MUTED, false);
-        status.setPadding(ui.dp(27), ui.dp(10), ui.dp(27), ui.dp(6));
-        body.addView(status, ui.matchWrap());
+        status = ui.header("");
+        body.addView(status);
 
         list = new LinearLayout(act);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -65,7 +64,7 @@ final class StickerPickScreen extends Screen {
     }
 
     private void load() {
-        status.setText("Загружаю избранные стикеры…");
+        status.setText("Загружаю…");
         StickerLibrary.refresh(new Runnable() {
             @Override
             public void run() {
@@ -77,15 +76,12 @@ final class StickerPickScreen extends Screen {
     private void fill() {
         list.removeAllViews();
         List<StickerLibrary.Entry> all = StickerLibrary.list();
-        status.setText(StickerLibrary.report().trim());
+        status.setText(all.isEmpty() ? "Стикеры" : "Стикеры · " + all.size());
         if (all.isEmpty()) {
-            TextView none = ui.text(Prefs.streakAuto
+            list.addView(ui.note(Prefs.streakAuto
                     ? "Пока пусто. Откройте в TikTok панель стикеров → избранное или отправьте стикер в чате, "
                     + "затем нажмите «Обновить избранные»."
-                    : "Включите автопродление и перезапустите TikTok: без этого мод не видит стикеров.",
-                    16, Ui.MUTED, false);
-            none.setPadding(ui.dp(27), ui.dp(12), ui.dp(27), 0);
-            list.addView(none, ui.matchWrap());
+                    : "Включите автопродление и перезапустите TikTok: без этого мод не видит стикеров."));
             return;
         }
         int n = 0;
@@ -94,9 +90,7 @@ final class StickerPickScreen extends Screen {
             list.addView(row(e));
         }
         if (all.size() > SHOW) {
-            TextView more = ui.text("Показано " + SHOW + " из " + all.size(), 12, Ui.MUTED, false);
-            more.setPadding(ui.dp(27), ui.dp(10), ui.dp(27), 0);
-            list.addView(more, ui.matchWrap());
+            list.addView(ui.note("Показано " + SHOW + " из " + all.size()));
         }
     }
 
@@ -104,15 +98,15 @@ final class StickerPickScreen extends Screen {
         LinearLayout card = new LinearLayout(act);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10));
-        card.setBackground(ui.round(Ui.CARD, 24));
+        card.setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8));
         card.setClickable(true);
+        card.setBackground(ui.ripple());
 
         final ImageView iv = new ImageView(act);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setBackground(ui.round(0xFF262626, 12));
+        iv.setBackground(ui.round(Ui.FIELD, 10));
         iv.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.dp(64), ui.dp(64));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.dp(60), ui.dp(60));
         lp.setMarginEnd(ui.dp(14));
         card.addView(iv, lp);
         if (e.thumb != null) {
@@ -129,16 +123,14 @@ final class StickerPickScreen extends Screen {
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
         String name = e.title == null || e.title.isEmpty() ? "Стикер " + shortId(e.id) : e.title;
-        col.addView(ui.text(name, 17, Ui.WHITE, true));
-        TextView sub = ui.text(e.fav ? "избранный" : "из чата", 13, Ui.MUTED, true);
-        sub.setPadding(0, ui.dp(3), 0, 0);
+        col.addView(ui.medium(name, 16f, Ui.INK));
+        TextView sub = ui.text(e.fav ? "Избранный" : "Из чата", 13.5f, Ui.MUTED, false);
+        sub.setPadding(0, ui.dp(2), 0, 0);
         col.addView(sub);
         card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         if (e.id.equals(StreakSticker.chosenId())) {
-            TextView mark = ui.text("✓", 26, TtStyle.primary(), true);
-            mark.setPadding(ui.dp(8), 0, ui.dp(4), 0);
-            card.addView(mark);
+            card.addView(ui.icon(Icons.CHECK, TtStyle.primary(), 24));
         }
 
         card.setOnClickListener(new View.OnClickListener() {
@@ -150,7 +142,7 @@ final class StickerPickScreen extends Screen {
                 if (onChosen != null) onChosen.run();
             }
         });
-        card.setLayoutParams(sidePadded());
+        card.setLayoutParams(ui.matchWrap());
         return card;
     }
 

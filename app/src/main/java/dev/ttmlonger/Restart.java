@@ -15,17 +15,21 @@ final class Restart {
 
     static void offer(final Activity a) {
         if (a.isFinishing() || a.isDestroyed()) return;
-        new AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert)
+        Ui.ensure(a);
+        AlertDialog d = new AlertDialog.Builder(a, Ui.dialogTheme())
                 .setTitle("Перезапустить TikTok?")
                 .setMessage("Изменения применятся после перезапуска приложения.")
                 .setPositiveButton("Перезапустить", new DialogInterface.OnClickListener() {
                     @Override
-                    public void onClick(DialogInterface d, int which) {
+                    public void onClick(DialogInterface dlg, int which) {
                         now(a);
                     }
                 })
                 .setNegativeButton("Позже", null)
-                .show();
+                .create();
+        Screen.markOwn(d);
+        d.show();
+        Ui.style(d);
     }
 
     static void now(Activity a) {

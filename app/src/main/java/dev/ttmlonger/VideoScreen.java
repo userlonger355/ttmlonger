@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -107,19 +106,11 @@ final class VideoScreen extends Screen {
         }
 
         if (rows.isEmpty()) {
-            TextView none = ui.text("Пока ничего нет. Закройте меню, откройте видео или историю в TikTok, "
-                    + "подождите, пока оно начнёт играть, вызовите меню двумя пальцами и зайдите сюда снова.",
-                    16, Ui.MUTED, false);
-            none.setPadding(ui.dp(27), ui.dp(16), ui.dp(27), 0);
-            body.addView(none, ui.matchWrap());
+            body.addView(ui.note("Пока ничего нет. Закройте меню, откройте видео или историю в TikTok, "
+                    + "подождите, пока оно начнёт играть, вызовите меню двумя пальцами и зайдите сюда снова."));
         }
 
-        TextView foot = ui.text(VideoTracker.status() + "\nХуки: " + DownloadHooks.status()
-                + "\nПоследняя ошибка: " + VideoSaver.lastError()
-                + "\n\nСохраняйте для себя. Чужие видео и истории не публикуйте без согласия автора.",
-                12, Ui.MUTED, false);
-        foot.setPadding(ui.dp(27), ui.dp(20), ui.dp(27), 0);
-        body.addView(foot, ui.matchWrap());
+        body.addView(ui.note("Сохраняйте для себя. Чужие видео и истории не публикуйте без согласия автора."));
 
         tick();
     }
@@ -156,24 +147,23 @@ final class VideoScreen extends Screen {
         LinearLayout card = new LinearLayout(act);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12));
-        card.setBackground(ui.round(Ui.CARD, 24));
+        card.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10));
 
         ImageView iv = new ImageView(act);
         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        iv.setBackground(ui.round(0xFF262626, 12));
+        iv.setBackground(ui.round(Ui.FIELD, 8));
         iv.setClipToOutline(true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.dp(64), ui.dp(86));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.dp(60), ui.dp(80));
         lp.setMarginEnd(ui.dp(14));
         card.addView(iv, lp);
         loadThumb(coverUrl, iv);
 
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
-        TextView t = ui.text(title, 15, Ui.WHITE, true);
+        TextView t = ui.medium(title, 15f, Ui.INK);
         t.setMaxLines(3);
         col.addView(t);
-        row.sub = ui.text(row.tags.isEmpty() ? " " : row.tags, 12, Ui.MUTED, true);
+        row.sub = ui.text(row.tags.isEmpty() ? " " : row.tags, 12.5f, Ui.MUTED, false);
         row.sub.setPadding(0, ui.dp(4), ui.dp(8), 0);
         col.addView(row.sub);
         card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -187,13 +177,13 @@ final class VideoScreen extends Screen {
                     refresh(row);
                 } catch (Throwable ex) {
                     FlagStore.log(ex);
-                    Toasts.show(app, "Не удалось начать сохранение: " + ex.getClass().getSimpleName());
+                    Toasts.show(app, "Не удалось начать сохранение");
                 }
             }
         });
         card.addView(row.button);
 
-        card.setLayoutParams(sidePadded());
+        card.setLayoutParams(ui.matchWrap());
         return card;
     }
 

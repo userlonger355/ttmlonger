@@ -23,10 +23,6 @@ final class StickerHooks {
     private StickerHooks() {
     }
 
-    static String status() {
-        return status;
-    }
-
     static void apply(DexScan.Result r, ClassLoader cl) {
         int found = 0;
         for (DexScan.Ref ref : r.refs) {
@@ -35,7 +31,6 @@ final class StickerHooks {
             found++;
             Method m = DexHooks.findMethod(cl, ref.cls, ref.name, ref.proto);
             if (m == null) {
-                DexHooks.note("стикеры [" + ref.label + "] " + ref.cls + "." + ref.name + ": метод не найден");
                 continue;
             }
             Class<?>[] p = m.getParameterTypes();
@@ -48,7 +43,6 @@ final class StickerHooks {
             try {
                 XposedBridge.hookMethod(m, new Tap(ref.label));
                 count++;
-                DexHooks.note("стикеры [" + ref.label + "]: хук " + ref.cls + "." + ref.name);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }

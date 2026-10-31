@@ -55,32 +55,17 @@ abstract class Screen {
     abstract void build(LinearLayout body);
 
     final void open(String title, String description) {
-        dialog = new Dialog(act, android.R.style.Theme_Material_NoActionBar);
+        dialog = new Dialog(act, Ui.pageTheme());
         markOwn(dialog);
 
         LinearLayout body = new LinearLayout(act);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setBackgroundColor(Ui.BG);
-        body.setPadding(0, 0, 0, ui.dp(40));
-
-        TextView back = ui.text("←", 30, Ui.WHITE, false);
-        back.setPadding(ui.dp(27), ui.dp(18), ui.dp(27), ui.dp(18));
-        back.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                dialog.dismiss();
-            }
-        });
-        body.addView(back, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView t = ui.text(title, 32, Ui.WHITE, true);
-        t.setPadding(ui.dp(27), ui.dp(8), ui.dp(27), ui.dp(8));
-        body.addView(t);
+        body.setPadding(0, 0, 0, ui.dp(32));
 
         if (description != null) {
-            TextView d = ui.text(description, 16, Ui.MUTED, true);
-            d.setPadding(ui.dp(27), ui.dp(4), ui.dp(27), ui.dp(12));
+            TextView d = ui.note(description);
+            d.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(4));
             body.addView(d);
         }
 
@@ -93,9 +78,51 @@ abstract class Screen {
         scroll.addView(body, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // Шапка как в TikTok: стрелка слева, название по центру; линия появляется при прокрутке.
+        FrameLayout bar = new FrameLayout(act);
+        bar.setBackgroundColor(Ui.BG);
+        TextView t = ui.text(title, 17f, Ui.INK, true);
+        t.setSingleLine(true);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        t.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        tp.setMargins(ui.dp(56), 0, ui.dp(56), 0);
+        bar.addView(t, tp);
+
+        FrameLayout back = new FrameLayout(act);
+        back.setBackground(ui.ripple());
+        back.setClickable(true);
+        back.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dialog.dismiss();
+            }
+        });
+        android.widget.ImageView arrow = ui.icon(Icons.CHEVRON_LEFT, Ui.INK, 26);
+        FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(ui.dp(26), ui.dp(26), Gravity.CENTER);
+        back.addView(arrow, ap);
+        bar.addView(back, new FrameLayout.LayoutParams(ui.dp(52), ui.dp(52), Gravity.START | Gravity.CENTER_VERTICAL));
+
+        final View line = ui.divider();
+        line.setVisibility(View.INVISIBLE);
+        scroll.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            @Override
+            public void onScrollChange(View v, int x, int y, int ox, int oy) {
+                line.setVisibility(y > 0 ? View.VISIBLE : View.INVISIBLE);
+            }
+        });
+
+        LinearLayout page = new LinearLayout(act);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(Ui.BG);
+        page.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(52)));
+        page.addView(line);
+        page.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
         FrameLayout root = new FrameLayout(act);
         root.setBackgroundColor(Ui.BG);
-        root.addView(scroll, new FrameLayout.LayoutParams(
+        root.addView(page, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
@@ -113,37 +140,22 @@ abstract class Screen {
             w.setBackgroundDrawable(new ColorDrawable(Ui.BG));
             w.setStatusBarColor(Ui.BG);
             w.setNavigationBarColor(Ui.BG);
+            if (!Ui.DARK) {
+                int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (android.os.Build.VERSION.SDK_INT >= 26) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                w.getDecorView().setSystemUiVisibility(flags);
+            }
         }
         dialog.show();
     }
 
-    /** Карточка с названием, описанием и переключателем справа. */
+    /** Строка с названием, описанием и переключателем справа. */
     final LinearLayout toggleRow(String title, String desc, boolean initial, ModSwitch.Listener l) {
-        LinearLayout card = new LinearLayout(act);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(ui.dp(22), ui.dp(18), ui.dp(18), ui.dp(18));
-        card.setBackground(ui.round(Ui.CARD, 24));
-
-        LinearLayout col = new LinearLayout(act);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(ui.text(title, 21, Ui.WHITE, true));
-        TextView d = ui.text(desc, 16, Ui.MUTED, true);
-        d.setPadding(0, ui.dp(6), ui.dp(12), 0);
-        col.addView(d);
-        card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        ModSwitch sw = new ModSwitch(act, initial);
-        sw.setListener(l);
-        card.addView(sw);
-
-        card.setLayoutParams(sidePadded());
-        return card;
+        return ui.toggleRow(-1, title, desc, initial, l);
     }
 
-    final LinearLayout.LayoutParams sidePadded() {
-        LinearLayout.LayoutParams lp = ui.matchWrap();
-        lp.setMargins(ui.dp(7), ui.dp(6), ui.dp(7), ui.dp(6));
-        return lp;
+    /** То же со значком слева. */
+    final LinearLayout toggleRow(int icon, String title, String desc, boolean initial, ModSwitch.Listener l) {
+        return ui.toggleRow(icon, title, desc, initial, l);
     }
 }

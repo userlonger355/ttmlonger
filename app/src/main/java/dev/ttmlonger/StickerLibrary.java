@@ -252,7 +252,6 @@ final class StickerLibrary {
         }
         favNote = repoClasses.isEmpty() ? "класса с getFavouriteStickersFlow в dex нет"
                 : "классов " + repoClasses.size() + ", хуков " + hooks + "; объект ещё не получен";
-        DexHooks.note("избранные стикеры: " + favNote);
     }
 
     /** Хук-наблюдатель: запоминает репозиторий, когда TikTok сам обращается к избранным. */
@@ -481,7 +480,4 @@ final class StickerLibrary {
         return lastRefresh;
     }
 
-    static String report() {
-        return "  избранные стикеры: " + favNote + "; в списке " + count() + " (избранных " + favCount + ")\n";
-    }
 }

@@ -32,7 +32,7 @@ final class Pill {
             dismiss();
             float d = act.getResources().getDisplayMetrics().density;
             TextView t = TtStyle.floating(act, text);
-            t.setTag(Diag.OWN_TAG);
+            t.setTag(Ui.OWN_TAG);
 
             final Dialog dlg = new Dialog(act);
             dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);

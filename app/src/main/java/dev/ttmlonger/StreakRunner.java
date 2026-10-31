@@ -44,6 +44,8 @@ final class StreakRunner {
         }
     };
     private static volatile String last = "проходов ещё не было";
+    /** Короткое объяснение для экрана «Огонёк»: что мод сейчас делает или чего ему не хватает. */
+    private static volatile String hint = "";
     private static volatile int rounds;
     private static volatile int sends;
     private static volatile int fails;
@@ -129,7 +131,6 @@ final class StreakRunner {
                     round(false);
                 } catch (Throwable e) {
                     FlagStore.log(e);
-                    note("проход: " + e);
                 }
             }
         }, delayMs);
@@ -158,11 +159,6 @@ final class StreakRunner {
             if (LOG.size() >= MAX_LOG) LOG.removeFirst();
             LOG.addLast(line);
         }
-        Diag.note("огонёк: " + s);
-    }
-
-    static String summary() {
-        return last;
     }
 
     // ---------------------------------------------------------------- проход
@@ -190,11 +186,13 @@ final class StreakRunner {
 
         if (StreakHooks.service() == null) {
             last = "служба огоньков ещё не получена: откройте в TikTok список чатов";
+            hint = "Откройте в TikTok список чатов: так мод увидит огоньки";
             return;
         }
         List<String> convs = StreakStore.conversations();
         if (convs.isEmpty()) {
             last = "ни одного чата ещё не видели: откройте в TikTok список чатов";
+            hint = "Чатов с огоньком пока не видно: откройте в TikTok список чатов";
             return;
         }
 
@@ -231,10 +229,11 @@ final class StreakRunner {
                 + ", не прочитано " + unreadable
                 + (statuses.isEmpty() ? "" : "; статусы " + statuses);
         rounds++;
+        hint = "Проверено чатов: " + convs.size() + " · к отправке сейчас: " + due.size() + " · сегодня уже: "
+                + by[StreakLogic.Verdict.SENT_TODAY.ordinal()];
 
         if (dry) {
             last = (System.currentTimeMillis() - t0) + " мс, проверка без отправки: " + head;
-            note(last);
             return;
         }
         if (due.isEmpty()) {
@@ -244,13 +243,13 @@ final class StreakRunner {
         }
         if (!online()) {
             last = "нет сети, отправка отложена; " + head;
-            note(last);
+            hint += " · нет сети, отправка отложена";
             return;
         }
         Object sticker = StreakSticker.get();
         if (sticker == null) {
             last = "к отправке " + due.size() + ", но стикер не выбран: отправьте любой стикер в чате; " + head;
-            note(last);
+            hint += " · стикер не выбран";
             return;
         }
 
@@ -288,27 +287,21 @@ final class StreakRunner {
         }
         StreakStore.flush();
         last = "отправлено " + ok + ", ошибок " + bad + "; " + head;
-        note(last);
+        hint = "Отправлено: " + ok + (bad > 0 ? " · не удалось: " + bad : "") + " · сегодня уже: "
+                + StreakStore.sentToday(System.currentTimeMillis(), tz);
+    }
+
+    /** Короткое состояние для экрана: без технических подробностей. */
+    static String status() {
+        if (!Prefs.streakAuto) return "Автопродление выключено";
+        if (StreakHooks.service() == null) return "Откройте в TikTok список чатов: так мод увидит огоньки";
+        String s = "Чатов известно: " + StreakStore.count() + " · отправлено сегодня: "
+                + StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault());
+        if (StreakSticker.chosenId().isEmpty() && !StreakSticker.has()) s += "\nСтикер не выбран: без него ничего не отправится";
+        if (!hint.isEmpty()) s += "\n" + hint;
+        return s;
     }
 
     // ---------------------------------------------------------------- отчёт
 
-    static String report() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Автопродление огонька: ").append(Prefs.streakAuto ? "включено" : "выключено")
-                .append(Prefs.streakDaily ? ", ежедневно с " + StreakLogic.formatMinute(Prefs.streakMinute)
-                        : ", только гаснущие").append('\n');
-        sb.append(StreakHooks.report());
-        sb.append("  стикер: ").append(StreakSticker.status()).append('\n');
-        sb.append(StickerLibrary.report());
-        sb.append("  чатов известно: ").append(StreakStore.count()).append(", сегодня отправлено записей: ")
-                .append(StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault()))
-                .append(", проходов ").append(rounds).append(", отправок ").append(sends)
-                .append(", ошибок ").append(fails).append('\n');
-        sb.append("  последний проход: ").append(last).append('\n');
-        synchronized (LOG) {
-            for (String l : LOG) sb.append("  ").append(l).append('\n');
-        }
-        return sb.toString();
-    }
 }

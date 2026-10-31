@@ -22,8 +22,6 @@ final class Prefs {
     static volatile String iconId = "";
     /** Название ярлыка; пустая строка — название приложения. */
     static volatile String iconLabel = "";
-    /** Показывать подсказку при запуске: по ней видно, что мод загрузился. */
-    static volatile boolean startupToast = true;
     /** Название выбранного шрифта; пустая строка — шрифт приложения. */
     static volatile String fontName = "";
     /** Скачивать видео без водяного знака TikTok. */
@@ -48,6 +46,9 @@ final class Prefs {
     /** Время суток для ежедневной отправки, минут от полуночи. */
     static volatile int streakMinute = 20 * 60;
 
+    /** Цвет фона страницы настроек TikTok, снятый при последнем показе блока «Мод» (0 — не снимали). */
+    static volatile int pageBg = 0;
+
     private static File file;
 
     private Prefs() {
@@ -65,7 +66,6 @@ final class Prefs {
             amoled = o.optBoolean("amoled", false);
             iconId = o.optString("iconId", "");
             iconLabel = o.optString("iconLabel", "");
-            startupToast = o.optBoolean("startupToast", true);
             fontName = o.optString("fontName", "");
             dlNoWatermark = o.optBoolean("dlNoWatermark", true);
             dlAlways = o.optBoolean("dlAlways", true);
@@ -77,6 +77,8 @@ final class Prefs {
             streakAuto = o.optBoolean("streakAuto", false);
             streakDaily = o.optBoolean("streakDaily", false);
             streakMinute = Math.max(0, Math.min(1439, o.optInt("streakMinute", 20 * 60)));
+            int pb = o.optInt("pageBg", 0);
+            pageBg = pb == 0 ? 0 : (0xFF000000 | pb);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -115,11 +117,6 @@ final class Prefs {
 
     static void setFontName(String name) {
         fontName = name == null ? "" : name.trim();
-        save();
-    }
-
-    static void setStartupToast(boolean v) {
-        startupToast = v;
         save();
     }
 
@@ -168,6 +165,11 @@ final class Prefs {
         save();
     }
 
+    static void setPageBg(int argb) {
+        pageBg = argb == 0 ? 0 : (0xFF000000 | (argb & 0xFFFFFF));
+        save();
+    }
+
     static void setRefSet(boolean v) {
         refSet = v;
         save();
@@ -183,7 +185,6 @@ final class Prefs {
             o.put("amoled", amoled);
             o.put("iconId", iconId);
             o.put("iconLabel", iconLabel);
-            o.put("startupToast", startupToast);
             o.put("fontName", fontName);
             o.put("dlNoWatermark", dlNoWatermark);
             o.put("dlAlways", dlAlways);
@@ -195,6 +196,7 @@ final class Prefs {
             o.put("streakAuto", streakAuto);
             o.put("streakDaily", streakDaily);
             o.put("streakMinute", streakMinute);
+            o.put("pageBg", pageBg);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
             FlagStore.log(t);

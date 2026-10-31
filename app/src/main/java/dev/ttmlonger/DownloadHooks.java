@@ -183,7 +183,6 @@ final class DownloadHooks {
                 }
             }));
         }
-        Diag.note("скачивание: " + status());
     }
 
     private static XC_MethodHook fixed(final int value) {
@@ -458,7 +457,4 @@ final class DownloadHooks {
         return requests + " раз(а); последний вызов: " + lastCaller;
     }
 
-    static String status() {
-        return STATUS.length() == 0 ? "не запускалось" : "хуков " + hooked + ": " + STATUS;
-    }
 }

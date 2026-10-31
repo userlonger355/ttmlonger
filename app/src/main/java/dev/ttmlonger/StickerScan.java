@@ -109,7 +109,7 @@ final class StickerScan {
 
     private static void walk(View v, Ctx c, int depth) {
         if (v == null || depth > 60 || --c.budget < 0 || v.getVisibility() != View.VISIBLE) return;
-        if (Diag.OWN_TAG.equals(v.getTag())) return;
+        if (Ui.OWN_TAG.equals(v.getTag())) return;
         if (v instanceof ImageView) {
             image((ImageView) v, c);
             return;

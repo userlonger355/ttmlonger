@@ -67,12 +67,6 @@ final class StreakSticker {
         return (item != null ? "выбран: " : "выбран, ещё не загружен: ") + name;
     }
 
-    static String status() {
-        ensureLoaded();
-        return (item != null ? "в памяти (" + from + ")" : chosenId.isEmpty() ? "не выбран" : "выбран по номеру, объект не загружен")
-                + (armed() ? ", ждём новый стикер" : "") + "; хранение: " + saved;
-    }
-
     // ---------------------------------------------------------------- пойманные стикеры
 
     /** Для хуков нажатий: ищет среди аргументов модель стикера. */
@@ -115,7 +109,6 @@ final class StreakSticker {
         chosenTitle = StickerLibrary.titleOf(o);
         from = how;
         armedUntil = 0;
-        Diag.note("огонёк: стикер выбран (" + how + ", " + (chosenId.isEmpty() ? "без номера" : chosenId) + ")");
         StreakRunner.async(new Runnable() {
             @Override
             public void run() {

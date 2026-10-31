@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -35,7 +34,8 @@ final class DownloadScreen extends Screen {
 
     @Override
     void build(LinearLayout body) {
-        body.addView(toggleRow("Без водяного знака",
+        body.addView(ui.header("Видео и фото"));
+        body.addView(toggleRow(Icons.VIDEO, "Без водяного знака",
                 "Видео и фото сохраняются чистыми, как в плеере",
                 Prefs.dlNoWatermark, new ModSwitch.Listener() {
                     @Override
@@ -44,7 +44,7 @@ final class DownloadScreen extends Screen {
                     }
                 }));
 
-        body.addView(toggleRow("Скачивать всегда",
+        body.addView(toggleRow(Icons.DOWNLOAD, "Скачивать всегда",
                 "Кнопка «Сохранить» остаётся, даже если автор запретил скачивание",
                 Prefs.dlAlways, new ModSwitch.Listener() {
                     @Override
@@ -53,7 +53,7 @@ final class DownloadScreen extends Screen {
                     }
                 }));
 
-        body.addView(toggleRow("Кнопка «Сохранить через мод»",
+        body.addView(toggleRow(-1, "Кнопка «Сохранить через мод»",
                 "Когда у видео запрещено скачивание, на несколько секунд появляется кнопка: её файл "
                         + "проверяется и не бывает битым",
                 Prefs.dlPill, new ModSwitch.Listener() {
@@ -63,10 +63,9 @@ final class DownloadScreen extends Screen {
                     }
                 }));
 
-        qualityRow = ui.menuRow("Качество видео", qualityLabel(Prefs.dlQuality),
-                "Какой размер брать при сохранении. «Лучшее» — самый крупный из тех, в которых "
-                        + "TikTok выложил это видео",
-                new View.OnClickListener() {
+        qualityRow = ui.menuRow(Icons.SLIDERS, "Качество видео",
+                "«Лучшее» — самый крупный размер из тех, что TikTok выложил",
+                qualityLabel(Prefs.dlQuality), new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         pickQuality();
@@ -74,7 +73,8 @@ final class DownloadScreen extends Screen {
                 });
         body.addView(qualityRow);
 
-        body.addView(toggleRow("Сохранение стикеров",
+        body.addView(ui.header("Стикеры"));
+        body.addView(toggleRow(Icons.STICKER, "Сохранение стикеров",
                 "Кнопка ⬇ на листе стикера в переписке и комментариях",
                 Prefs.saveStickers, new ModSwitch.Listener() {
                     @Override
@@ -83,12 +83,7 @@ final class DownloadScreen extends Screen {
                     }
                 }));
 
-        TextView foot = ui.text("Хуки скачивания: " + DownloadHooks.status()
-                + "\n\nСохраняйте для себя. Чужие видео, фото и стикеры не публикуйте без согласия автора.",
-                13, Ui.MUTED, false);
-        foot.setPadding(ui.dp(27), ui.dp(24), ui.dp(27), 0);
-        body.addView(foot, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        body.addView(ui.note("Сохраняйте для себя. Чужие видео, фото и стикеры не публикуйте без согласия автора."));
     }
 
     private void pickQuality() {
@@ -96,19 +91,20 @@ final class DownloadScreen extends Screen {
         for (int i = 0; i < VALUES.length; i++) {
             if (VALUES[i] == Prefs.dlQuality) checked = i;
         }
-        AlertDialog d = new AlertDialog.Builder(act, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme())
                 .setTitle("Качество видео")
                 .setSingleChoiceItems(LABELS, checked, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dlg, int which) {
                         Prefs.setDlQuality(VALUES[which]);
-                        TextView sub = Ui.subtitleOf(qualityRow);
-                        if (sub != null) sub.setText(qualityLabel(Prefs.dlQuality));
+                        TextView val = Ui.valueOf(qualityRow);
+                        if (val != null) val.setText(qualityLabel(Prefs.dlQuality));
                         dlg.dismiss();
                     }
                 })
                 .create();
         markOwn(d);
         d.show();
+        Ui.style(d);
     }
 }

@@ -88,6 +88,23 @@ final class TtStyle {
         return pill(ctx, text, fill, inkOn(fill), heightDp, textSp, true);
     }
 
+    /** Главная кнопка без значка (красная «пилюля» с текстом). */
+    static TextView accent(Context ctx, CharSequence text, float heightDp, float textSp) {
+        int fill = primary();
+        TextView t = pill(ctx, text, fill, inkOn(fill), heightDp, textSp, false);
+        float d = ctx.getResources().getDisplayMetrics().density;
+        t.setPadding(Math.round(20 * d), 0, Math.round(20 * d), 0);
+        return t;
+    }
+
+    /** Второстепенная кнопка: цвета страницы мода (светло-серая на светлой теме, тёмно-серая на тёмной). */
+    static TextView neutral(Context ctx, CharSequence text, float heightDp, float textSp) {
+        TextView t = pill(ctx, text, Ui.FIELD, Ui.INK, heightDp, textSp, false);
+        float d = ctx.getResources().getDisplayMetrics().density;
+        t.setPadding(Math.round(20 * d), 0, Math.round(20 * d), 0);
+        return t;
+    }
+
     /** Плавающая подсказка поверх видео и листов. */
     static TextView floating(Context ctx, CharSequence text) {
         return pill(ctx, text, FLOAT, Color.WHITE, 40f, 14.5f, true);

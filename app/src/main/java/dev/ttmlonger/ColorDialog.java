@@ -30,16 +30,16 @@ final class ColorDialog {
 
     static void show(final Activity act, int initialRgb, final OnApply cb) {
         final Ui ui = new Ui(act);
-        final int accent = Theme.accent();
-        final Dialog dialog = new Dialog(act);
+                final Dialog dialog = new Dialog(act);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        Screen.markOwn(dialog);
 
         LinearLayout box = new LinearLayout(act);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(ui.dp(22), ui.dp(22), ui.dp(22), ui.dp(22));
-        box.setBackground(ui.round(0xFF1A1A1A, 28));
+        box.setPadding(ui.dp(20), ui.dp(20), ui.dp(20), ui.dp(20));
+        box.setBackground(ui.round(Ui.DARK ? Ui.CARD : Ui.BG, 16));
 
-        TextView title = ui.text("Цветовой акцент", 21, Ui.WHITE, true);
+        TextView title = ui.text("Цвет акцента", 17, Ui.INK, true);
         title.setGravity(Gravity.CENTER);
         box.addView(title, ui.matchWrap());
         box.addView(ui.space(16));
@@ -57,11 +57,11 @@ final class ColorDialog {
 
         final EditText hex = new EditText(act);
         hex.setSingleLine(true);
-        hex.setTextColor(Ui.WHITE);
-        hex.setTextSize(20);
+        hex.setTextColor(Ui.INK);
+        hex.setTextSize(17);
         hex.setTypeface(Typeface.DEFAULT_BOLD);
-        hex.setBackground(ui.round(Color.BLACK, 16));
-        hex.setPadding(ui.dp(20), ui.dp(12), ui.dp(20), ui.dp(12));
+        hex.setBackground(ui.round(Ui.FIELD, 12));
+        hex.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10));
         hex.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
                 | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         hex.setFilters(new InputFilter[]{new InputFilter.LengthFilter(7)});
@@ -71,11 +71,8 @@ final class ColorDialog {
         box.addView(row, ui.matchWrap());
         box.addView(ui.space(16));
 
-        TextView apply = ui.text("Применить", 20, Theme.onColor(accent), true);
-        apply.setGravity(Gravity.CENTER);
-        apply.setPadding(0, ui.dp(16), 0, ui.dp(16));
-        apply.setBackground(ui.round(accent, 40));
-        box.addView(apply, ui.matchWrap());
+        TextView apply = TtStyle.accent(act, "Применить", 48f, 16f);
+        box.addView(apply, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(48)));
 
         final boolean[] busy = {false};
         final int start = initialRgb & 0xFFFFFF;

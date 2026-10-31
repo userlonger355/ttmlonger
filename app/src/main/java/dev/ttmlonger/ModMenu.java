@@ -2,7 +2,6 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -15,26 +14,27 @@ final class ModMenu extends Screen {
     }
 
     static void show(Activity act) {
-        new ModMenu(act).open("Настройки мода", "TTMLonger " + Targets.VERSION);
+        new ModMenu(act).open("Настройки мода", null);
     }
 
     @Override
     void build(LinearLayout body) {
-        regionRow = ui.menuRow("Регион", regionSummary(), null, new View.OnClickListener() {
+        body.addView(ui.header("Основное"));
+        regionRow = ui.menuRow(Icons.GLOBE, "Регион", null, regionSummary(), new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 RegionSheet.show(act, new Runnable() {
                     @Override
                     public void run() {
-                        TextView sub = Ui.subtitleOf(regionRow);
-                        if (sub != null) sub.setText(regionSummary());
+                        TextView val = Ui.valueOf(regionRow);
+                        if (val != null) val.setText(regionSummary());
                     }
                 });
             }
         });
         body.addView(regionRow);
 
-        body.addView(ui.menuRow("Внешний вид", "Цветовой акцент, Amoled-тема, иконка приложения", null,
+        body.addView(ui.menuRow(Icons.PALETTE, "Внешний вид", "Акцент, Amoled-тема, шрифт, значок приложения", null,
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -42,7 +42,8 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow("Скачивание", "Видео без водяного знака, любое качество, стикеры", null,
+        body.addView(ui.header("Сохранение"));
+        body.addView(ui.menuRow(Icons.DOWNLOAD, "Скачивание", "Без водяного знака, качество, обход запрета", null,
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -50,7 +51,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow("Видео и истории", "Сохранить видео, историю или фото, которые показывал TikTok", null,
+        body.addView(ui.menuRow(Icons.VIDEO, "Видео и истории", "Сохранить то, что показывал TikTok", null,
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -58,7 +59,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow("Стикеры", "Сохранить стикеры, которые сейчас на экране", null,
+        body.addView(ui.menuRow(Icons.STICKER, "Стикеры", "Сохранить стикеры с экрана", null,
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -66,17 +67,18 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow("Огонёк", "Автопродление: " + StreakScreen.menuSummary().toLowerCase(),
-                "Само отправляет стикер, когда серия дней в чате вот-вот оборвётся", new View.OnClickListener() {
+        body.addView(ui.header("Личные сообщения"));
+        body.addView(ui.menuRow(Icons.FLAME, "Огонёк", "Само продлевает серию дней в чате", StreakScreen.menuSummary(),
+                new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         StreakScreen.show(act);
                     }
                 }));
 
-        body.addView(toggleRow("Баннер профиля",
-                "Включает в TikTok установку баннера в профиле («Изменить профиль»). "
-                        + "Нужен перезапуск TikTok",
+        body.addView(ui.header("Функции TikTok"));
+        body.addView(toggleRow(Icons.IMAGE, "Баннер профиля",
+                "Установка баннера в «Изменить профиль». Нужен перезапуск TikTok",
                 FlagStore.allOn(Targets.BANNER_FLAGS), new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
@@ -85,8 +87,8 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(toggleRow("Голосовые комментарии",
-                "Включает в TikTok запись голосового комментария. Нужен перезапуск TikTok",
+        body.addView(toggleRow(Icons.MIC, "Голосовые комментарии",
+                "Запись голосового комментария. Нужен перезапуск TikTok",
                 FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS), new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
@@ -95,10 +97,9 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(toggleRow("Набор флагов мода",
-                "Флаги из референс-мода для TikTok 47.5.3: голосовые и пузырь чата в личных, "
-                        + "без рекламы, длинные видео и другое (" + RefSet.size() + " шт.). "
-                        + "Ваши ручные подмены главнее. Нужен перезапуск TikTok",
+        body.addView(toggleRow(Icons.FLAG, "Набор флагов мода",
+                "Голосовые и пузырь чата в личных, без рекламы, длинные видео и другое (" + RefSet.size()
+                        + " шт.). Ваши ручные подмены главнее. Нужен перезапуск TikTok",
                 Prefs.refSet, new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
@@ -107,9 +108,9 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow("Настройки разработчика TikTok (A/B)", "Просмотр и настройка флагов",
-                "Внутренние флаги функций TikTok для тестирования. "
-                        + "Позволяет вручную переключать экспериментальные функции",
+        body.addView(ui.header("Для опытных"));
+        body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
+                "Внутренние флаги (A/B) для тестирования функций", null,
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -117,31 +118,14 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(toggleRow("Подсказка при запуске",
-                "Короткое уведомление при открытии TikTok: видно, что мод загрузился",
-                Prefs.startupToast, new ModSwitch.Listener() {
-                    @Override
-                    public void onChanged(boolean on) {
-                        Prefs.setStartupToast(on);
-                    }
-                }));
-
-        body.addView(ui.menuRow("Диагностика", "Отчёт о том, что мод видит на экране", null,
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        DiagScreen.show(act);
-                    }
-                }));
-
-        TextView foot = ui.text(FlagHooks.status(), 13, Ui.MUTED, false);
-        foot.setPadding(ui.dp(27), ui.dp(24), ui.dp(27), 0);
-        body.addView(foot, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView ver = ui.text("TTMLonger " + Targets.VERSION, 13, Ui.MUTED, false);
+        ver.setGravity(android.view.Gravity.CENTER);
+        ver.setPadding(0, ui.dp(28), 0, ui.dp(8));
+        body.addView(ver, ui.matchWrap());
     }
 
     private static String regionSummary() {
         String name = Regions.nameOf(Prefs.region);
-        return name == null ? "Не подменяется" : name;
+        return name == null ? "Не меняется" : name;
     }
 }

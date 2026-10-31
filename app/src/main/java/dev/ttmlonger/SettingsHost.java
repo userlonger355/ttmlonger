@@ -129,8 +129,6 @@ final class SettingsHost {
         private void giveUp(String why) {
             failed = true;
             state = "не удалось: " + why;
-            Diag.note("блок в настройках: " + state);
-            FlagStore.log("блок в настройках: " + why);
         }
 
         // ------------------------------------------------------------ вставка
@@ -177,7 +175,6 @@ final class SettingsHost {
             column.requestApplyInsets();
             injected = true;
             state = "добавлен над " + c.getClass().getName() + ", цвет страницы по теме (предварительно)";
-            Diag.note("блок в настройках: " + state);
             for (long delay : SAMPLE_AT_MS) {
                 main.postDelayed(new Runnable() {
                     @Override
@@ -208,7 +205,7 @@ final class SettingsHost {
                     }
                 }
             } catch (Throwable t) {
-                if (tries == 1) Diag.note("getFragmentContainer недоступен: " + t);
+                // контейнер фрагментов недоступен: пробуем запасной путь ниже
             }
             // Запасной путь: первое, что активность положила в окно.
             View content = act.findViewById(android.R.id.content);
@@ -262,7 +259,6 @@ final class SettingsHost {
             if (want == folded) return;
             folded = want;
             ModBlock.fold(block, folded, inset, ui.dp(6));
-            Diag.note(folded ? "блок уступил место подстранице" : "блок вернулся");
         }
 
         // ------------------------------------------------------------ цвета страницы
@@ -338,7 +334,6 @@ final class SettingsHost {
             ModBlock.fold(block, folded, inset, ui.dp(6));
             state = "добавлен над " + container.getClass().getName() + ", цвет страницы "
                     + Integer.toHexString(color & 0xFFFFFF) + " (снят с экрана)";
-            Diag.note("блок в настройках: " + state);
         }
     }
 }

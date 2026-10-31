@@ -44,7 +44,7 @@ final class AvatarScreen {
 
             Ui ui = new Ui(act);
             TextView b = TtStyle.primary(act, "Сохранить аватар", 44f, 15.5f);
-            b.setTag(Diag.OWN_TAG);
+            b.setTag(Ui.OWN_TAG);
             b.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -58,8 +58,6 @@ final class AvatarScreen {
                     Gravity.TOP | Gravity.CENTER_HORIZONTAL);
             lp.topMargin = (int) (act.getResources().getDisplayMetrics().heightPixels * 0.74f);
             content.addView(b, lp);
-            Diag.note("кнопка «Сохранить аватар» добавлена на " + act.getClass().getName()
-                    + "; " + AvatarHooks.status());
         } catch (Throwable t) {
             FlagStore.log(t);
         }
