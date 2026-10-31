@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.8.0";
+    static final String VERSION = "0.8.1";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -252,6 +252,8 @@ final class Targets {
     static final String STICKER_ITEM_CLASS = "com.ss.android.ugc.aweme.im.common.model.StickerItem";
     /** Точка входа службы стикеров личных сообщений. */
     static final String STICKER_API = "com.ss.android.ugc.aweme.im.sticker.api.IMStickerApi";
+    /** Методы репозитория избранных стикеров: имена не обфусцированы, класс находит DexScan. */
+    static final String[] FAV_METHODS = {"getFavouriteStickersFlow", "refreshFavouriteStickers"};
     /** Имя константы-источника отправки: так TikTok сам помечает автоматические стикеры огоньков. */
     static final String STREAK_SOURCE = "AUTO_CONSECUTIVE_SA_STICKERS";
 

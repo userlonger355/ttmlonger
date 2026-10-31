@@ -32,7 +32,7 @@ import java.util.TreeSet;
  */
 final class DexScan {
     /** Меняется при любом изменении правил поиска: старый кэш тогда не используется. */
-    static final int VERSION = 2;
+    static final int VERSION = 3;
 
     private DexScan() {
     }
@@ -68,6 +68,11 @@ final class DexScan {
          * метод, где строка найдена, попадает в результат как Ref("const:строка", класс, метод, сигнатура).
          */
         String[] consts = new String[0];
+        /**
+         * Имена методов, которые не обфусцированы (например, getFavouriteStickersFlow): каждый
+         * найденный метод попадает в результат как Ref("method:имя", класс, имя, сигнатура).
+         */
+        String[] methods = new String[0];
         /** Момент (System.currentTimeMillis), после которого разбор прекращается; 0 — без лимита. */
         long deadline;
     }
@@ -333,6 +338,8 @@ final class DexScan {
         int[] ifaceOf;
         boolean[] isConst;
         String[] constName;
+        /** Для каждой строки: искомое имя метода или null; null вместо массива, если искать нечего. */
+        String[] methodName;
         /** Заполняется scanCode: найденные в методе искомые строки. */
         List<String> constHits;
         char[] typeFirst;
@@ -566,6 +573,26 @@ final class DexScan {
                 }
             }
 
+            if (o.methods.length > 0) {
+                int[] first = new int[256];
+                byte[][] want = new byte[o.methods.length][];
+                for (int i = 0; i < want.length; i++) {
+                    want[i] = o.methods[i].getBytes(LATIN1);
+                    first[want[i][0] & 0xff]++;
+                }
+                for (int s = 0; s < strN; s++) {
+                    int p = strStart(s);
+                    if (first[b[p] & 0xff] == 0) continue;
+                    for (int i = 0; i < want.length; i++) {
+                        if (b[p] == want[i][0] && strIs(s, want[i])) {
+                            if (methodName == null) methodName = new String[strN];
+                            methodName[s] = o.methods[i];
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (o.consts.length > 0) {
                 int[] first = new int[256];
                 byte[][] want = new byte[o.consts.length][];
@@ -704,6 +731,14 @@ final class DexScan {
                         if (mid < 0 || mid >= mthN) continue;
                         res.methods++;
                         int pro = u16(mthOff + 8 * mid + 2);
+                        if (methodName != null) {
+                            int nameIdx = u32(mthOff + 8 * mid + 4);
+                            if (nameIdx >= 0 && nameIdx < strN && methodName[nameIdx] != null) {
+                                if (clsName == null) clsName = typeDesc(u32(def));
+                                Ref r = new Ref("method:" + methodName[nameIdx], clsName, methodName[nameIdx], protoDesc(pro));
+                                if (!refs.containsKey(r.id())) refs.put(r.id(), r);
+                            }
+                        }
                         int rk = readerKind[pro];
                         if (rk > 0 && (acc & 0x8) == 0 && code != 0) {
                             mask |= 1 << (rk - 1);

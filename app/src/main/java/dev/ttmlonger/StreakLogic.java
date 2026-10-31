@@ -77,6 +77,19 @@ final class StreakLogic {
         return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
     }
 
+    /** Сколько миллисекунд до ближайшего момента «minute» (минут от полуночи) строго после now. */
+    static long millisUntil(long now, int minute, TimeZone tz) {
+        int m = Math.max(0, Math.min(1439, minute));
+        Calendar c = Calendar.getInstance(tz);
+        c.setTimeInMillis(now);
+        c.set(Calendar.HOUR_OF_DAY, m / 60);
+        c.set(Calendar.MINUTE, m % 60);
+        c.set(Calendar.SECOND, 0);
+        c.set(Calendar.MILLISECOND, 0);
+        if (c.getTimeInMillis() <= now) c.add(Calendar.DAY_OF_YEAR, 1);
+        return c.getTimeInMillis() - now;
+    }
+
     static String formatMinute(int minute) {
         int m = Math.max(0, Math.min(1439, minute));
         return (m / 60 < 10 ? "0" : "") + (m / 60) + ":" + (m % 60 < 10 ? "0" : "") + (m % 60);

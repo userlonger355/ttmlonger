@@ -134,6 +134,7 @@ final class DexHooks {
             o.shapes = Targets.STICKER_SHAPES;
             o.interfaces = new String[][]{{"streak", Targets.STREAK_SERVICE}};
             o.consts = new String[]{Targets.STREAK_SOURCE};
+            o.methods = Targets.FAV_METHODS;
             o.deadline = System.currentTimeMillis() + SCAN_LIMIT_MS;
             ApkSource src = new ApkSource(apks);
             try {

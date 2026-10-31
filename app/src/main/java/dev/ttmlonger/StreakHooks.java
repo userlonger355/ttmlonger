@@ -161,6 +161,11 @@ final class StreakHooks {
                 + (dataClass == null ? "; класса StreakData нет" : "")
                 + (constClasses.isEmpty() ? "; константы источника в dex нет" : "");
         DexHooks.note("огонёк: " + status);
+        try {
+            StickerLibrary.apply(r, cl);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
         StreakRunner.init(ctx);
         // Файлы с известными чатами читаем заранее и в фоне: хук вызывается в потоках TikTok.
         StreakRunner.async(new Runnable() {

@@ -49,34 +49,32 @@ final class StreakScreen extends Screen {
                     @Override
                     public void onChanged(boolean on) {
                         Prefs.setStreakDaily(on);
+                        StreakRunner.reschedule();
                     }
                 }));
 
         timeRow = ui.menuRow("Время ежедневной отправки", StreakLogic.formatMinute(Prefs.streakMinute),
-                "Нажмите, чтобы сменить: 12:00, 18:00, 20:00, 22:00. Действует только в режиме «каждый день»",
+                "Нажмите и задайте время с точностью до минуты. Действует в режиме «каждый день»: "
+                        + "мод отправит стикер именно в эту минуту, если TikTok запущен",
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        Prefs.setStreakMinute(StreakLogic.nextChoice(Prefs.streakMinute));
-                        TextView sub = Ui.subtitleOf(timeRow);
-                        if (sub != null) sub.setText(StreakLogic.formatMinute(Prefs.streakMinute));
+                        pickTime();
                     }
                 });
         body.addView(timeRow);
 
         stickerRow = ui.menuRow("Стикер для огоньков", stickerSummary(),
-                "Мод берёт настоящий стикер, когда вы отправляете его в чате. Нажмите здесь и отправьте "
-                        + "любой стикер в течение 5 минут, чтобы выбрать другой",
+                "Выберите из избранных стикеров TikTok или из тех, что мод видел в чатах",
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        if (!Prefs.streakAuto) {
-                            Toasts.show(act, "Сначала включите автопродление и перезапустите TikTok");
-                            return;
-                        }
-                        StreakSticker.arm();
-                        Toasts.show(act, "Отправьте любой стикер в чате: мод его запомнит");
-                        refresh();
+                        StickerPickScreen.show(act, new Runnable() {
+                            @Override
+                            public void run() {
+                                refresh();
+                            }
+                        });
                     }
                 });
         body.addView(stickerRow);
@@ -117,7 +115,27 @@ final class StreakScreen extends Screen {
     }
 
     private static String stickerSummary() {
-        return StreakSticker.status();
+        return StreakSticker.summary();
+    }
+
+    /** Редактор времени: часы и минуты, 24 часа. */
+    private void pickTime() {
+        int m = Prefs.streakMinute;
+        android.app.TimePickerDialog d = new android.app.TimePickerDialog(act,
+                android.R.style.Theme_Material_Dialog_Alert, new android.app.TimePickerDialog.OnTimeSetListener() {
+            @Override
+            public void onTimeSet(android.widget.TimePicker view, int hour, int minute) {
+                Prefs.setStreakMinute(hour * 60 + minute);
+                StreakRunner.reschedule();
+                TextView sub = Ui.subtitleOf(timeRow);
+                if (sub != null) sub.setText(StreakLogic.formatMinute(Prefs.streakMinute));
+                if (!Prefs.streakDaily) {
+                    Toasts.show(act, "Время сохранено. Оно действует в режиме «каждый день»");
+                }
+            }
+        }, m / 60, m % 60, true);
+        markOwn(d);
+        d.show();
     }
 
     private void refresh() {

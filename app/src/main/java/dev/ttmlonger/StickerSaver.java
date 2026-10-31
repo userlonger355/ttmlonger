@@ -199,7 +199,7 @@ final class StickerSaver {
         return u;
     }
 
-    private static String modelUrl(Object model) {
+    static String modelUrl(Object model) {
         Map<Object, Boolean> seen = new IdentityHashMap<>();
         return find(model, seen, new int[]{MAX_OBJECTS}, 0, false);
     }

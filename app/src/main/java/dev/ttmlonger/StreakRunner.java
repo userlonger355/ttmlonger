@@ -32,6 +32,17 @@ final class StreakRunner {
     private static Handler handler;
     private static boolean pending;
     private static final ArrayDeque<String> LOG = new ArrayDeque<>();
+    private static final Runnable DAILY = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                if (Prefs.streakAuto) round(false);
+            } catch (Throwable e) {
+                FlagStore.log(e);
+            }
+            reschedule();
+        }
+    };
     private static volatile String last = "проходов ещё не было";
     private static volatile int rounds;
     private static volatile int sends;
@@ -58,6 +69,22 @@ final class StreakRunner {
                 handler.postDelayed(this, PERIOD_MS);
             }
         }, FIRST_MS);
+        reschedule();
+    }
+
+    /**
+     * Ставит проход точно на выбранную минуту (режим «каждый день»). Вызывается при запуске, после
+     * каждого такого прохода и когда меняется время или режим. Если TikTok в этот момент спит,
+     * проход случится при пробуждении: время к тому моменту уже наступило.
+     */
+    static synchronized void reschedule() {
+        Handler h = handler;
+        if (h == null) return;
+        h.removeCallbacks(DAILY);
+        if (Prefs.streakAuto && Prefs.streakDaily) {
+            long wait = StreakLogic.millisUntil(System.currentTimeMillis(), Prefs.streakMinute, TimeZone.getDefault());
+            h.postDelayed(DAILY, wait + 2000L);
+        }
     }
 
     /** Выполнить в фоне (запись файлов и тому подобное). */
@@ -69,6 +96,21 @@ final class StreakRunner {
             Thread t = new Thread(r, "ttmlonger-streak-io");
             t.setDaemon(true);
             t.start();
+        }
+    }
+
+    /** Выполнить в фоне через delayMs. */
+    static void later(final Runnable r, long delayMs) {
+        Handler h = handler;
+        if (h != null) {
+            h.postDelayed(r, delayMs);
+        } else {
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    async(r);
+                }
+            }, delayMs);
         }
     }
 
@@ -258,6 +300,7 @@ final class StreakRunner {
                         : ", только гаснущие").append('\n');
         sb.append(StreakHooks.report());
         sb.append("  стикер: ").append(StreakSticker.status()).append('\n');
+        sb.append(StickerLibrary.report());
         sb.append("  чатов известно: ").append(StreakStore.count()).append(", сегодня отправлено записей: ")
                 .append(StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault()))
                 .append(", проходов ").append(rounds).append(", отправок ").append(sends)
