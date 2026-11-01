@@ -72,6 +72,7 @@ final class ScreenWatcher {
             if (SettingsHost.matches(a)) SettingsHost.attach(a);
             if (AvatarScreen.matches(a)) AvatarScreen.attach(a);
             watch(a);
+            VideoInfo.kick();
         } catch (Throwable t) {
             FlagStore.log(t);
         }

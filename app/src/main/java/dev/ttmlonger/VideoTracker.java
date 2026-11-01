@@ -25,6 +25,10 @@ final class VideoTracker {
         volatile long seen;
         volatile long played;
         volatile boolean prohibited;
+        /** Время публикации и регион (считаются при первом обращении), см. VideoInfo. */
+        volatile VideoInfo.Meta meta;
+        /** Имена автора и начало описания для поиска на экране, см. VideoInfo. */
+        volatile VideoInfo.Keys keys;
 
         Entry(Object aweme) {
             this.aweme = aweme;

@@ -42,6 +42,16 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.header("Лента"));
+        body.addView(ui.menuRow(Icons.CLOCK, "Время и регион видео",
+                "Точное время публикации, флаг и код страны над именем автора", VideoInfoScreen.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        VideoInfoScreen.show(act);
+                    }
+                }));
+
         body.addView(ui.header("Сохранение"));
         body.addView(ui.menuRow(Icons.DOWNLOAD, "Скачивание", "Без водяного знака, качество, обход запрета", null,
                 new View.OnClickListener() {

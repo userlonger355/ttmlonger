@@ -46,6 +46,15 @@ final class Prefs {
     /** Время суток для ежедневной отправки, минут от полуночи. */
     static volatile int streakMinute = 20 * 60;
 
+    /** Плашка с точным временем публикации над именем автора в ленте. */
+    static volatile boolean vtTime = true;
+    /** Показывать в плашке секунды. */
+    static volatile boolean vtSeconds = true;
+    /** Плашка с регионом видео: флаг и код страны. */
+    static volatile boolean vtRegion = true;
+    /** Вид плашки региона: 0 флаг и код, 1 только флаг, 2 только код. */
+    static volatile int vtRegionMode = 0;
+
     /** Цвет фона страницы настроек TikTok, снятый при последнем показе блока «Мод» (0 — не снимали). */
     static volatile int pageBg = 0;
 
@@ -77,6 +86,10 @@ final class Prefs {
             streakAuto = o.optBoolean("streakAuto", false);
             streakDaily = o.optBoolean("streakDaily", false);
             streakMinute = Math.max(0, Math.min(1439, o.optInt("streakMinute", 20 * 60)));
+            vtTime = o.optBoolean("vtTime", true);
+            vtSeconds = o.optBoolean("vtSeconds", true);
+            vtRegion = o.optBoolean("vtRegion", true);
+            vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
             int pb = o.optInt("pageBg", 0);
             pageBg = pb == 0 ? 0 : (0xFF000000 | pb);
         } catch (Throwable t) {
@@ -165,6 +178,26 @@ final class Prefs {
         save();
     }
 
+    static void setVtTime(boolean v) {
+        vtTime = v;
+        save();
+    }
+
+    static void setVtSeconds(boolean v) {
+        vtSeconds = v;
+        save();
+    }
+
+    static void setVtRegion(boolean v) {
+        vtRegion = v;
+        save();
+    }
+
+    static void setVtRegionMode(int v) {
+        vtRegionMode = Math.max(0, Math.min(2, v));
+        save();
+    }
+
     static void setPageBg(int argb) {
         pageBg = argb == 0 ? 0 : (0xFF000000 | (argb & 0xFFFFFF));
         save();
@@ -196,6 +229,10 @@ final class Prefs {
             o.put("streakAuto", streakAuto);
             o.put("streakDaily", streakDaily);
             o.put("streakMinute", streakMinute);
+            o.put("vtTime", vtTime);
+            o.put("vtSeconds", vtSeconds);
+            o.put("vtRegion", vtRegion);
+            o.put("vtRegionMode", vtRegionMode);
             o.put("pageBg", pageBg);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {
