@@ -27,7 +27,8 @@ final class StickerHooks {
         int found = 0;
         for (DexScan.Ref ref : r.refs) {
             // «impl:» и «const:» — находки для огоньков, не методы нажатия.
-            if (ref.label.startsWith("impl:") || ref.label.startsWith("const:")) continue;
+            if (ref.label.startsWith("impl:") || ref.label.startsWith("const:") || ref.label.startsWith("method:")
+                    || ref.label.startsWith("act:")) continue;
             found++;
             Method m = DexHooks.findMethod(cl, ref.cls, ref.name, ref.proto);
             if (m == null) {

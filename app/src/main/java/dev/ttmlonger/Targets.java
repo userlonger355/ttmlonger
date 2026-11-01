@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.1.0a";
+    static final String VERSION = "0.1.0b";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -258,6 +258,19 @@ final class Targets {
     static final String[] FAV_METHODS = {"getFavouriteStickersFlow", "refreshFavouriteStickers"};
     /** Имя константы-источника отправки: так TikTok сам помечает автоматические стикеры огоньков. */
     static final String STREAK_SOURCE = "AUTO_CONSECUTIVE_SA_STICKERS";
+
+    /** Служба аккаунта: у неё есть getCurUserId (имя настоящее, а как её достать, обфусцировано). */
+    static final String ACCOUNT_USER_SERVICE = "Lcom/ss/android/ugc/aweme/IAccountUserService;";
+    /** Метод списка друзей: имя не обфусцировано, класс находит DexScan. */
+    static final String[] FRIEND_METHODS = {"getAllFriends"};
+    /**
+     * Статические методы без параметров, которые отдают службу (метка начинается с «act:»): так службу
+     * можно достать сразу, не дожидаясь, пока TikTok сам к ней обратится.
+     */
+    static final String[][] ACTIVE_SHAPES = {
+            {"act:streak-get", "()" + STREAK_SERVICE},
+            {"act:account-user", "()" + ACCOUNT_USER_SERVICE},
+    };
 
     /** Интерфейс обработчика нажатий на стикер в личных сообщениях (реальное имя, не обфусцировано). */
     static final String STICKER_CLICK_IFACE =

@@ -15,7 +15,7 @@ import java.util.Map;
  * данными мода. Отметки об отправке нужны, чтобы после перезапуска TikTok не отправить второй раз.
  */
 final class StreakStore {
-    private static final int MAX_CONVS = 300;
+    private static final int MAX_CONVS = 600;
     private static final String CONVS = "streak_convs.txt";
     private static final String SENT = "streak_sent.txt";
 
@@ -63,6 +63,21 @@ final class StreakStore {
             it.next();
             it.remove();
         }
+        convs.add(conv);
+        while (convs.size() > MAX_CONVS) {
+            java.util.Iterator<String> it = convs.iterator();
+            it.next();
+            it.remove();
+        }
+        dirtyConvs = true;
+        return true;
+    }
+
+    /** Чат, придуманный по списку друзей: не вытесняет настоящие, а при полном списке не добавляется. */
+    static synchronized boolean noteDerived(String conv) {
+        if (!StreakLogic.isConvId(conv)) return false;
+        load();
+        if (convs.contains(conv) || convs.size() >= MAX_CONVS) return false;
         convs.add(conv);
         dirtyConvs = true;
         return true;

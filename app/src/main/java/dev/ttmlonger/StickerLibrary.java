@@ -234,6 +234,7 @@ final class StickerLibrary {
     static void apply(DexScan.Result r, ClassLoader cl) {
         for (DexScan.Ref ref : r.refs) {
             if (!ref.label.startsWith("method:")) continue;
+            if (!java.util.Arrays.asList(Targets.FAV_METHODS).contains(ref.label.substring("method:".length()))) continue;
             Class<?> c = DexHooks.load(cl, ref.cls);
             if (c == null) continue;
             if (!repoClasses.contains(c.getName())) {
@@ -321,20 +322,8 @@ final class StickerLibrary {
     private static Object findRepo(ClassLoader cl) {
         for (String name : repoClasses) {
             try {
-                Class<?> c = Class.forName(name, false, cl);
-                for (Field f : c.getDeclaredFields()) {
-                    if (!Modifier.isStatic(f.getModifiers()) || !c.isAssignableFrom(f.getType())) continue;
-                    f.setAccessible(true);
-                    Object v = f.get(null);
-                    if (v != null && c.isInstance(v)) return v;
-                }
-                for (Method m : c.getDeclaredMethods()) {
-                    if (!Modifier.isStatic(m.getModifiers()) || m.getParameterTypes().length != 0) continue;
-                    if (m.getReturnType() != c) continue;
-                    m.setAccessible(true);
-                    Object v = m.invoke(null);
-                    if (v != null && c.isInstance(v)) return v;
-                }
+                Object v = Instances.find(Class.forName(name, false, cl));
+                if (v != null) return v;
             } catch (Throwable ignored) {
                 // не получилось: ждём хука
             }

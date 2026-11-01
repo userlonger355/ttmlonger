@@ -59,6 +59,23 @@ final class StreakHooks {
     private static volatile int reads;
     private static volatile int readFails;
 
+    // Активный поиск: служба, номер аккаунта и друзья добываются сами, не дожидаясь TikTok.
+    private static volatile DexScan.Result scan;
+    private static volatile boolean serviceActive;
+    private static volatile String acquireNote = "ещё не искали";
+    private static volatile String uidNote = "ещё не искали";
+    private static volatile String friendsNote = "ещё не искали";
+    private static volatile String initNote = "не вызывали";
+    private static volatile String ownUid = "";
+    private static volatile List<String> friendUids = new ArrayList<>();
+    private static volatile Object friendsHolder;
+    private static volatile Method friendsM;
+    private static volatile long friendsAt;
+    private static volatile long lastDiscover;
+    private static volatile boolean inited;
+    private static volatile int derived;
+    private static final List<String> friendClasses = new ArrayList<>();
+
     private static volatile Object message;
     private static volatile Sender sender;
     private static volatile boolean senderHooked;
@@ -99,7 +116,11 @@ final class StreakHooks {
                 + ", объект " + (service == null ? "не получен" : service.getClass().getName()) + "\n"
                 + "чтение: " + readNote + "; чтений " + reads + ", сбоев " + readFails + "\n"
                 + "статус: " + statusNote + "\n"
-                + "отправка: " + senderNote;
+                + "отправка: " + senderNote + "\n"
+                + "поиск службы: " + acquireNote + (serviceActive ? " (сам)" : "") + "\n"
+                + "номер аккаунта: " + uidNote + "\n"
+                + "друзья: " + friendsNote + "; чатов по друзьям добавлено всего " + derived + "\n"
+                + "инициализация: " + initNote;
     }
 
     // ---------------------------------------------------------------- подключение
@@ -143,12 +164,26 @@ final class StreakHooks {
                 constClasses.add(ref.cls);
             }
         }
+        scan = r;
         try {
             hookService(r, cl);
         } catch (Throwable t) {
             status = "служба огоньков: " + t.getClass().getSimpleName();
             FlagStore.log(t);
         }
+        try {
+            hookFriends(r, cl);
+        } catch (Throwable t) {
+            friendsNote = "хуки друзей: " + t.getClass().getSimpleName();
+            FlagStore.log(t);
+        }
+        // Через двадцать секунд после запуска вход в аккаунт, скорее всего, уже выполнен: ищем службу сами.
+        StreakRunner.later(new Runnable() {
+            @Override
+            public void run() {
+                discover(true);
+            }
+        }, 20_000L);
     }
 
     private static void hookService(DexScan.Result r, ClassLoader cl) {
@@ -274,6 +309,346 @@ final class StreakHooks {
             } catch (Throwable ignored) {
                 // наблюдатель не должен мешать TikTok
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- активный поиск
+
+    /** Как называется служба в этой версии: интерфейс, который нашли при разборе dex, или известное имя. */
+    private static Class<?> serviceInterface() {
+        Class<?> ic = iface;
+        if (ic == null) ic = DexHooks.load(loader, Targets.STREAK_SERVICE);
+        return ic;
+    }
+
+    /**
+     * Достаёт службу огоньков сам: по найденному в dex статическому методу без параметров, который
+     * её отдаёт, по синглтону в классах-реализациях и через ServiceManager. Работает в фоновом потоке.
+     */
+    private static Object acquire(Class<?> ic) {
+        StringBuilder why = new StringBuilder();
+        DexScan.Result r = scan;
+        if (r != null) {
+            List<DexScan.Ref> refs = r.refs("act:streak-get");
+            if (refs.isEmpty()) why.append("метода-доступа в dex нет; ");
+            for (DexScan.Ref ref : refs) {
+                try {
+                    Method m = DexHooks.findMethod(loader, ref.cls, ref.name, ref.proto);
+                    if (m == null || !Modifier.isStatic(m.getModifiers()) || m.getParameterTypes().length != 0) continue;
+                    m.setAccessible(true);
+                    Object v = m.invoke(null);
+                    if (v != null && ic.isInstance(v)) {
+                        acquireNote = "получена статическим методом " + ref.name + " в " + ref.cls;
+                        return v;
+                    }
+                    why.append(ref.name).append(" вернул ").append(v == null ? "null" : v.getClass().getSimpleName()).append("; ");
+                } catch (Throwable t) {
+                    why.append("метод ").append(ref.name).append(": ").append(causeOf(t)).append("; ");
+                }
+            }
+        }
+        for (String name : new ArrayList<>(implSeen)) {
+            Object v = Instances.find(cls(name));
+            if (v != null && ic.isInstance(v)) {
+                acquireNote = "получена как синглтон " + name;
+                return v;
+            }
+        }
+        for (String holder : new String[]{"com.ss.android.ugc.aweme.framework.services.ServiceManager"}) {
+            try {
+                Class<?> sm = Class.forName(holder, false, loader);
+                Object inst = sm.getMethod("get").invoke(null);
+                Method gs = null;
+                for (Method m : sm.getMethods()) {
+                    Class<?>[] p = m.getParameterTypes();
+                    if (m.getName().equals("getService") && p.length == 1 && p[0] == Class.class) gs = m;
+                }
+                if (inst == null || gs == null) {
+                    why.append("ServiceManager без getService; ");
+                    continue;
+                }
+                Object v = gs.invoke(inst, ic);
+                if (v != null && ic.isInstance(v)) {
+                    acquireNote = "получена через ServiceManager";
+                    return v;
+                }
+                why.append("ServiceManager вернул ").append(v == null ? "null" : v.getClass().getSimpleName()).append("; ");
+            } catch (ClassNotFoundException e) {
+                why.append("ServiceManager в этой версии нет; ");
+            } catch (Throwable t) {
+                why.append("ServiceManager: ").append(causeOf(t)).append("; ");
+            }
+        }
+        acquireNote = "не получена: " + why;
+        return null;
+    }
+
+    private static String causeOf(Throwable t) {
+        Throwable why = t instanceof InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+        return why.getClass().getSimpleName() + (why.getMessage() == null ? "" : " " + why.getMessage());
+    }
+
+    /**
+     * Единственный публичный метод службы без параметров и без результата, которого нет в интерфейсе
+     * (инициализация после входа в аккаунт): вызывается один раз, и только если служба получена самим
+     * модом. Если таких методов несколько, ничего не вызывается.
+     */
+    private static void initService(final Object svc, Class<?> ic) {
+        if (inited) return;
+        inited = true;
+        Method only = null;
+        int n = 0;
+        StringBuilder names = new StringBuilder();
+        try {
+            for (Method m : svc.getClass().getMethods()) {
+                Class<?> owner = m.getDeclaringClass();
+                if (owner == Object.class || owner.isInterface() || Modifier.isStatic(m.getModifiers())) continue;
+                if (m.getParameterTypes().length != 0 || m.getReturnType() != void.class) continue;
+                String on = owner.getName();
+                if (on.startsWith("java.") || on.startsWith("android.") || on.startsWith("kotlin.")) continue;
+                boolean inIface = false;
+                for (Method im : ic.getMethods()) {
+                    if (im.getName().equals(m.getName()) && im.getParameterTypes().length == 0) inIface = true;
+                }
+                if (inIface) continue;
+                n++;
+                only = m;
+                if (names.length() < 80) names.append(m.getName()).append(' ');
+            }
+        } catch (Throwable t) {
+            initNote = "поиск инициализации: " + causeOf(t);
+            return;
+        }
+        if (n != 1) {
+            initNote = n == 0 ? "метода инициализации нет" : "кандидатов " + n + " (" + names.toString().trim() + "), не вызываю";
+            return;
+        }
+        final Method m = only;
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    m.setAccessible(true);
+                    m.invoke(svc);
+                    initNote = "вызван " + m.getName();
+                } catch (Throwable t) {
+                    initNote = "вызов " + m.getName() + ": " + causeOf(t);
+                }
+            }
+        });
+    }
+
+    /** Номер аккаунта владельца: из службы аккаунта TikTok, а если не вышло, по общему номеру в известных чатах. */
+    private static String ownUid() {
+        String have = ownUid;
+        if (!have.isEmpty()) return have;
+        StringBuilder why = new StringBuilder();
+        DexScan.Result r = scan;
+        Class<?> ac = null;
+        try {
+            ac = Class.forName("com.ss.android.ugc.aweme.IAccountUserService", false, loader);
+        } catch (Throwable ignored) {
+            why.append("IAccountUserService нет; ");
+        }
+        if (r != null && ac != null) {
+            for (DexScan.Ref ref : r.refs("act:account-user")) {
+                try {
+                    Method m = DexHooks.findMethod(loader, ref.cls, ref.name, ref.proto);
+                    if (m == null || !Modifier.isStatic(m.getModifiers()) || m.getParameterTypes().length != 0) continue;
+                    m.setAccessible(true);
+                    Object svc = m.invoke(null);
+                    if (svc == null || !ac.isInstance(svc)) continue;
+                    Object v = DownloadHooks.call(svc, "getCurUserId");
+                    String uid = v instanceof String ? (String) v : v instanceof Number ? String.valueOf(((Number) v).longValue()) : null;
+                    if (StreakLogic.isUid(uid)) {
+                        ownUid = uid;
+                        uidNote = "из службы аккаунта (" + uid.length() + " цифр)";
+                        return uid;
+                    }
+                    why.append("getCurUserId пусто; ");
+                } catch (Throwable t) {
+                    why.append("служба аккаунта: ").append(causeOf(t)).append("; ");
+                }
+            }
+        }
+        String common = StreakLogic.commonUid(StreakStore.conversations());
+        if (common != null) {
+            ownUid = common;
+            uidNote = "по общему номеру в известных чатах (" + common.length() + " цифр)";
+            return common;
+        }
+        uidNote = "не получен: " + why + "общего номера в чатах пока нет";
+        return null;
+    }
+
+    /** Номер аккаунта у объекта пользователя из списка друзей. */
+    static String uidOf(Object user) {
+        if (user == null) return null;
+        for (String name : new String[]{"getUid", "getUserId", "getUidStr", "getId"}) {
+            Object v = DownloadHooks.call(user, name);
+            String s = v instanceof String ? (String) v : v instanceof Number ? String.valueOf(((Number) v).longValue()) : null;
+            if (StreakLogic.isUid(s)) return s;
+        }
+        for (String name : new String[]{"uid", "userId", "id"}) {
+            Field f = DownloadHooks.findField(user.getClass(), name);
+            if (f == null) continue;
+            try {
+                Object v = f.get(user);
+                String s = v instanceof String ? (String) v : v instanceof Number ? String.valueOf(((Number) v).longValue()) : null;
+                if (StreakLogic.isUid(s)) return s;
+            } catch (Throwable ignored) {
+                // другое поле
+            }
+        }
+        return null;
+    }
+
+    /** Ставит хуки на getAllFriends: когда TikTok сам запрашивает друзей, мод берёт их список. */
+    private static void hookFriends(DexScan.Result r, ClassLoader cl) {
+        int hooks = 0;
+        for (DexScan.Ref ref : r.refs) {
+            if (!ref.label.equals("method:" + Targets.FRIEND_METHODS[0])) continue;
+            Class<?> c = DexHooks.load(cl, ref.cls);
+            if (c == null) continue;
+            Method m = DexHooks.findMethod(cl, ref.cls, ref.name, ref.proto);
+            if (m == null || Modifier.isAbstract(m.getModifiers()) || Modifier.isStatic(m.getModifiers())
+                    || m.getParameterTypes().length != 0 || !List.class.isAssignableFrom(m.getReturnType())) {
+                continue;
+            }
+            synchronized (hooked) {
+                if (!hooked.add(m.toString())) continue;
+            }
+            if (!friendClasses.contains(c.getName())) friendClasses.add(c.getName());
+            try {
+                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        try {
+                            Object self = param.thisObject;
+                            if (self != null && friendsHolder == null) {
+                                friendsHolder = self;
+                                friendsM = (Method) param.method;
+                            }
+                            Object res = param.getResult();
+                            long now = android.os.SystemClock.uptimeMillis();
+                            if (res instanceof List && now - friendsAt > 60_000L) {
+                                friendsAt = now;
+                                final List<Object> copy = new ArrayList<Object>((List<?>) res);
+                                StreakRunner.async(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        onFriends(copy);
+                                    }
+                                });
+                            }
+                        } catch (Throwable ignored) {
+                            // не мешаем TikTok
+                        }
+                    }
+                });
+                hooks++;
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
+        }
+        friendsNote = friendClasses.isEmpty() ? "класса со списком друзей в dex нет"
+                : "хуков " + hooks + ", списка друзей ещё не получали";
+    }
+
+    /** Список друзей получен: запоминаем номера и превращаем их в идентификаторы чатов. */
+    static void onFriends(List<?> users) {
+        List<String> uids = new ArrayList<>();
+        int bad = 0;
+        for (Object u : users) {
+            if (uids.size() >= 600) break;
+            String uid = uidOf(u);
+            if (uid == null) bad++;
+            else uids.add(uid);
+        }
+        friendUids = uids;
+        friendsNote = "друзей в списке " + users.size() + ", с номером " + uids.size() + (bad > 0 ? ", без номера " + bad : "");
+        applyFriends();
+    }
+
+    private static void applyFriends() {
+        List<String> uids = friendUids;
+        if (uids.isEmpty()) return;
+        String own = ownUid();
+        if (own == null) {
+            friendsNote += "; свой номер аккаунта неизвестен, чаты не построены";
+            return;
+        }
+        int added = 0;
+        for (String f : uids) {
+            String conv = StreakLogic.convId(own, f);
+            if (conv != null && StreakStore.noteDerived(conv)) added++;
+        }
+        derived += added;
+        friendsNote += "; чатов добавлено " + added;
+        if (added > 0) {
+            StreakStore.flush();
+            StreakRunner.request(3000L);
+        }
+    }
+
+    /**
+     * Активные шаги: достать службу, узнать свой номер аккаунта, взять список друзей. Вызывается из
+     * фонового потока перед каждым проходом (не чаще раза в 30 секунд, если не force).
+     */
+    static synchronized void discover(boolean force) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!force && now - lastDiscover < 30_000L) return;
+        lastDiscover = now;
+        if (!Prefs.streakAuto || CrashGuard.tripped || loader == null) return;
+        try {
+            if (service == null) {
+                Class<?> ic = serviceInterface();
+                if (ic == null) {
+                    acquireNote = "интерфейса IStreakService нет в этой версии";
+                } else {
+                    Object s = acquire(ic);
+                    if (s != null) {
+                        if (iface == null) iface = ic;
+                        if (dataClass == null) {
+                            Class<?> dc = cls(Targets.STREAK_DATA);
+                            dataClass = dc != null ? dc : inferData(ic);
+                        }
+                        service = s;
+                        serviceActive = true;
+                        initService(s, ic);
+                        StreakRunner.request(2000L);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            acquireNote = "поиск службы: " + causeOf(t);
+            FlagStore.log(t);
+        }
+        try {
+            // Свой номер мог появиться позже (вошли в аккаунт): строим чаты по уже известному списку друзей.
+            if (!friendUids.isEmpty()) applyFriends();
+            Object holder = friendsHolder;
+            if (holder == null) {
+                for (String name : new ArrayList<>(friendClasses)) {
+                    holder = Instances.find(cls(name));
+                    if (holder != null) {
+                        friendsHolder = holder;
+                        break;
+                    }
+                }
+            }
+            Method fm = friendsM;
+            if (holder != null && friendUids.isEmpty() && now - friendsAt > 60_000L) {
+                if (fm == null) fm = DownloadHooks.findMethodNamed(holder.getClass(), Targets.FRIEND_METHODS[0]);
+                if (fm != null) {
+                    friendsM = fm;
+                    friendsAt = now;
+                    Object res = fm.invoke(holder);
+                    if (res instanceof List) onFriends(new ArrayList<Object>((List<?>) res));
+                }
+            }
+        } catch (Throwable t) {
+            friendsNote = "список друзей: " + causeOf(t);
         }
     }
 

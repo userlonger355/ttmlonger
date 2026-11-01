@@ -92,10 +92,10 @@ final class DexHooks {
             o.anchors = Targets.SCAN_ANCHORS;
             o.clickInterface = Targets.STICKER_CLICK_IFACE;
             o.stickerTemplate = Targets.STICKER_TEMPLATE;
-            o.shapes = Targets.STICKER_SHAPES;
+            o.shapes = concat(Targets.STICKER_SHAPES, Targets.ACTIVE_SHAPES);
             o.interfaces = new String[][]{{"streak", Targets.STREAK_SERVICE_ANY}};
             o.consts = new String[]{Targets.STREAK_SOURCE};
-            o.methods = Targets.FAV_METHODS;
+            o.methods = concat(Targets.FAV_METHODS, Targets.FRIEND_METHODS);
             o.deadline = System.currentTimeMillis() + SCAN_LIMIT_MS;
             ApkSource src = new ApkSource(apks);
             try {
@@ -114,6 +114,18 @@ final class DexHooks {
         }
         last = r;
         apply(r, cl, ctx);
+    }
+
+    private static String[] concat(String[] a, String[] b) {
+        String[] out = java.util.Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, out, a.length, b.length);
+        return out;
+    }
+
+    private static String[][] concat(String[][] a, String[][] b) {
+        String[][] out = java.util.Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, out, a.length, b.length);
+        return out;
     }
 
     private static String cacheKey(List<String> apks) {

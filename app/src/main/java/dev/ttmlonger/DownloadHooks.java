@@ -401,6 +401,22 @@ final class DownloadHooks {
         return 0;
     }
 
+    /** Метод без параметров с таким именем в классе или его предках (любой видимости). */
+    static Method findMethodNamed(Class<?> c, String name) {
+        for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
+            try {
+                Method m = k.getDeclaredMethod(name);
+                m.setAccessible(true);
+                return m;
+            } catch (NoSuchMethodException ignored) {
+                // выше по иерархии
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     static Field findField(Class<?> c, String name) {
         for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
             try {

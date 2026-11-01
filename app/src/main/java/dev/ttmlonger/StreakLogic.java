@@ -3,6 +3,7 @@ package dev.ttmlonger;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
@@ -111,6 +112,86 @@ final class StreakLogic {
             if (c <= ' ' || c == 0x7f) return false;
         }
         return true;
+    }
+
+    // ---------------------------------------------------------------- идентификаторы чатов и аккаунтов
+
+    /** Номер аккаунта TikTok: только цифры, до 24 знаков. */
+    static boolean isUid(String s) {
+        if (s == null || s.isEmpty() || s.length() > 24) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') return false;
+        }
+        return true;
+    }
+
+    private static String stripZeros(String s) {
+        int i = 0;
+        while (i < s.length() - 1 && s.charAt(i) == '0') i++;
+        return s.substring(i);
+    }
+
+    /** Сравнение номеров как чисел (без ведущих нулей, без переполнения): меньше нуля, если a меньше b. */
+    static int compareUid(String a, String b) {
+        String x = stripZeros(a);
+        String y = stripZeros(b);
+        if (x.length() != y.length()) return x.length() < y.length() ? -1 : 1;
+        return x.compareTo(y);
+    }
+
+    /**
+     * Идентификатор личного чата двух аккаунтов в TikTok: «0:1:меньший:больший».
+     *
+     * @return null, если номера неверные или это один и тот же аккаунт
+     */
+    static String convId(String a, String b) {
+        if (!isUid(a) || !isUid(b)) return null;
+        int c = compareUid(a, b);
+        if (c == 0) return null;
+        return c < 0 ? "0:1:" + stripZeros(a) + ":" + stripZeros(b) : "0:1:" + stripZeros(b) + ":" + stripZeros(a);
+    }
+
+    /** Два номера из идентификатора личного чата или null. */
+    static String[] uidsOf(String conv) {
+        if (conv == null) return null;
+        String[] p = conv.split(":");
+        if (p.length != 4 || !p[0].equals("0") || !p[1].equals("1") || !isUid(p[2]) || !isUid(p[3])) return null;
+        return new String[]{p[2], p[3]};
+    }
+
+    /**
+     * Номер владельца аккаунта по известным чатам: он есть в каждом личном чате, а у собеседников
+     * чаты разные. Нужно минимум два личных чата и один номер, общий для всех.
+     */
+    static String commonUid(List<String> convs) {
+        Map<String, Integer> count = new HashMap<>();
+        int n = 0;
+        for (String c : convs) {
+            String[] u = uidsOf(c);
+            if (u == null) continue;
+            n++;
+            for (String x : u) {
+                String k = stripZeros(x);
+                Integer v = count.get(k);
+                count.put(k, v == null ? 1 : v + 1);
+            }
+        }
+        if (n < 2) return null;
+        String best = null;
+        int bestN = 0;
+        boolean tie = false;
+        for (Map.Entry<String, Integer> e : count.entrySet()) {
+            if (e.getValue() > bestN) {
+                best = e.getKey();
+                bestN = e.getValue();
+                tie = false;
+            } else if (e.getValue() == bestN) {
+                tie = true;
+            }
+        }
+        // общий номер должен быть почти везде: допускаем один-два чужих чата (группы, старые данные)
+        return !tie && best != null && bestN >= 2 && bestN * 10 >= n * 8 ? best : null;
     }
 
     // ---------------------------------------------------------------- хранение «когда отправляли»

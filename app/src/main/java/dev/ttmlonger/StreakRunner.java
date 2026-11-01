@@ -182,6 +182,7 @@ final class StreakRunner {
     static synchronized void round(boolean dry) {
         if (!dry && (!Prefs.streakAuto || CrashGuard.tripped)) return;
         long t0 = System.currentTimeMillis();
+        StreakHooks.discover(dry);
         StreakHooks.prepareSender();
 
         if (StreakHooks.service() == null) {
@@ -297,7 +298,7 @@ final class StreakRunner {
         boolean seen = StreakHooks.service() != null;
         boolean stk = StreakSticker.has() || !StreakSticker.chosenId().isEmpty();
         StringBuilder sb = new StringBuilder();
-        sb.append(seen ? "✓ Огоньки видны" : "✗ Огоньки не видны: откройте в TikTok список чатов").append('\n');
+        sb.append(seen ? "✓ Огоньки видны" : "✗ Огоньки не видны: мод ищет службу сам, можно открыть в TikTok список чатов").append('\n');
         sb.append(stk ? "✓ Стикер выбран" : "✗ Стикер не выбран: без него ничего не отправится").append('\n');
         sb.append("Чатов известно: ").append(StreakStore.count()).append(" · отправлено сегодня: ")
                 .append(StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault()));
