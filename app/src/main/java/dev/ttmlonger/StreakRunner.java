@@ -291,17 +291,238 @@ final class StreakRunner {
                 + StreakStore.sentToday(System.currentTimeMillis(), tz);
     }
 
-    /** Короткое состояние для экрана: без технических подробностей. */
+    /** Короткое состояние для экрана: по шагам, без технических подробностей. */
     static String status() {
         if (!Prefs.streakAuto) return "Автопродление выключено";
-        if (StreakHooks.service() == null) return "Откройте в TikTok список чатов: так мод увидит огоньки";
-        String s = "Чатов известно: " + StreakStore.count() + " · отправлено сегодня: "
-                + StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault());
-        if (StreakSticker.chosenId().isEmpty() && !StreakSticker.has()) s += "\nСтикер не выбран: без него ничего не отправится";
-        if (!hint.isEmpty()) s += "\n" + hint;
-        return s;
+        boolean seen = StreakHooks.service() != null;
+        boolean stk = StreakSticker.has() || !StreakSticker.chosenId().isEmpty();
+        StringBuilder sb = new StringBuilder();
+        sb.append(seen ? "✓ Огоньки видны" : "✗ Огоньки не видны: откройте в TikTok список чатов").append('\n');
+        sb.append(stk ? "✓ Стикер выбран" : "✗ Стикер не выбран: без него ничего не отправится").append('\n');
+        sb.append("Чатов известно: ").append(StreakStore.count()).append(" · отправлено сегодня: ")
+                .append(StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault()));
+        if (!hint.isEmpty()) sb.append('\n').append(hint);
+        return sb.toString();
     }
 
-    // ---------------------------------------------------------------- отчёт
+    // ---------------------------------------------------------------- отправить всем сразу
 
+    /** Не больше стольких чатов за одно нажатие: чтобы не завалить TikTok и не получить блокировку. */
+    static final int ALL_MAX = 60;
+    /** Остановка, если столько отправок подряд не удалось. */
+    private static final int STOP_AFTER_FAILS = 3;
+    private static volatile boolean busy;
+
+    /** Обратный вызов в главном потоке. */
+    interface Callback<T> {
+        void on(T value);
+    }
+
+    /** Кому уйдёт стикер при нажатии «Отправить всем сейчас». */
+    static final class Plan {
+        /** Чаты, куда пойдёт стикер. */
+        final List<String> targets;
+        /** Сколько чатов известно всего. */
+        final int known;
+        /** Сколько из них не удалось прочитать. */
+        final int unreadable;
+        /** Огоньки прочитать не удалось: цели — все известные чаты. */
+        final boolean guess;
+        /** Чатов с огоньком было больше предела, часть отброшена. */
+        final boolean capped;
+        /** Что мешает (тогда targets пуст); иначе null. */
+        final String problem;
+
+        Plan(List<String> targets, int known, int unreadable, boolean guess, boolean capped, String problem) {
+            this.targets = targets;
+            this.known = known;
+            this.unreadable = unreadable;
+            this.guess = guess;
+            this.capped = capped;
+            this.problem = problem;
+        }
+
+        static Plan blocked(String why) {
+            return new Plan(new ArrayList<String>(), 0, 0, false, false, why);
+        }
+    }
+
+    static boolean busy() {
+        return busy;
+    }
+
+    private static void toMain(final Runnable r) {
+        new Handler(Looper.getMainLooper()).post(r);
+    }
+
+    /** Считает, кому отправлять; результат в главном потоке. */
+    static void plan(final Callback<Plan> cb) {
+        async(new Runnable() {
+            @Override
+            public void run() {
+                Plan p;
+                try {
+                    p = makePlan();
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                    p = Plan.blocked("Не удалось подготовить отправку: " + t.getClass().getSimpleName());
+                }
+                final Plan result = p;
+                toMain(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.on(result);
+                    }
+                });
+            }
+        });
+    }
+
+    private static synchronized Plan makePlan() {
+        if (!Prefs.streakAuto) return Plan.blocked("Сначала включите автопродление и перезапустите TikTok");
+        if (CrashGuard.tripped) return Plan.blocked("Автопродление отключено защитой от сбоев");
+        if (StreakHooks.service() == null) {
+            return Plan.blocked("Мод ещё не видит огоньков: откройте в TikTok список чатов и повторите");
+        }
+        if (StreakSticker.chosenId().isEmpty() && !StreakSticker.has()) {
+            return Plan.blocked("Сначала выберите стикер");
+        }
+        if (StreakSticker.get() == null) {
+            return Plan.blocked("Стикер выбран, но ещё не загружен: откройте «Стикер для огоньков» и нажмите "
+                    + "«Обновить избранные»");
+        }
+        List<String> convs = StreakStore.conversations();
+        if (convs.isEmpty()) {
+            return Plan.blocked("Чатов пока не видно: откройте в TikTok список чатов и повторите");
+        }
+        List<String> hot = new ArrayList<>();
+        int unreadable = 0;
+        // Сначала по кэшу TikTok; если нигде огонька не видно, перечитываем заново.
+        for (int pass = 0; pass < 2 && hot.isEmpty(); pass++) {
+            hot.clear();
+            unreadable = 0;
+            for (String conv : convs) {
+                StreakHooks.Info i = StreakHooks.read(conv, pass == 1);
+                if (i == null || i.streak < 0) {
+                    unreadable++;
+                } else if (i.streak >= StreakLogic.FLAME_FROM) {
+                    hot.add(conv);
+                }
+            }
+        }
+        boolean guess = hot.isEmpty() && unreadable == convs.size();
+        List<String> targets = guess ? new ArrayList<>(convs) : hot;
+        boolean capped = targets.size() > ALL_MAX;
+        if (capped) targets = new ArrayList<>(targets.subList(0, ALL_MAX));
+        if (targets.isEmpty()) {
+            return new Plan(targets, convs.size(), unreadable, false, false,
+                    "Чатов с огоньком не видно (проверено " + convs.size() + ")");
+        }
+        return new Plan(targets, convs.size(), unreadable, guess, capped, null);
+    }
+
+    /** Отправляет стикер по плану, в фоне и по одному; итог (одно предложение) в главном потоке. */
+    static void sendAll(final Plan p, final Callback<String> cb) {
+        synchronized (StreakRunner.class) {
+            if (busy) {
+                cb.on("Отправка уже идёт");
+                return;
+            }
+            busy = true;
+        }
+        async(new Runnable() {
+            @Override
+            public void run() {
+                String msg;
+                try {
+                    msg = execute(p);
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                    msg = "Отправка прервалась: " + t.getClass().getSimpleName();
+                } finally {
+                    busy = false;
+                }
+                final String text = msg;
+                toMain(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.on(text);
+                    }
+                });
+            }
+        });
+    }
+
+    private static synchronized String execute(Plan p) {
+        if (!Prefs.streakAuto) return "Автопродление выключено: отправка не начата";
+        if (!online()) return "Нет сети: отправка не начата";
+        Object sticker = StreakSticker.get();
+        if (sticker == null) return "Стикер не выбран: отправка не начата";
+        TimeZone tz = TimeZone.getDefault();
+        int total = p.targets.size();
+        int ok = 0;
+        int bad = 0;
+        int row = 0;
+        boolean stopped = false;
+        for (int i = 0; i < total; i++) {
+            hint = "Отправляю всем: " + (i + 1) + " из " + total + "…";
+            String conv = p.targets.get(i);
+            long at = System.currentTimeMillis();
+            if (StreakHooks.send(app, sticker, conv)) {
+                StreakStore.markSent(conv, at);
+                ok++;
+                sends++;
+                row = 0;
+            } else {
+                StreakStore.markFail(conv, at);
+                bad++;
+                fails++;
+                if (++row >= STOP_AFTER_FAILS) {
+                    stopped = true;
+                    break;
+                }
+            }
+            StreakStore.flush();
+            if (i + 1 < total) {
+                try {
+                    Thread.sleep(1500L);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        }
+        StreakStore.flush();
+        last = "отправка всем: отправлено " + ok + " из " + total + ", ошибок " + bad;
+        hint = "Отправлено всем: " + ok + (bad > 0 ? " · не удалось: " + bad : "") + " · сегодня уже: "
+                + StreakStore.sentToday(System.currentTimeMillis(), tz);
+        String msg = "Отправлено " + ok + " из " + total;
+        if (bad > 0) msg += ", не удалось " + bad;
+        if (stopped) msg += ". Остановился после " + STOP_AFTER_FAILS + " ошибок подряд: " + StreakHooks.senderNote();
+        return msg;
+    }
+
+    // ---------------------------------------------------------------- сведения для разработчика
+
+    /** Сводка для копирования и пересылки: что нашлось и чего нет. Идентификаторов чатов в ней нет. */
+    static String details() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("TTMLonger ").append(Targets.VERSION).append(" · Android ").append(android.os.Build.VERSION.SDK_INT);
+        try {
+            if (app != null) {
+                sb.append(" · TikTok ").append(app.getPackageManager().getPackageInfo(app.getPackageName(), 0).versionName);
+            }
+        } catch (Throwable ignored) {
+            // версия не обязательна
+        }
+        sb.append('\n');
+        sb.append("автопродление: ").append(Prefs.streakAuto ? "вкл" : "выкл")
+                .append(", каждый день: ").append(Prefs.streakDaily ? "да" : "нет").append('\n');
+        sb.append(StreakHooks.details()).append('\n');
+        sb.append(StickerLibrary.details()).append('\n');
+        sb.append(StreakSticker.details()).append('\n');
+        sb.append("чатов известно ").append(StreakStore.count()).append(", проходов ").append(rounds)
+                .append(", отправок ").append(sends).append(", ошибок ").append(fails).append('\n');
+        sb.append("последнее: ").append(last);
+        return sb.toString();
+    }
 }

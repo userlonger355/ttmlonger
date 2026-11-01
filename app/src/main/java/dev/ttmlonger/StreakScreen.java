@@ -1,6 +1,13 @@
 package dev.ttmlonger;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -87,6 +94,16 @@ final class StreakScreen extends Screen {
             }
         }));
 
+        body.addView(ui.header("Сейчас"));
+        body.addView(ui.row(Icons.SEND, "Отправить всем сейчас",
+                "Стикер уйдёт во все чаты с огоньком, не дожидаясь времени", null, false,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        sendAll();
+                    }
+                }));
+
         body.addView(ui.header("Состояние"));
         report = ui.text("", 14f, Ui.INK, false);
         report.setLineSpacing(0f, 1.15f);
@@ -110,7 +127,104 @@ final class StreakScreen extends Screen {
                         });
                     }
                 }));
+
+        body.addView(ui.row(Icons.COPY, "Скопировать сведения", "Что нашёл мод: если огонёк не работает, "
+                + "пришлите это разработчику", null, false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                copyDetails();
+            }
+        }));
         refresh();
+    }
+
+    // ---------------------------------------------------------------- отправка всем
+
+    private void sendAll() {
+        if (StreakRunner.busy()) {
+            Toasts.show(act, "Отправка уже идёт");
+            return;
+        }
+        Toasts.show(act, "Смотрю, где есть огоньки…");
+        StreakRunner.plan(new StreakRunner.Callback<StreakRunner.Plan>() {
+            @Override
+            public void on(StreakRunner.Plan p) {
+                if (p.problem != null) {
+                    message("Отправить всем", p.problem);
+                } else {
+                    confirm(p);
+                }
+            }
+        });
+    }
+
+    private void message(String title, String text) {
+        AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme()).setTitle(title).setMessage(text)
+                .setPositiveButton("Понятно", null).create();
+        markOwn(d);
+        d.show();
+        Ui.style(d);
+    }
+
+    private void confirm(final StreakRunner.Plan p) {
+        int n = p.targets.size();
+        StringBuilder sb = new StringBuilder();
+        if (p.guess) {
+            sb.append("Не удалось определить, где есть огонёк. Стикер уйдёт во все известные чаты: ").append(n)
+                    .append(".");
+        } else {
+            sb.append("Чатов с огоньком: ").append(n).append(".");
+        }
+        sb.append("\nСтикер: ").append(stickerSummary().toLowerCase(java.util.Locale.ROOT)).append(".");
+        sb.append("\nОтправка идёт по одному чату раз в полторы секунды, около ")
+                .append(Math.max(1, Math.round(n * 1.5f))).append(" с.");
+        if (p.capped) sb.append("\nЗа раз отправляется не больше ").append(StreakRunner.ALL_MAX).append(" чатов.");
+        AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme()).setTitle("Отправить стикер всем?")
+                .setMessage(sb.toString())
+                .setPositiveButton("Отправить", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int which) {
+                        Toasts.show(act, "Отправляю…");
+                        StreakRunner.sendAll(p, new StreakRunner.Callback<String>() {
+                            @Override
+                            public void on(String result) {
+                                Toasts.show(act, result);
+                                refresh();
+                            }
+                        });
+                        refresh();
+                    }
+                }).setNegativeButton("Отмена", null).create();
+        markOwn(d);
+        d.show();
+        Ui.style(d);
+    }
+
+    private void copyDetails() {
+        StreakRunner.async(new Runnable() {
+            @Override
+            public void run() {
+                String text;
+                try {
+                    text = StreakRunner.details();
+                } catch (Throwable t) {
+                    text = "сведения не собрались: " + t;
+                }
+                final String copy = text;
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+                            cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", copy));
+                            Toasts.show(act, "Скопировано. Вставьте в сообщение разработчику");
+                        } catch (Throwable t) {
+                            Toasts.show(act, "Не удалось скопировать");
+                        }
+                    }
+                });
+            }
+        });
     }
 
     private static String stickerSummary() {

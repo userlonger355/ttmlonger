@@ -93,7 +93,7 @@ final class DexHooks {
             o.clickInterface = Targets.STICKER_CLICK_IFACE;
             o.stickerTemplate = Targets.STICKER_TEMPLATE;
             o.shapes = Targets.STICKER_SHAPES;
-            o.interfaces = new String[][]{{"streak", Targets.STREAK_SERVICE}};
+            o.interfaces = new String[][]{{"streak", Targets.STREAK_SERVICE_ANY}};
             o.consts = new String[]{Targets.STREAK_SOURCE};
             o.methods = Targets.FAV_METHODS;
             o.deadline = System.currentTimeMillis() + SCAN_LIMIT_MS;

@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.1.0";
+    static final String VERSION = "0.1.1";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -246,6 +246,8 @@ final class Targets {
 
     /** Служба огоньков TikTok: имя интерфейса настоящее, имена методов и класса-реализации обфусцированы. */
     static final String STREAK_SERVICE = "Lcom/ss/android/ugc/aweme/im/streak/api/IStreakService;";
+    /** Он же по короткому имени, в любом пакете: на случай, если TikTok переложил интерфейс. */
+    static final String STREAK_SERVICE_ANY = "L*/IStreakService;";
     /** Данные одного огонька: публичные поля convId, activeBefore, endAt, level, streak. */
     static final String STREAK_DATA = "com.ss.android.ugc.aweme.im.streak.api.StreakData";
     /** Модель стикера, которую принимает отправка в личные сообщения. */

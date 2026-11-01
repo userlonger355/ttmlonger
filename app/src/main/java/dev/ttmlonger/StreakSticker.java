@@ -28,6 +28,7 @@ final class StreakSticker {
     private static volatile boolean loaded;
     private static volatile long lastResolve;
     private static volatile String appKey = "";
+    private static volatile boolean adopted;
 
     private StreakSticker() {
     }
@@ -41,6 +42,47 @@ final class StreakSticker {
         return itemClass;
     }
 
+    /** Похоже ли на модель стикера TikTok: есть поле stickerBase или класс зовётся StickerItem. */
+    static boolean isStickerClass(Class<?> k) {
+        if (k == null || k.isPrimitive() || k.isArray()) return false;
+        String n = k.getName();
+        if (n.startsWith("java.") || n.startsWith("android.") || n.startsWith("kotlin.")) return false;
+        if (k.getSimpleName().equals("StickerItem")) return true;
+        try {
+            for (Class<?> c = k; c != null && c != Object.class; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (f.getName().equals("stickerBase")) return true;
+                }
+            }
+        } catch (Throwable ignored) {
+            // класс ссылается на то, чего нет
+        }
+        return false;
+    }
+
+    /**
+     * Если имя класса стикера в этой версии TikTok другое, берём класс у настоящего объекта.
+     * Подменяет класс только пока он неизвестен или объект ему не соответствует.
+     */
+    static boolean adopt(Object o) {
+        if (o == null) return false;
+        Class<?> k = o.getClass();
+        Class<?> cur = itemClass;
+        if (cur != null && cur.isInstance(o)) return true;
+        if (!isStickerClass(k)) return false;
+        itemClass = k;
+        adopted = true;
+        return true;
+    }
+
+    /** Взять класс стикера по типу параметра метода (когда самого объекта ещё нет). */
+    static boolean adoptClass(Class<?> k) {
+        if (itemClass != null || !isStickerClass(k)) return itemClass != null;
+        itemClass = k;
+        adopted = true;
+        return true;
+    }
+
     static boolean armed() {
         return android.os.SystemClock.uptimeMillis() < armedUntil;
     }
@@ -48,6 +90,8 @@ final class StreakSticker {
     /** Следующий пойманный стикер заменит выбранный. */
     static void arm() {
         armedUntil = android.os.SystemClock.uptimeMillis() + ARM_MS;
+        // Наблюдатель за отправкой стикеров должен стоять уже сейчас, а не при следующем проходе.
+        StreakHooks.prepareSender();
     }
 
     static boolean has() {
@@ -71,10 +115,9 @@ final class StreakSticker {
 
     /** Для хуков нажатий: ищет среди аргументов модель стикера. */
     static void offerAny(Object[] args, String how) {
-        Class<?> c = itemClass;
-        if (c == null || args == null) return;
+        if (args == null) return;
         for (Object a : args) {
-            if (a != null && c.isInstance(a)) {
+            if (a != null && adopt(a)) {
                 offer(a, how);
                 return;
             }
@@ -82,8 +125,7 @@ final class StreakSticker {
     }
 
     static void offer(final Object o, String how) {
-        Class<?> c = itemClass;
-        if (o == null || c == null || !c.isInstance(o)) return;
+        if (o == null || !adopt(o)) return;
         StickerLibrary.add(o, false);
         ensureLoaded();
         String id = StickerLibrary.idOf(o);
@@ -100,8 +142,7 @@ final class StreakSticker {
 
     /** Явный выбор стикера. */
     static void choose(final Object o, String how) {
-        Class<?> c = itemClass;
-        if (o == null || c == null || !c.isInstance(o)) return;
+        if (o == null || !adopt(o)) return;
         String id = StickerLibrary.idOf(o);
         loaded = true;
         item = o;
@@ -135,6 +176,15 @@ final class StreakSticker {
             StickerLibrary.refresh(null);
         }
         return null;
+    }
+
+    /** Сведения для разработчика: без самих данных стикера. */
+    static String details() {
+        ensureLoaded();
+        Class<?> c = itemClass;
+        return "стикер: класс " + (c == null ? "не найден" : c.getName() + (adopted ? " (взят у объекта)" : ""))
+                + "; выбран " + (item != null ? "да, объект есть" : chosenId.isEmpty() ? "нет" : "по номеру, объекта нет")
+                + "; источник " + from + "; файл: " + saved;
     }
 
     static void forget() {

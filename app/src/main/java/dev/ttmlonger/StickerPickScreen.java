@@ -60,7 +60,10 @@ final class StickerPickScreen extends Screen {
         body.addView(list, ui.matchWrap());
 
         fill();
-        if (Prefs.streakAuto) load();
+        if (Prefs.streakAuto) {
+            StreakHooks.prepareSender();
+            load();
+        }
     }
 
     private void load() {
@@ -77,13 +80,14 @@ final class StickerPickScreen extends Screen {
         list.removeAllViews();
         List<StickerLibrary.Entry> all = StickerLibrary.list();
         status.setText(all.isEmpty() ? "Стикеры" : "Стикеры · " + all.size());
+        String why = StickerLibrary.state();
         if (all.isEmpty()) {
-            list.addView(ui.note(Prefs.streakAuto
-                    ? "Пока пусто. Откройте в TikTok панель стикеров → избранное или отправьте стикер в чате, "
-                    + "затем нажмите «Обновить избранные»."
-                    : "Включите автопродление и перезапустите TikTok: без этого мод не видит стикеров."));
+            list.addView(ui.note(!why.isEmpty() ? why
+                    : "Пока пусто. Откройте в TikTok панель стикеров → избранное или отправьте стикер в чате, "
+                    + "затем нажмите «Обновить избранные»."));
             return;
         }
+        if (!why.isEmpty() && StickerLibrary.favourites() == 0) list.addView(ui.note(why));
         int n = 0;
         for (StickerLibrary.Entry e : all) {
             if (n++ >= SHOW) break;

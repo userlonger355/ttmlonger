@@ -46,6 +46,7 @@ final class StreakHooks {
     private static final Set<String> implSeen = new HashSet<>();
     private static final List<String> constClasses = new ArrayList<>();
     private static volatile int hookCount;
+    private static final String SERVICE_NAME = "IStreakService";
     private static volatile String status = "ещё не искали";
 
     private static volatile Method readM;
@@ -59,7 +60,7 @@ final class StreakHooks {
     private static volatile int readFails;
 
     private static volatile Object message;
-    private static volatile Method senderM;
+    private static volatile Sender sender;
     private static volatile boolean senderHooked;
     private static volatile String senderNote = "ещё не искали";
 
@@ -80,6 +81,25 @@ final class StreakHooks {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    // ---------------------------------------------------------------- состояние
+
+    /** Последнее замечание об отправке: для сообщений об ошибке. */
+    static String senderNote() {
+        return senderNote;
+    }
+
+    /** Сведения для разработчика: что нашлось и чего нет. Идентификаторов чатов здесь нет. */
+    static String details() {
+        Class<?> ic = iface;
+        Class<?> dc = dataClass;
+        return "служба: " + status + "\n"
+                + "интерфейс " + (ic == null ? "нет" : ic.getName()) + ", данные " + (dc == null ? "нет" : dc.getName())
+                + ", объект " + (service == null ? "не получен" : service.getClass().getName()) + "\n"
+                + "чтение: " + readNote + "; чтений " + reads + ", сбоев " + readFails + "\n"
+                + "статус: " + statusNote + "\n"
+                + "отправка: " + senderNote;
     }
 
     // ---------------------------------------------------------------- подключение
@@ -103,57 +123,7 @@ final class StreakHooks {
         }
         StreakSticker.setup(cls(Targets.STICKER_ITEM_CLASS), key);
 
-        Class<?> ic = DexHooks.load(cl, Targets.STREAK_SERVICE);
-        if (ic == null) {
-            status = "в этой версии TikTok нет службы огоньков (IStreakService)";
-            return;
-        }
-        iface = ic;
-        dataClass = cls(Targets.STREAK_DATA);
-        for (DexScan.Ref ref : r.refs) {
-            if (ref.label.equals("const:" + Targets.STREAK_SOURCE) && !constClasses.contains(ref.cls)) {
-                constClasses.add(ref.cls);
-            }
-        }
-
-        Set<String> sigs = new HashSet<>();
-        for (Method m : ic.getMethods()) sigs.add(m.getName() + DexHooks.protoOf(m));
-
-        int found = 0;
-        for (DexScan.Ref ref : r.refs("impl:streak")) {
-            Class<?> c = DexHooks.load(cl, ref.cls);
-            if (c == null || !ic.isAssignableFrom(c) || c.isInterface()) {
-                continue;
-            }
-            found++;
-            implSeen.add(c.getName());
-            Method[] ms;
-            try {
-                ms = c.getDeclaredMethods();
-            } catch (Throwable t) {
-                continue;
-            }
-            for (Method m : ms) {
-                try {
-                    int mod = m.getModifiers();
-                    if (Modifier.isStatic(mod) || Modifier.isAbstract(mod) || m.isBridge()) continue;
-                    Class<?>[] p = m.getParameterTypes();
-                    if (p.length == 0 || p[0] != String.class) continue;
-                    if (!sigs.contains(m.getName() + DexHooks.protoOf(m))) continue;
-                    synchronized (hooked) {
-                        if (!hooked.add(m.toString())) continue;
-                    }
-                    XposedBridge.hookMethod(m, new Seen());
-                    hookCount++;
-                } catch (Throwable t) {
-                    // один метод не подошёл (например, нет его класса): остальные подключаем
-                    FlagStore.log(t);
-                }
-            }
-        }
-        status = "реализаций службы " + found + ", хуков " + hookCount
-                + (dataClass == null ? "; класса StreakData нет" : "")
-                + (constClasses.isEmpty() ? "; константы источника в dex нет" : "");
+        // Стикеры и проходы нужны независимо от того, нашлась ли служба огоньков: без них не выбрать стикер.
         try {
             StickerLibrary.apply(r, cl);
         } catch (Throwable t) {
@@ -167,6 +137,119 @@ final class StreakHooks {
                 StreakStore.count();
             }
         });
+
+        for (DexScan.Ref ref : r.refs) {
+            if (ref.label.equals("const:" + Targets.STREAK_SOURCE) && !constClasses.contains(ref.cls)) {
+                constClasses.add(ref.cls);
+            }
+        }
+        try {
+            hookService(r, cl);
+        } catch (Throwable t) {
+            status = "служба огоньков: " + t.getClass().getSimpleName();
+            FlagStore.log(t);
+        }
+    }
+
+    private static void hookService(DexScan.Result r, ClassLoader cl) {
+        Class<?> ic = DexHooks.load(cl, Targets.STREAK_SERVICE);
+        List<Class<?>> impls = new ArrayList<>();
+        for (DexScan.Ref ref : r.refs("impl:streak")) {
+            Class<?> c = DexHooks.load(cl, ref.cls);
+            if (c == null || c.isInterface()) continue;
+            if (ic == null) ic = interfaceNamed(c, SERVICE_NAME);
+            impls.add(c);
+        }
+        if (ic == null) {
+            status = "службы огоньков в этой версии TikTok не нашли";
+            return;
+        }
+        iface = ic;
+        Class<?> dc = cls(Targets.STREAK_DATA);
+        dataClass = dc != null ? dc : inferData(ic);
+
+        Set<String> sigs = new HashSet<>();
+        for (Method m : ic.getMethods()) sigs.add(m.getName() + DexHooks.protoOf(m));
+
+        int found = 0;
+        for (Class<?> impl : impls) {
+            if (!ic.isAssignableFrom(impl)) continue;
+            found++;
+            implSeen.add(impl.getName());
+            // Метод службы может быть объявлен в родительском классе: идём вверх до платформенных классов.
+            for (Class<?> k = impl; k != null && k != Object.class; k = k.getSuperclass()) {
+                String kn = k.getName();
+                if (kn.startsWith("java.") || kn.startsWith("android.") || kn.startsWith("kotlin.")) break;
+                hookDeclared(k, sigs);
+            }
+        }
+        status = "реализаций службы " + found + ", хуков " + hookCount
+                + (dataClass == null ? "; класса StreakData нет" : "")
+                + (constClasses.isEmpty() ? "; константы источника в dex нет" : "");
+    }
+
+    private static void hookDeclared(Class<?> c, Set<String> sigs) {
+        Method[] ms;
+        try {
+            ms = c.getDeclaredMethods();
+        } catch (Throwable t) {
+            return;
+        }
+        for (Method m : ms) {
+            try {
+                int mod = m.getModifiers();
+                if (Modifier.isStatic(mod) || Modifier.isAbstract(mod) || m.isBridge()) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 0 || p[0] != String.class) continue;
+                if (!sigs.contains(m.getName() + DexHooks.protoOf(m))) continue;
+                synchronized (hooked) {
+                    if (!hooked.add(m.toString())) continue;
+                }
+                XposedBridge.hookMethod(m, new Seen());
+                hookCount++;
+            } catch (Throwable t) {
+                // один метод не подошёл (например, нет его класса): остальные подключаем
+                FlagStore.log(t);
+            }
+        }
+    }
+
+    /** Интерфейс с заданным коротким именем среди интерфейсов класса и его предков. */
+    private static Class<?> interfaceNamed(Class<?> c, String simple) {
+        try {
+            for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
+                for (Class<?> i : k.getInterfaces()) {
+                    String n = i.getName();
+                    if (n.equals(simple) || n.endsWith("." + simple)) return i;
+                    Class<?> up = interfaceNamed(i, simple);
+                    if (up != null) return up;
+                }
+            }
+        } catch (Throwable ignored) {
+            // класс ссылается на то, чего нет в загрузчике
+        }
+        return null;
+    }
+
+    /** Класс данных огонька, если его имя другое: тип, который метод службы (String, boolean) возвращает и у которого есть поле streak. */
+    private static Class<?> inferData(Class<?> ic) {
+        Class<?> only = null;
+        int n = 0;
+        for (Method m : ic.getMethods()) {
+            Class<?>[] p = m.getParameterTypes();
+            Class<?> rt = m.getReturnType();
+            if (p.length != 2 || p[0] != String.class || p[1] != boolean.class) continue;
+            if (rt.isPrimitive() || rt == String.class || rt == Object.class || rt.isInterface()) continue;
+            n++;
+            only = rt;
+            try {
+                rt.getDeclaredField("streak");
+                return rt;
+            } catch (Throwable ignored) {
+                // не тот
+            }
+        }
+        return n == 1 ? only : null;
     }
 
     /** Хук-наблюдатель: ничего не меняет, запоминает службу и идентификатор чата. */
@@ -179,6 +262,7 @@ final class StreakHooks {
                 Object cur = service;
                 if (cur == null) {
                     service = self;
+                    prepareSender();
                     StreakRunner.request(3000L);
                 } else if (cur != self && cur.getClass() == self.getClass()) {
                     service = self;
@@ -266,6 +350,7 @@ final class StreakHooks {
             if (f != null && f.getType() != int.class && f.getType() != long.class && f.getType() != Integer.class) {
                 f = null;
             }
+            if (f == null) f = guessStreakField(dc);
             streakField = f;
             if (f == null) readNote = "в StreakData нет числового поля streak; поля: " + fieldsOf(dc);
         }
@@ -276,6 +361,35 @@ final class StreakHooks {
         } catch (Throwable t) {
             return -1;
         }
+    }
+
+    /** Поле называется иначе: берём числовое поле со словом streak в имени, а если оно единственное числовое, то его. */
+    private static Field guessStreakField(Class<?> dc) {
+        Field named = null;
+        Field only = null;
+        int n = 0;
+        try {
+            for (Field f : dc.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                Class<?> t = f.getType();
+                if (t != int.class && t != long.class) continue;
+                n++;
+                only = f;
+                if (named == null && f.getName().toLowerCase(java.util.Locale.ROOT).contains("streak")) named = f;
+            }
+        } catch (Throwable ignored) {
+            return null;
+        }
+        Field pick = named != null ? named : (n == 1 ? only : null);
+        if (pick != null) {
+            try {
+                pick.setAccessible(true);
+            } catch (Throwable ignored) {
+                return null;
+            }
+            readNote = "поле дней найдено по догадке: " + pick.getName();
+        }
+        return pick;
     }
 
     private static String fieldsOf(Class<?> c) {
@@ -452,56 +566,106 @@ final class StreakHooks {
         }
     }
 
-    /** Метод отправки: (Context, ?, ?, источник, стикер, ?, ?, ?, String чат, ..., boolean). */
-    private static Method pickSender(Object ms, boolean note) {
+    /** Найденный метод отправки и номера его важных аргументов. */
+    private static final class Sender {
+        final Method m;
+        final int ctx;
+        final int source;
+        final int sticker;
+        final int conv;
+
+        Sender(Method m, int ctx, int source, int sticker, int conv) {
+            this.m = m;
+            this.ctx = ctx;
+            this.source = source;
+            this.sticker = sticker;
+            this.conv = conv;
+        }
+    }
+
+    private static boolean platform(Class<?> c) {
+        String n = c.getName();
+        return c.isPrimitive() || n.startsWith("java.") || n.startsWith("android.") || n.startsWith("kotlin.");
+    }
+
+    /**
+     * Метод отправки. Ждём форму (Context, ?, ?, источник, стикер, ?, ?, ?, String чат, ..., boolean),
+     * но если у этой версии TikTok число аргументов другое, берём любой void-метод, в котором есть
+     * стикер, источник-enum с константой AUTO_CONSECUTIVE_SA_STICKERS и строка после стикера (чат).
+     */
+    private static Sender pickSender(Object ms, boolean note) {
         Class<?> item = StreakSticker.itemClass();
-        if (item == null) return null;
-        Method pick = null;
+        Sender best = null;
+        int bestScore = -1;
         int n = 0;
         for (Method m : ms.getClass().getMethods()) {
+            if (m.getReturnType() != void.class) continue;
             Class<?>[] p = m.getParameterTypes();
-            if (p.length < 9 || m.getReturnType() != void.class) continue;
-            if (!Context.class.isAssignableFrom(p[0])) continue;
-            if (!p[4].isAssignableFrom(item)) continue;
-            if (p[8] != String.class || p[p.length - 1] != boolean.class) continue;
-            if (sourceFor(p[3]) == null) continue;
+            if (p.length < 5 || p.length > 20) continue;
+            int st = -1;
+            int so = -1;
+            for (int i = 0; i < p.length; i++) {
+                if (st < 0 && !platform(p[i])
+                        && ((item != null && p[i].isAssignableFrom(item)) || StreakSticker.isStickerClass(p[i]))) {
+                    st = i;
+                }
+                if (so < 0 && p[i].isEnum() && sourceFor(p[i]) != null) so = i;
+            }
+            if (st < 0 || so < 0) continue;
+            int cv = -1;
+            if (p.length > 8 && p[8] == String.class && st == 4 && so == 3) {
+                cv = 8;
+            } else {
+                for (int i = st + 1; i < p.length && cv < 0; i++) {
+                    if (p[i] == String.class) cv = i;
+                }
+            }
+            if (cv < 0) continue;
+            int ctx = Context.class.isAssignableFrom(p[0]) ? 0 : -1;
+            boolean exact = p.length >= 9 && ctx == 0 && st == 4 && so == 3 && cv == 8
+                    && p[p.length - 1] == boolean.class;
+            int score = (exact ? 100 : 50) + (p.length == 13 ? 1 : 0);
             n++;
-            if (pick == null || p.length == 13) pick = m;
+            if (score > bestScore) {
+                bestScore = score;
+                best = new Sender(m, ctx, so, st, cv);
+            }
         }
-        if (note && n != 1 && pick != null) senderNote = "подходящих методов отправки " + n + ", взят " + pick.getName();
-        return pick;
+        if (note && n > 1 && best != null) {
+            senderNote = "подходящих методов отправки " + n + ", взят " + best.m.getName();
+        }
+        return best;
     }
 
     /** Находит метод отправки и вешает наблюдатель за настоящими отправками стикеров. Главный поток. */
     static boolean ensureSender() {
-        if (senderM != null) return true;
-        if (StreakSticker.itemClass() == null) {
-            senderNote = "класса StickerItem нет в этой версии";
-            return false;
-        }
+        if (sender != null) return true;
         Object ms = messageService();
         if (ms == null) return false;
-        Method m = pickSender(ms, true);
-        if (m == null) {
+        final Sender sp = pickSender(ms, true);
+        if (sp == null) {
             senderNote = "метод отправки не найден на " + ms.getClass().getName();
             return false;
         }
         try {
-            m.setAccessible(true);
+            sp.m.setAccessible(true);
         } catch (Throwable ignored) {
             // публичный
         }
-        senderM = m;
-        if (!senderNote.startsWith("подходящих")) senderNote = "найден " + m.getName() + " (" + m.getParameterTypes().length + " арг.)";
+        sender = sp;
+        StreakSticker.adoptClass(sp.m.getParameterTypes()[sp.sticker]);
+        if (!senderNote.startsWith("подходящих")) {
+            senderNote = "найден " + sp.m.getName() + " (" + sp.m.getParameterTypes().length + " арг.)";
+        }
         if (!senderHooked) {
             senderHooked = true;
             try {
-                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                XposedBridge.hookMethod(sp.m, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         try {
                             Object[] a = param.args;
-                            if (a != null && a.length > 4) StreakSticker.offer(a[4], "отправка стикера в чат");
+                            if (a != null && a.length > sp.sticker) StreakSticker.offer(a[sp.sticker], "отправка стикера в чат");
                         } catch (Throwable ignored) {
                             // не мешаем отправке
                         }
@@ -516,7 +680,7 @@ final class StreakHooks {
 
     /** Подготовка в фоне: найти отправку на главном потоке, чтобы поймать первый настоящий стикер. */
     static void prepareSender() {
-        if (senderM != null) return;
+        if (sender != null) return;
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {
@@ -552,10 +716,10 @@ final class StreakHooks {
     private static boolean sendOnMain(Context ctx, Object sticker, String conv) {
         try {
             if (!ensureSender()) return false;
-            Method sender = senderM;
+            Sender sp = sender;
             Object ms = message;
-            Class<?>[] types = sender.getParameterTypes();
-            Object source = sourceFor(types[3]);
+            Class<?>[] types = sp.m.getParameterTypes();
+            Object source = sourceFor(types[sp.source]);
             if (source == null) {
                 senderNote = "источник " + Targets.STREAK_SOURCE + " не найден";
                 return false;
@@ -563,15 +727,15 @@ final class StreakHooks {
             Object[] args = new Object[types.length];
             for (int i = 0; i < types.length; i++) {
                 if (types[i].isPrimitive()) args[i] = blank(types[i]);
-                else if (i == 0) args[i] = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
-                else if (i == 3) args[i] = source;
-                else if (i == 4) args[i] = sticker;
-                else if (i == 5) args[i] = options(types[5]);
-                else if (i == 8) args[i] = conv;
+                else if (i == sp.ctx) args[i] = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+                else if (i == sp.source) args[i] = source;
+                else if (i == sp.sticker) args[i] = sticker;
+                else if (i == sp.sticker + 1) args[i] = options(types[i]);
+                else if (i == sp.conv) args[i] = conv;
                 else args[i] = null;
             }
-            sender.invoke(ms, args);
-            senderNote = "последняя отправка: вызов прошёл (" + sender.getName() + "), доставка не подтверждена";
+            sp.m.invoke(ms, args);
+            senderNote = "последняя отправка: вызов прошёл (" + sp.m.getName() + "), доставка не подтверждена";
             return true;
         } catch (Throwable t) {
             Throwable why = t instanceof InvocationTargetException && t.getCause() != null ? t.getCause() : t;

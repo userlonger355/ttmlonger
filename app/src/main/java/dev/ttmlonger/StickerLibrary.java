@@ -134,8 +134,7 @@ final class StickerLibrary {
     /** Добавляет стикер; true, если такого ещё не было. fav — из избранных. */
     static boolean add(Object item, boolean fav) {
         try {
-            Class<?> c = StreakSticker.itemClass();
-            if (item == null || c == null || !c.isInstance(item)) return false;
+            if (item == null || !StreakSticker.adopt(item)) return false;
             String id = idOf(item);
             if (id == null) return false;
             synchronized (items) {
@@ -231,15 +230,18 @@ final class StickerLibrary {
 
     // ---------------------------------------------------------------- избранные стикеры TikTok
 
-    /** Подключает хуки на методы репозитория избранных; вызывается, когда включено автопродление. */
+    /** Подключает хуки на методы и конструкторы репозитория избранных; вызывается, когда включено автопродление. */
     static void apply(DexScan.Result r, ClassLoader cl) {
         for (DexScan.Ref ref : r.refs) {
             if (!ref.label.startsWith("method:")) continue;
             Class<?> c = DexHooks.load(cl, ref.cls);
             if (c == null) continue;
-            if (!repoClasses.contains(c.getName())) repoClasses.add(c.getName());
+            if (!repoClasses.contains(c.getName())) {
+                repoClasses.add(c.getName());
+                hookConstructors(c);
+            }
             Method m = DexHooks.findMethod(cl, ref.cls, ref.name, ref.proto);
-            if (m == null) continue;
+            if (m == null || Modifier.isAbstract(m.getModifiers())) continue;
             synchronized (hooked) {
                 if (!hooked.add(m.toString())) continue;
             }
@@ -254,7 +256,51 @@ final class StickerLibrary {
                 : "классов " + repoClasses.size() + ", хуков " + hooks + "; объект ещё не получен";
     }
 
-    /** Хук-наблюдатель: запоминает репозиторий, когда TikTok сам обращается к избранным. */
+    /** Объект репозитория создаётся один раз при запуске: ловим его в конструкторе, не дожидаясь панели стикеров. */
+    private static void hookConstructors(Class<?> c) {
+        if (c.isInterface() || Modifier.isAbstract(c.getModifiers())) return;
+        try {
+            XposedBridge.hookAllConstructors(c, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        Object self = param.thisObject;
+                        if (self != null && repo == null) {
+                            repo = self;
+                            favNote = "репозиторий получен при создании";
+                            scheduleRead(4000L);
+                        }
+                    } catch (Throwable ignored) {
+                        // не мешаем TikTok
+                    }
+                }
+            });
+            hooks++;
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    private static volatile boolean readPending;
+
+    /** Прочитать избранные чуть позже; частые вызовы склеиваются в один. */
+    private static void scheduleRead(long delayMs) {
+        if (readPending) return;
+        readPending = true;
+        StreakRunner.later(new Runnable() {
+            @Override
+            public void run() {
+                readPending = false;
+                try {
+                    readFavourites();
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                }
+            }
+        }, delayMs);
+    }
+
+    /** Хук-наблюдатель: запоминает репозиторий и перечитывает избранные, когда TikTok сам к ним обращается. */
     private static final class Capture extends XC_MethodHook {
         @Override
         protected void afterHookedMethod(MethodHookParam param) {
@@ -263,13 +309,8 @@ final class StickerLibrary {
                 if (self != null && repo == null) {
                     repo = self;
                     favNote = "репозиторий получен из вызова TikTok";
-                    StreakRunner.async(new Runnable() {
-                        @Override
-                        public void run() {
-                            readFavourites();
-                        }
-                    });
                 }
+                scheduleRead(1500L);
             } catch (Throwable ignored) {
                 // не мешаем TikTok
             }
@@ -323,11 +364,16 @@ final class StickerLibrary {
         return null;
     }
 
+    private static boolean looksSticker(Object o) {
+        if (o == null) return false;
+        Class<?> item = StreakSticker.itemClass();
+        return (item != null && item.isInstance(o)) || StreakSticker.isStickerClass(o.getClass());
+    }
+
     /** Список из состояния потока: сам список или первый метод/поле, отдающее список стикеров. */
     private static List<?> listOf(Object state) {
         if (state == null) return null;
         if (state instanceof List) return (List<?>) state;
-        Class<?> item = StreakSticker.itemClass();
         List<?> any = null;
         try {
             for (Method m : state.getClass().getMethods()) {
@@ -336,7 +382,7 @@ final class StickerLibrary {
                 Object v = m.invoke(state);
                 if (!(v instanceof List)) continue;
                 List<?> l = (List<?>) v;
-                if (!l.isEmpty() && item != null && item.isInstance(l.get(0))) return l;
+                if (!l.isEmpty() && looksSticker(l.get(0))) return l;
                 if (any == null) any = l;
             }
             for (Class<?> k = state.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
@@ -346,7 +392,7 @@ final class StickerLibrary {
                     Object v = f.get(state);
                     if (!(v instanceof List)) continue;
                     List<?> l = (List<?>) v;
-                    if (!l.isEmpty() && item != null && item.isInstance(l.get(0))) return l;
+                    if (!l.isEmpty() && looksSticker(l.get(0))) return l;
                     if (any == null) any = l;
                 }
             }
@@ -478,6 +524,41 @@ final class StickerLibrary {
 
     static long lastRefresh() {
         return lastRefresh;
+    }
+
+    /** Сколько избранных стикеров видно сейчас. */
+    static int favourites() {
+        int n = 0;
+        synchronized (items) {
+            for (Entry e : items.values()) if (e.fav) n++;
+        }
+        return n;
+    }
+
+    /** Понятное объяснение для экрана выбора: что не так со списком и что сделать. */
+    static String state() {
+        if (!Prefs.streakAuto) {
+            return "Автопродление выключено: включите его и перезапустите TikTok, иначе мод не видит стикеров.";
+        }
+        if (repoClasses.isEmpty() && count() == 0) {
+            return "В этой версии TikTok не нашлись избранные стикеры. Нажмите «Выбрать отправкой» и отправьте "
+                    + "любой стикер в чате.";
+        }
+        if (repo == null && favourites() == 0) {
+            return "TikTok ещё не отдал избранные. Откройте любой чат → значок стикеров → «Избранное», "
+                    + "вернитесь сюда и нажмите «Обновить избранные».";
+        }
+        if (favourites() == 0) {
+            return "Избранных стикеров не видно: добавьте стикер в избранное в TikTok или нажмите «Выбрать отправкой».";
+        }
+        return "";
+    }
+
+    /** Сведения для разработчика. */
+    static String details() {
+        return "избранные: " + favNote + "; репозиторий " + (repo == null ? "нет" : repo.getClass().getName())
+                + "; в списке " + count() + " (избранных " + favourites() + "); классов репозитория "
+                + repoClasses.size() + ", хуков " + hooks;
     }
 
 }

@@ -32,7 +32,7 @@ import java.util.TreeSet;
  */
 final class DexScan {
     /** Меняется при любом изменении правил поиска: старый кэш тогда не используется. */
-    static final int VERSION = 3;
+    static final int VERSION = 4;
 
     private DexScan() {
     }
@@ -60,7 +60,9 @@ final class DexScan {
         /**
          * {метка, дескриптор интерфейса}: классы, которые его реализуют, попадают в результат как
          * Ref("impl:метка", класс, "", ""). Нужно, когда интерфейс назван по-настоящему, а реализует
-         * его обфусцированный класс (служба огоньков).
+         * его обфусцированный класс (служба огоньков). Дескриптор, начинающийся с «L*» и слэша, означает
+         * «любой пакет»: подходит всякий тип, чей дескриптор оканчивается на слэш и имя. Реализациями
+         * считаются и наследники таких классов, и классы, реализующие интерфейс-наследник.
          */
         String[][] interfaces = new String[0][];
         /**
@@ -251,6 +253,7 @@ final class DexScan {
         Map<String, Anchored> anchored = new LinkedHashMap<>();
         Map<String, ReaderClass> readers = new LinkedHashMap<>();
         Map<String, Ref> refs = new LinkedHashMap<>();
+        Map<String, Integer> shared = new HashMap<>();
         for (int i = 0; i < src.count(); i++) {
             if (o.deadline != 0 && System.currentTimeMillis() > o.deadline) {
                 res.notes.add("лимит времени: разобрано " + i + " из " + src.count() + " dex");
@@ -259,7 +262,9 @@ final class DexScan {
             try {
                 byte[] bytes = src.read(i);
                 Dex d = new Dex(bytes, o);
+                d.sharedSub = shared;
                 d.scan(res, anchored, readers, refs);
+                d.exportSubs(shared);
                 res.dexes++;
             } catch (Throwable t) {
                 res.notes.add(src.name(i) + ": " + t.getClass().getSimpleName()
@@ -336,6 +341,10 @@ final class DexScan {
         int templateType = -1;
         /** Для каждого типа: номер интерфейса из Options.interfaces или -1; null, если интерфейсы не нужны. */
         int[] ifaceOf;
+        /** Для каждого типа: номер интерфейса из Options.interfaces, если тип его реализует хоть как-то, иначе -1. */
+        int[] subOf;
+        /** Типы, найденные как реализации в уже разобранных dex (общий для всех dex набор, дескриптор → номер). */
+        Map<String, Integer> sharedSub;
         boolean[] isConst;
         String[] constName;
         /** Для каждой строки: искомое имя метода или null; null вместо массива, если искать нечего. */
@@ -477,6 +486,74 @@ final class DexScan {
             return c == 'Z' || c == 'B' || c == 'S' || c == 'C' || c == 'I' || c == 'J' || c == 'F' || c == 'D';
         }
 
+        /** Запоминает найденные реализации для следующих dex (класс из одного dex может наследовать из другого). */
+        void exportSubs(Map<String, Integer> out) {
+            if (subOf == null) return;
+            for (int t = 0; t < typN; t++) {
+                if (subOf[t] >= 0) out.put(typeDesc(t), subOf[t]);
+            }
+        }
+
+        /** Оканчивается ли строка на заданные байты (строка Dex оканчивается нулём). */
+        boolean strEndsWith(int idx, byte[] tail) {
+            int p = strStart(idx);
+            int end = p;
+            while (end < b.length && b[end] != 0) end++;
+            int n = end - p;
+            if (n < tail.length) return false;
+            for (int i = 0; i < tail.length; i++) {
+                if (b[end - tail.length + i] != tail[i]) return false;
+            }
+            return true;
+        }
+
+        /**
+         * Отмечает все типы, которые реализуют искомый интерфейс не напрямую: через суперкласс,
+         * через интерфейс-наследник, а также через типы, найденные в предыдущих dex. Повторяет проход,
+         * пока что-то добавляется (цепочки обычно короткие).
+         */
+        private void closeSubtypes() {
+            subOf = new int[typN];
+            java.util.Arrays.fill(subOf, -1);
+            if (ifaceOf != null) {
+                for (int t = 0; t < typN; t++) subOf[t] = ifaceOf[t];
+            }
+            if (sharedSub != null && !sharedSub.isEmpty()) {
+                for (int t = 0; t < typN; t++) {
+                    if (typeFirst[t] != 'L' || subOf[t] >= 0) continue;
+                    Integer w = sharedSub.get(typeDesc(t));
+                    if (w != null) subOf[t] = w;
+                }
+            }
+            for (int round = 0; round < 12; round++) {
+                boolean changed = false;
+                for (int ci = 0; ci < clsN; ci++) {
+                    int def = clsOff + 32 * ci;
+                    int t = u32(def);
+                    if (t < 0 || t >= typN || subOf[t] >= 0) continue;
+                    int w = -1;
+                    int sup = u32(def + 8);
+                    if (sup >= 0 && sup < typN && subOf[sup] >= 0) w = subOf[sup];
+                    int ifaceOff = u32(def + 12);
+                    if (w < 0 && ifaceOff != 0 && ifaceOff < b.length) {
+                        int n = u32(ifaceOff);
+                        for (int k = 0; k < n && k < 64; k++) {
+                            int it = u16(ifaceOff + 4 + 2 * k);
+                            if (it < typN && subOf[it] >= 0) {
+                                w = subOf[it];
+                                break;
+                            }
+                        }
+                    }
+                    if (w >= 0) {
+                        subOf[t] = w;
+                        changed = true;
+                    }
+                }
+                if (!changed) break;
+            }
+        }
+
         private void prepare() {
             byte[] sString = "Ljava/lang/String;".getBytes(LATIN1);
             byte[] sClick = o.clickInterface == null ? null : o.clickInterface.getBytes(LATIN1);
@@ -493,12 +570,20 @@ final class DexScan {
 
             if (o.interfaces.length > 0) {
                 byte[][] want = new byte[o.interfaces.length][];
-                for (int i = 0; i < want.length; i++) want[i] = o.interfaces[i][1].getBytes(LATIN1);
+                boolean[] any = new boolean[want.length];
+                for (int i = 0; i < want.length; i++) {
+                    String d = o.interfaces[i][1];
+                    if (d.startsWith("L*")) {
+                        any[i] = true;
+                        d = d.substring(2);
+                    }
+                    want[i] = d.getBytes(LATIN1);
+                }
                 for (int t = 0; t < typN; t++) {
                     if (typeFirst[t] != 'L') continue;
                     int s = u32(typOff + 4 * t);
                     for (int i = 0; i < want.length; i++) {
-                        if (strIs(s, want[i])) {
+                        if (any[i] ? strEndsWith(s, want[i]) : strIs(s, want[i])) {
                             if (ifaceOf == null) {
                                 ifaceOf = new int[typN];
                                 java.util.Arrays.fill(ifaceOf, -1);
@@ -508,6 +593,7 @@ final class DexScan {
                         }
                     }
                 }
+                if (ifaceOf != null || (sharedSub != null && !sharedSub.isEmpty())) closeSubtypes();
             }
 
             // Метки форм, сгруппированные по «короткой» записи (shorty): так дешёвый предварительный отбор.
@@ -698,14 +784,13 @@ final class DexScan {
                     }
                 }
 
-                if (ifaceOf != null && ifaceOff != 0) {
-                    int n = u32(ifaceOff);
-                    for (int k = 0; k < n && k < 64; k++) {
-                        int want = ifaceOf[u16(ifaceOff + 4 + 2 * k)];
-                        if (want >= 0) {
-                            Ref r = new Ref("impl:" + o.interfaces[want][0], typeDesc(u32(def)), "", "");
-                            if (!refs.containsKey(r.id())) refs.put(r.id(), r);
-                        }
+                if (subOf != null) {
+                    int ct = u32(def);
+                    int want = ct >= 0 && ct < typN ? subOf[ct] : -1;
+                    // Интерфейсы (0x200) в реализации не берём: хукать нужны классы с кодом.
+                    if (want >= 0 && (u32(def + 4) & 0x200) == 0) {
+                        Ref r = new Ref("impl:" + o.interfaces[want][0], typeDesc(ct), "", "");
+                        if (!refs.containsKey(r.id())) refs.put(r.id(), r);
                     }
                 }
 
