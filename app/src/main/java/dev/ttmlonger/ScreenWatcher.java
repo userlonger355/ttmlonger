@@ -73,6 +73,7 @@ final class ScreenWatcher {
             if (AvatarScreen.matches(a)) AvatarScreen.attach(a);
             watch(a);
             VideoInfo.kick();
+            LiveButton.kick();
         } catch (Throwable t) {
             FlagStore.log(t);
         }

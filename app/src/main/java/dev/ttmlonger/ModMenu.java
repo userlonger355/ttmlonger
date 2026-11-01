@@ -51,6 +51,14 @@ final class ModMenu extends Screen {
                         VideoInfoScreen.show(act);
                     }
                 }));
+        body.addView(ui.menuRow(Icons.EYE_OFF, "Реклама и LIVE",
+                "Автоскрытие рекламы в ленте, скрытие кнопки LIVE", AdsScreen.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        AdsScreen.show(act);
+                    }
+                }));
 
         body.addView(ui.header("Сохранение"));
         body.addView(ui.menuRow(Icons.DOWNLOAD, "Скачивание", "Без водяного знака, качество, обход запрета", null,

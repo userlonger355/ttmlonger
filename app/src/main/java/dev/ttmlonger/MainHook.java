@@ -57,6 +57,11 @@ public final class MainHook implements IXposedHookLoadPackage {
             FlagStore.log(t);
         }
         try {
+            AdHooks.install(cl);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+        try {
             StickerSaver.install();
         } catch (Throwable t) {
             FlagStore.log(t);

@@ -55,6 +55,13 @@ final class Prefs {
     /** Вид плашки региона: 0 флаг и код, 1 только флаг, 2 только код. */
     static volatile int vtRegionMode = 0;
 
+    /** Убирать рекламные посты из ленты ещё до показа. */
+    static volatile boolean hideAds = true;
+    /** Прятать кнопку LIVE в левом верхнем углу главной. */
+    static volatile boolean hideLiveButton = true;
+    /** Убирать из ленты прямые эфиры, которые TikTok подмешивает среди видео. */
+    static volatile boolean hideLiveRooms = false;
+
     /** Цвет фона страницы настроек TikTok, снятый при последнем показе блока «Мод» (0 — не снимали). */
     static volatile int pageBg = 0;
 
@@ -90,6 +97,9 @@ final class Prefs {
             vtSeconds = o.optBoolean("vtSeconds", true);
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
+            hideAds = o.optBoolean("hideAds", true);
+            hideLiveButton = o.optBoolean("hideLiveButton", true);
+            hideLiveRooms = o.optBoolean("hideLiveRooms", false);
             int pb = o.optInt("pageBg", 0);
             pageBg = pb == 0 ? 0 : (0xFF000000 | pb);
         } catch (Throwable t) {
@@ -198,6 +208,21 @@ final class Prefs {
         save();
     }
 
+    static void setHideAds(boolean v) {
+        hideAds = v;
+        save();
+    }
+
+    static void setHideLiveButton(boolean v) {
+        hideLiveButton = v;
+        save();
+    }
+
+    static void setHideLiveRooms(boolean v) {
+        hideLiveRooms = v;
+        save();
+    }
+
     static void setPageBg(int argb) {
         pageBg = argb == 0 ? 0 : (0xFF000000 | (argb & 0xFFFFFF));
         save();
@@ -233,6 +258,9 @@ final class Prefs {
             o.put("vtSeconds", vtSeconds);
             o.put("vtRegion", vtRegion);
             o.put("vtRegionMode", vtRegionMode);
+            o.put("hideAds", hideAds);
+            o.put("hideLiveButton", hideLiveButton);
+            o.put("hideLiveRooms", hideLiveRooms);
             o.put("pageBg", pageBg);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {

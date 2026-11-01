@@ -38,11 +38,12 @@ final class Icons {
     static final int SEARCH = 17;
     static final int SEND = 18;
     static final int COPY = 19;
-    static final int COUNT = 20;
+    static final int EYE_OFF = 20;
+    static final int COUNT = 21;
 
     static final String[] NAMES = {"globe", "palette", "download", "video", "sticker", "flame", "image",
             "mic", "flag", "sliders", "chevron-right", "chevron-left", "check", "clock", "refresh", "trash",
-            "close", "search", "send", "copy"};
+            "close", "search", "send", "copy", "eye-off"};
 
     /** Описания значков в порядке констант. */
     private static final String[] DATA = {
@@ -93,6 +94,9 @@ final class Icons {
             // COPY: два листа
             "R 9 9 12 12 2.6  M 15 5.6 L 15 5.2 C 15 4 14 3 12.8 3 L 5.2 3 C 4 3 3 4 3 5.2 L 3 12.8 C 3 14 4 15 5.2 15"
                     + " L 5.6 15 S",
+            // EYE_OFF: глаз, перечёркнутый чертой
+            "M 2.6 12 C 5 7.6 8.4 5.6 12 5.6 C 15.6 5.6 19 7.6 21.4 12 C 19 16.4 15.6 18.4 12 18.4"
+                    + " C 8.4 18.4 5 16.4 2.6 12 Z S  O 12 12 3  M 4.6 4.6 L 19.4 19.4 S",
     };
 
     private Icons() {

@@ -438,6 +438,12 @@ final class StreakHooks {
         });
     }
 
+    /** Номер аккаунта владельца, если он уже известен (ничего не ищет и не вызывает). */
+    static String knownOwnUid() {
+        String have = ownUid;
+        return have.isEmpty() ? null : have;
+    }
+
     /** Номер аккаунта владельца: из службы аккаунта TikTok, а если не вышло, по общему номеру в известных чатах. */
     private static String ownUid() {
         String have = ownUid;
