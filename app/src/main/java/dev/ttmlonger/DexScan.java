@@ -71,6 +71,18 @@ final class DexScan {
          */
         String[] consts = new String[0];
         /**
+         * Куски строк (строчные латинские буквы, цифры, «_»), по которым ищутся const-string в коде без
+         * учёта регистра: подходит любая короткая строка (до 80 знаков), где кусок встречается. Метод, где
+         * строка найдена, попадает в результат как Ref("const:~кусок|строка", класс, метод, сигнатура).
+         * Это разведка: на каждый кусок берётся не больше partsPerNeedle разных строк.
+         */
+        String[] parts = new String[0];
+        /**
+         * Сколько разных строк на один кусок из parts (в каждом dex). В таблице строк рядом с настоящими
+         * const-string лежат и имена методов, полей и типов, поэтому предел задаётся с запасом.
+         */
+        int partsPerNeedle = 400;
+        /**
          * Имена методов, которые не обфусцированы (например, getFavouriteStickersFlow): каждый
          * найденный метод попадает в результат как Ref("method:имя", класс, имя, сигнатура).
          */
@@ -347,6 +359,8 @@ final class DexScan {
         Map<String, Integer> sharedSub;
         boolean[] isConst;
         String[] constName;
+        /** Сколько мест со строками из Options.parts уже записано (предел против разрастания). */
+        int partRefs;
         /** Для каждой строки: искомое имя метода или null; null вместо массива, если искать нечего. */
         String[] methodName;
         /** Заполняется scanCode: найденные в методе искомые строки. */
@@ -416,6 +430,28 @@ final class DexScan {
             int p = u32(strOff + 4 * idx);
             while ((b[p] & 0x80) != 0) p++;
             return p + 1;
+        }
+
+        private boolean containsSlash(int from, int to) {
+            for (int i = from; i < to; i++) {
+                if (b[i] == '/') return true;
+            }
+            return false;
+        }
+
+        /** Есть ли в b[from, to) подстрока need без учёта регистра (need уже в нижнем регистре). */
+        private boolean containsFold(int from, int to, byte[] need) {
+            for (int i = from; i + need.length <= to; i++) {
+                int k = 0;
+                while (k < need.length) {
+                    int c = b[i + k];
+                    if (c >= 'A' && c <= 'Z') c += 32;
+                    if (c != need[k]) break;
+                    k++;
+                }
+                if (k == need.length) return true;
+            }
+            return false;
         }
 
         boolean strIs(int idx, byte[] want) {
@@ -679,6 +715,34 @@ final class DexScan {
                 }
             }
 
+            if (o.parts.length > 0) {
+                int[] taken = new int[o.parts.length];
+                byte[][] need = new byte[o.parts.length][];
+                for (int i = 0; i < need.length; i++) need[i] = o.parts[i].getBytes(LATIN1);
+                for (int s = 0; s < strN; s++) {
+                    int p = strStart(s);
+                    int e = p;
+                    boolean plain = true;
+                    while (e < b.length && b[e] != 0 && e - p <= 80) {
+                        if ((b[e] & 0x80) != 0) plain = false;
+                        e++;
+                    }
+                    if (!plain || e >= b.length || b[e] != 0 || e - p > 80 || e == p) continue;
+                    if (b[p] == 'L' && b[e - 1] == ';' && containsSlash(p, e)) continue;  // дескриптор типа
+                    for (int i = 0; i < need.length; i++) {
+                        if (taken[i] >= o.partsPerNeedle || !containsFold(p, e, need[i])) continue;
+                        taken[i]++;
+                        if (isConst == null) {
+                            isConst = new boolean[strN];
+                            constName = new String[strN];
+                        }
+                        isConst[s] = true;
+                        constName[s] = "~" + o.parts[i] + "|" + new String(b, p, e - p, LATIN1);
+                        break;
+                    }
+                }
+            }
+
             if (o.consts.length > 0) {
                 int[] first = new int[256];
                 byte[][] want = new byte[o.consts.length][];
@@ -844,6 +908,7 @@ final class DexScan {
                                 if (clsName == null) clsName = typeDesc(u32(def));
                                 String mname = str(u32(mthOff + 8 * mid + 4));
                                 for (String h : constHits) {
+                                    if (h.charAt(0) == '~' && ++partRefs > 3000) continue;
                                     Ref r = new Ref("const:" + h, clsName, mname, protoDesc(pro));
                                     if (!refs.containsKey(r.id())) refs.put(r.id(), r);
                                 }

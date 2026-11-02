@@ -51,6 +51,22 @@ final class ModMenu extends Screen {
                         VideoInfoScreen.show(act);
                     }
                 }));
+        body.addView(ui.menuRow(Icons.CHECK, "Возможности",
+                "Голосовые в ЛС, длинные репосты, хештеги без лимита, 9 фото, телесуфлёр",
+                UnlocksScreen.menuSummary(), new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        UnlocksScreen.show(act);
+                    }
+                }));
+        body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
+                "Для «Невидимки» и просмотра заблокированного профиля", ReconScreen.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        ReconScreen.show(act);
+                    }
+                }));
         body.addView(ui.menuRow(Icons.EYE_OFF, "Реклама и LIVE",
                 "Автоскрытие рекламы в ленте, скрытие кнопки LIVE", AdsScreen.menuSummary(),
                 new View.OnClickListener() {

@@ -213,7 +213,7 @@ final class FlagStore {
         if (CrashGuard.tripped) return null;
         Patch p = overrides.get(key);
         if (p != null) return p;
-        return Prefs.refSet ? RefSet.base(key) : null;
+        return RefSet.active(key);
     }
 
     // ---------------------------------------------------------------- для интерфейса
@@ -226,19 +226,18 @@ final class FlagStore {
     static Patch effective(String key) {
         Patch p = overrides.get(key);
         if (p != null) return p;
-        return Prefs.refSet ? RefSet.base(key) : null;
+        return RefSet.active(key);
     }
 
     /** Подмена этого флага идёт из набора мода (своей подмены нет). */
     static boolean fromSet(String key) {
-        return Prefs.refSet && !overrides.containsKey(key) && RefSet.base(key) != null;
+        return !overrides.containsKey(key) && RefSet.active(key) != null;
     }
 
     /** Сколько подмен из набора мода действует сейчас (с учётом выключателя и своих подмен). */
     static int setCount() {
-        if (!Prefs.refSet) return 0;
         int n = 0;
-        for (String k : RefSet.keys()) if (!overrides.containsKey(k)) n++;
+        for (String k : RefSet.allKeys()) if (!overrides.containsKey(k) && RefSet.active(k) != null) n++;
         return n;
     }
 
@@ -356,6 +355,11 @@ final class FlagStore {
         return overrides.size();
     }
 
+    /** Читал ли TikTok такой флаг в этом запуске (строки-ключи флагов разведке не нужны). */
+    static boolean knownKey(String key) {
+        return flags.containsKey(key);
+    }
+
     static List<Flag> snapshot() {
         return new ArrayList<>(flags.values());
     }
@@ -383,7 +387,7 @@ final class FlagStore {
             Patch o = overrides.get(f.key);
             if (o != null) e.put("override", o.raw);
             if (f.def != null) e.put("default", f.def);
-            Patch b = o == null && Prefs.refSet ? RefSet.base(f.key) : null;
+            Patch b = o == null ? RefSet.active(f.key) : null;
             if (b != null) e.put("forced_by_set", b.raw);
             out.put(f.key, e);
         }

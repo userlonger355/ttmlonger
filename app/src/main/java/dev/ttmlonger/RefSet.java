@@ -56,6 +56,20 @@ final class RefSet {
         return base().get(key);
     }
 
+    /** Подмена, которая действует сейчас: группа «Возможностей» главнее набора, набор — выключателя. */
+    static FlagStore.Patch active(String key) {
+        Unlocks.Group g = Unlocks.groupOf(key);
+        if (g != null) return Unlocks.on(g.id) ? Unlocks.patchOf(key) : null;
+        return Prefs.refSet ? base(key) : null;
+    }
+
+    /** Ключи набора и «Возможностей» вместе. */
+    static Iterable<String> allKeys() {
+        java.util.Set<String> all = new java.util.LinkedHashSet<>(base().keySet());
+        all.addAll(Unlocks.keys());
+        return all;
+    }
+
     static Iterable<String> keys() {
         return base().keySet();
     }

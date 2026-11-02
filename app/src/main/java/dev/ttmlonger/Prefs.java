@@ -69,6 +69,9 @@ final class Prefs {
     /** Убирать из ленты прямые эфиры, которые TikTok подмешивает среди видео. */
     static volatile boolean hideLiveRooms = false;
 
+    /** Выключенные «Возможности» (идентификаторы через запятую); пусто — все включены. */
+    static volatile String unlockOff = "";
+
     /** Цвет фона страницы настроек TikTok, снятый при последнем показе блока «Мод» (0 — не снимали). */
     static volatile int pageBg = 0;
 
@@ -110,6 +113,7 @@ final class Prefs {
             hideAds = o.optBoolean("hideAds", true);
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
+            unlockOff = o.optString("unlockOff", "");
             int pb = o.optInt("pageBg", 0);
             pageBg = pb == 0 ? 0 : (0xFF000000 | pb);
         } catch (Throwable t) {
@@ -253,6 +257,11 @@ final class Prefs {
         save();
     }
 
+    static void setUnlock(String id, boolean on) {
+        unlockOff = Unlocks.with(unlockOff, id, !on);
+        save();
+    }
+
     static void setPageBg(int argb) {
         pageBg = argb == 0 ? 0 : (0xFF000000 | (argb & 0xFFFFFF));
         save();
@@ -294,6 +303,7 @@ final class Prefs {
             o.put("hideAds", hideAds);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);
+            o.put("unlockOff", unlockOff);
             o.put("pageBg", pageBg);
             FlagStore.writeAtomic(file, o.toString());
         } catch (Throwable t) {

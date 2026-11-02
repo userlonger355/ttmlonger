@@ -116,6 +116,22 @@ final class DexHooks {
         apply(r, cl, ctx);
     }
 
+    /** Разбор dex приложения по своим правилам (для разведки), без кэша. */
+    static DexScan.Result scanApp(Context ctx, DexScan.Options o) {
+        ApplicationInfo ai = ctx.getApplicationInfo();
+        List<String> apks = new ArrayList<>();
+        apks.add(ai.sourceDir);
+        if (ai.splitSourceDirs != null) {
+            for (String s : ai.splitSourceDirs) apks.add(s);
+        }
+        ApkSource src = new ApkSource(apks);
+        try {
+            return DexScan.run(src, o);
+        } finally {
+            src.close();
+        }
+    }
+
     private static String[] concat(String[] a, String[] b) {
         String[] out = java.util.Arrays.copyOf(a, a.length + b.length);
         System.arraycopy(b, 0, out, a.length, b.length);
