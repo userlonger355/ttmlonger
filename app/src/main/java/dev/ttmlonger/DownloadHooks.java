@@ -101,6 +101,22 @@ final class DownloadHooks {
             }));
         }
 
+        if (aweme != null) {
+            // Экран читает автора и описание, когда рисует подпись: так плашки знают пост раньше плеера.
+            XC_MethodHook bound = new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (!CrashGuard.tripped && Prefs.vtMaster()) VideoTracker.bound(param.thisObject);
+                    } catch (Throwable ignored) {
+                        // не мешаем TikTok
+                    }
+                }
+            };
+            count("Aweme.getAuthor→плашки", hookAll(aweme, "getAuthor", bound));
+            count("Aweme.getDesc→плашки", hookAll(aweme, "getDesc", bound));
+        }
+
         if (acl != null) {
             count("ACLCommonShare.getCode", hookAll(acl, "getCode", fixed(0)));
             count("ACLCommonShare.getShowType", hookAll(acl, "getShowType", fixed(2)));

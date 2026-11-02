@@ -406,7 +406,7 @@ final class StreakRunner {
                 StreakHooks.Info i = StreakHooks.read(conv, pass == 1);
                 if (i == null || i.streak < 0) {
                     unreadable++;
-                } else if (i.streak >= StreakLogic.FLAME_FROM) {
+                } else if (i.streak >= StreakLogic.FLAME_FROM && StreakLogic.worthSending(i.status)) {
                     hot.add(conv);
                 }
             }

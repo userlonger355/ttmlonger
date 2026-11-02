@@ -192,6 +192,82 @@ final class VideoTracker {
         return null;
     }
 
+    // ------------------------------------------------------------ посты, привязанные к экрану
+
+    private static final int BOUND_MAX = 24;
+    private static final List<Entry> BOUND = new ArrayList<>();
+    private static volatile Entry lastBound;
+
+    /**
+     * Экран читает у поста имя автора или описание: значит, пост уже показан (или вот-вот будет), а плеер
+     * ещё не взял адрес воспроизведения. Эти посты нужны только плашкам времени и региона (VideoInfo),
+     * в историю «Видео и истории» они не попадают.
+     */
+    static void bound(Object aweme) {
+        if (aweme == null) return;
+        Entry l = lastBound;
+        if (l != null && l.aweme == aweme) {
+            l.seen = now();
+            return;
+        }
+        boolean fresh = false;
+        synchronized (BOUND) {
+            Entry e = null;
+            for (Entry x : BOUND) {
+                if (x.aweme == aweme) {
+                    e = x;
+                    break;
+                }
+            }
+            if (e == null) {
+                e = new Entry(aweme);
+                BOUND.add(e);
+                fresh = true;
+                if (BOUND.size() > BOUND_MAX) {
+                    Entry oldest = null;
+                    for (Entry x : BOUND) {
+                        if (x != e && (oldest == null || x.seen < oldest.seen)) oldest = x;
+                    }
+                    if (oldest != null) BOUND.remove(oldest);
+                }
+            }
+            e.seen = now();
+            lastBound = e;
+        }
+        if (fresh) VideoInfo.nudge();
+    }
+
+    /**
+     * Кого искать на экране: недавние видео из истории плюс посты, привязанные к экрану. Первыми идут те,
+     * что недавно играли, затем самые свежие по чтению; один пост дважды не попадает.
+     */
+    static List<Entry> candidates() {
+        List<Entry> out;
+        synchronized (LIST) {
+            out = new ArrayList<>(LIST);
+        }
+        synchronized (BOUND) {
+            for (Entry b : BOUND) {
+                boolean dup = false;
+                for (Entry x : out) {
+                    if (x.aweme == b.aweme) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) out.add(b);
+            }
+        }
+        Collections.sort(out, new Comparator<Entry>() {
+            @Override
+            public int compare(Entry a, Entry b) {
+                int c = Long.compare(b.played, a.played);
+                return c != 0 ? c : Long.compare(b.seen, a.seen);
+            }
+        });
+        return out;
+    }
+
     /** Свежие первыми: недавно игравшие выше, остальные по времени чтения. */
     static List<Entry> recent() {
         List<Entry> out;

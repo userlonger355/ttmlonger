@@ -16,8 +16,9 @@ import java.util.TimeZone;
  *  - огонёк есть только с третьего дня подряд (до этого серии для сохранения нет);
  *  - один стикер на чат в сутки, и после отправки в этот день повторов нет, даже если огонёк
  *    остался серым: он может оставаться серым, пока друг не ответит;
- *  - серый огонёк (статус GREY) получает стикер сразу; живой (ACTIVE) — только в режиме
- *    «каждый день» и не раньше выбранного времени;
+ *  - серый огонёк (у TikTok он зовётся SECONDARY_ACTIVE: серия ещё ждёт ответа сегодня) получает
+ *    стикер сразу; уже поддержанный сегодня (ACTIVE) — только в режиме «каждый день» и не раньше
+ *    выбранного времени; погасший (EXPIRED и всё остальное) пропускается;
  *  - если отправка не удалась, повтор не раньше чем через полчаса.
  */
 final class StreakLogic {
@@ -40,8 +41,21 @@ final class StreakLogic {
 
     static final int FLAME_FROM = 3;
     static final long FAIL_BACKOFF_MS = 30L * 60L * 1000L;
-    static final String GREY = "GREY";
+    /** Имя статуса серого огонька в enum TikTok: серия ещё жива, но сегодня её не поддержали. */
+    static final String GREY = "SECONDARY_ACTIVE";
+    /** Старое условное имя; принимается, если встретится. */
+    static final String GREY_ALIAS = "GREY";
     static final String ACTIVE = "ACTIVE";
+
+    static boolean isGrey(String status) {
+        return GREY.equals(status) || GREY_ALIAS.equals(status);
+    }
+
+    /** Есть ли смысл слать в чат с таким статусом: серый и поддержанный сегодня огоньки — да, погасший (EXPIRED и прочее) — нет. Статус не прочитан — да. */
+    static boolean worthSending(String status) {
+        return status == null || isGrey(status) || ACTIVE.equals(status);
+    }
+
     /** Сколько стикеров максимум за один проход: страховка от ошибки в данных. */
     static final int MAX_PER_ROUND = 12;
     /** Варианты времени для ежедневной отправки, минут от полуночи. */
@@ -56,7 +70,7 @@ final class StreakLogic {
         if (status == null) return Verdict.UNKNOWN;
         if (lastSent > 0 && sameDay(lastSent, now, tz)) return Verdict.SENT_TODAY;
         if (lastFail > 0 && now >= lastFail && now - lastFail < FAIL_BACKOFF_MS) return Verdict.BACKOFF;
-        if (GREY.equals(status)) return Verdict.SEND;
+        if (isGrey(status)) return Verdict.SEND;
         if (ACTIVE.equals(status)) {
             return daily && minuteOfDay(now, tz) >= dailyMinute ? Verdict.SEND : Verdict.LIT;
         }

@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  *    чатов, про которые TikTok спрашивает (так мод узнаёт, какие чаты проверять);
  *  - метод «прочитать огонёк» — тот, что принимает (String, boolean) и возвращает StreakData;
  *  - метод «статус огонька» — тот, что принимает StreakData и возвращает enum с константами
- *    GREY и ACTIVE;
+ *    ACTIVE (серия поддержана сегодня) и SECONDARY_ACTIVE (серый огонёк: серия ждёт ответа);
  *  - отправка: у службы стикеров личных сообщений берётся единственный метод нужной формы
  *    (контекст, источник, стикер, идентификатор чата, флаг), источник — константа
  *    AUTO_CONSECUTIVE_SA_STICKERS, которой TikTok сам помечает такие отправки.
@@ -78,7 +78,6 @@ final class StreakHooks {
 
     private static volatile Object message;
     private static volatile Sender sender;
-    private static volatile boolean senderHooked;
     private static volatile String senderNote = "ещё не искали";
 
     private StreakHooks() {
@@ -117,6 +116,7 @@ final class StreakHooks {
                 + "чтение: " + readNote + "; чтений " + reads + ", сбоев " + readFails + "\n"
                 + "статус: " + statusNote + "\n"
                 + "отправка: " + senderNote + "\n"
+                + "устройство отправки: " + anatomy() + "\n"
                 + "поиск службы: " + acquireNote + (serviceActive ? " (сам)" : "") + "\n"
                 + "номер аккаунта: " + uidNote + "\n"
                 + "друзья: " + friendsNote + "; чатов по друзьям добавлено всего " + derived + "\n"
@@ -663,7 +663,7 @@ final class StreakHooks {
     static final class Info {
         /** Дней подряд; -1 — не удалось прочитать. */
         final int streak;
-        /** Имя статуса из enum TikTok (GREY, ACTIVE...) или null. */
+        /** Имя статуса из enum TikTok (ACTIVE, SECONDARY_ACTIVE...) или null. */
         final String status;
 
         Info(int streak, String status) {
@@ -805,7 +805,7 @@ final class StreakHooks {
         }
     }
 
-    /** Метод службы «StreakData → enum»; из нескольких берётся тот, где есть GREY и ACTIVE. */
+    /** Метод службы «StreakData → enum»; из нескольких берётся тот, где есть ACTIVE и SECONDARY_ACTIVE. */
     private static Method findStatus(Object svc, Object data) {
         List<Method> all = new ArrayList<>();
         for (Method m : svc.getClass().getMethods()) all.add(m);
@@ -830,7 +830,7 @@ final class StreakHooks {
             if (cs != null) {
                 for (Object c : cs) {
                     String n = ((Enum<?>) c).name();
-                    if (StreakLogic.GREY.equals(n)) grey = true;
+                    if (StreakLogic.isGrey(n)) grey = true;
                     if (StreakLogic.ACTIVE.equals(n)) active = true;
                 }
             }
@@ -840,7 +840,8 @@ final class StreakHooks {
                 } catch (Throwable ignored) {
                     // публичный метод и так вызовется
                 }
-                statusNote = "метод " + m.getName() + " (кандидатов " + cands + "+)";
+                statusNote = "метод " + m.getName() + " (кандидатов " + cands + "+); значения: "
+                        + constantNames(m.getReturnType());
                 return m;
             }
         }
@@ -850,11 +851,33 @@ final class StreakHooks {
             } catch (Throwable ignored) {
                 // см. выше
             }
-            statusNote = "метод " + fallback.getName() + " без GREY/ACTIVE в enum (кандидатов " + cands + ")";
+            statusNote = "метод " + fallback.getName() + " без ACTIVE/SECONDARY_ACTIVE в enum (кандидатов " + cands
+                    + "); значения: " + constantNames(fallback.getReturnType());
             return fallback;
         }
         statusNote = "метод статуса (StreakData → enum) не найден";
         return null;
+    }
+
+    /** Имена констант enum (до 14): по ним видно, как TikTok называет статусы. */
+    static String constantNames(Class<?> e) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            Object[] cs = e.getEnumConstants();
+            if (cs == null) return "-";
+            int n = 0;
+            for (Object c : cs) {
+                if (n++ >= 14) {
+                    sb.append(",…");
+                    break;
+                }
+                if (sb.length() > 0) sb.append(',');
+                sb.append(((Enum<?>) c).name());
+            }
+        } catch (Throwable t) {
+            return "?";
+        }
+        return sb.length() == 0 ? "-" : sb.toString();
     }
 
     // ---------------------------------------------------------------- отправка стикера
@@ -954,13 +977,16 @@ final class StreakHooks {
         final int source;
         final int sticker;
         final int conv;
+        /** Не null — способ подсмотрен у настоящей отправки: остальные аргументы берутся оттуда. */
+        final Object[] template;
 
-        Sender(Method m, int ctx, int source, int sticker, int conv) {
+        Sender(Method m, int ctx, int source, int sticker, int conv, Object[] template) {
             this.m = m;
             this.ctx = ctx;
             this.source = source;
             this.sticker = sticker;
             this.conv = conv;
+            this.template = template;
         }
     }
 
@@ -969,47 +995,102 @@ final class StreakHooks {
         return c.isPrimitive() || n.startsWith("java.") || n.startsWith("android.") || n.startsWith("kotlin.");
     }
 
+    /** Все методы объекта (его класса, предков и интерфейсов), кроме статических; свои методы класса раньше интерфейсных. */
+    static List<Method> methodsOf(Class<?> c) {
+        List<Method> out = new ArrayList<>();
+        Set<String> keys = new HashSet<>();
+        List<Class<?>> todo = new ArrayList<>();
+        for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) todo.add(k);
+        for (int i = 0; i < todo.size(); i++) {
+            Class<?> k = todo.get(i);
+            try {
+                for (Method m : k.getDeclaredMethods()) addMethod(out, keys, m);
+            } catch (Throwable ignored) {
+                // класс ссылается на то, чего нет
+            }
+            try {
+                for (Class<?> itf : k.getInterfaces()) {
+                    if (!todo.contains(itf)) todo.add(itf);
+                }
+            } catch (Throwable ignored) {
+                // см. выше
+            }
+        }
+        try {
+            for (Method m : c.getMethods()) addMethod(out, keys, m);
+        } catch (Throwable ignored) {
+            // см. выше
+        }
+        return out;
+    }
+
+    private static void addMethod(List<Method> out, Set<String> keys, Method m) {
+        if (Modifier.isStatic(m.getModifiers()) || m.isSynthetic() || m.isBridge()) return;
+        if (m.getDeclaringClass() == Object.class) return;
+        if (keys.add(m.getName() + java.util.Arrays.toString(m.getParameterTypes()))) out.add(m);
+    }
+
+    /** Номер параметра-стикера или -1. */
+    static int stickerIndex(Class<?>[] p) {
+        Class<?> item = StreakSticker.itemClass();
+        for (int i = 0; i < p.length; i++) {
+            if (platform(p[i])) continue;
+            if ((item != null && p[i].isAssignableFrom(item)) || StreakSticker.isStickerClass(p[i])) return i;
+        }
+        return -1;
+    }
+
+    /** Номер параметра с идентификатором чата: строка после стикера, лучше всего похожая на «0:1:номер:номер». */
+    static int convIndex(Object[] args, Class<?>[] types, int st) {
+        int first = -1;
+        for (int i = st + 1; i < types.length; i++) {
+            if (types[i] != String.class) continue;
+            if (first < 0) first = i;
+            if (args != null && i < args.length && args[i] instanceof String
+                    && StreakLogic.uidsOf((String) args[i]) != null) {
+                return i;
+            }
+        }
+        return first;
+    }
+
     /**
-     * Метод отправки. Ждём форму (Context, ?, ?, источник, стикер, ?, ?, ?, String чат, ..., boolean),
-     * но если у этой версии TikTok число аргументов другое, берём любой void-метод, в котором есть
-     * стикер, источник-enum с константой AUTO_CONSECUTIVE_SA_STICKERS и строка после стикера (чат).
+     * Метод отправки, про который точно известно, что он отправляет стикер «автоматически»: у него
+     * есть стикер, источник с константой AUTO_CONSECUTIVE_SA_STICKERS и строка после стикера (чат).
+     * Форма (Context, ?, ?, источник, стикер, ?, ?, ?, String чат, ..., boolean) предпочтительнее,
+     * но число аргументов могло измениться. Другие методы со стикером сюда не попадают: вслепую их
+     * не вызываем, их способ мод подсматривает у настоящей отправки (см. WATCH).
      */
     private static Sender pickSender(Object ms, boolean note) {
-        Class<?> item = StreakSticker.itemClass();
         Sender best = null;
         int bestScore = -1;
         int n = 0;
-        for (Method m : ms.getClass().getMethods()) {
-            if (m.getReturnType() != void.class) continue;
+        for (Method m : methodsOf(ms.getClass())) {
+            if (Modifier.isAbstract(m.getModifiers())) continue;
             Class<?>[] p = m.getParameterTypes();
-            if (p.length < 5 || p.length > 20) continue;
-            int st = -1;
+            if (p.length < 4 || p.length > 24) continue;
+            int st = stickerIndex(p);
+            if (st < 0) continue;
             int so = -1;
-            for (int i = 0; i < p.length; i++) {
-                if (st < 0 && !platform(p[i])
-                        && ((item != null && p[i].isAssignableFrom(item)) || StreakSticker.isStickerClass(p[i]))) {
-                    st = i;
-                }
-                if (so < 0 && p[i].isEnum() && sourceFor(p[i]) != null) so = i;
+            for (int i = 0; i < p.length && so < 0; i++) {
+                if (i != st && !platform(p[i]) && sourceFor(p[i]) != null) so = i;
             }
-            if (st < 0 || so < 0) continue;
-            int cv = -1;
-            if (p.length > 8 && p[8] == String.class && st == 4 && so == 3) {
-                cv = 8;
-            } else {
-                for (int i = st + 1; i < p.length && cv < 0; i++) {
-                    if (p[i] == String.class) cv = i;
-                }
-            }
+            if (so < 0) continue;
+            int cv;
+            if (p.length > 8 && p[8] == String.class && st == 4 && so == 3) cv = 8;
+            else cv = convIndex(null, p, st);
             if (cv < 0) continue;
-            int ctx = Context.class.isAssignableFrom(p[0]) ? 0 : -1;
+            int ctx = -1;
+            for (int i = 0; i < p.length && ctx < 0; i++) {
+                if (Context.class.isAssignableFrom(p[i])) ctx = i;
+            }
             boolean exact = p.length >= 9 && ctx == 0 && st == 4 && so == 3 && cv == 8
                     && p[p.length - 1] == boolean.class;
-            int score = (exact ? 100 : 50) + (p.length == 13 ? 1 : 0);
+            int score = (exact ? 100 : 50) + (p.length == 13 ? 1 : 0) + (m.getReturnType() == void.class ? 1 : 0);
             n++;
             if (score > bestScore) {
                 bestScore = score;
-                best = new Sender(m, ctx, so, st, cv);
+                best = new Sender(m, ctx, so, st, cv, null);
             }
         }
         if (note && n > 1 && best != null) {
@@ -1018,45 +1099,318 @@ final class StreakHooks {
         return best;
     }
 
-    /** Находит метод отправки и вешает наблюдатель за настоящими отправками стикеров. Главный поток. */
-    static boolean ensureSender() {
-        if (sender != null) return true;
-        Object ms = messageService();
-        if (ms == null) return false;
-        final Sender sp = pickSender(ms, true);
-        if (sp == null) {
-            senderNote = "метод отправки не найден на " + ms.getClass().getName();
-            return false;
+    // ---------------------------------------------------------------- подсмотренная отправка
+
+    /** Настоящий вызов отправки стикера, пойманный у TikTok: по нему мод повторяет отправку. */
+    private static final class Real {
+        final Method m;
+        final Object[] args;
+        final int sticker;
+        final int conv;
+
+        Real(Method m, Object[] args, int sticker, int conv) {
+            this.m = m;
+            this.args = args;
+            this.sticker = sticker;
+            this.conv = conv;
         }
-        try {
-            sp.m.setAccessible(true);
-        } catch (Throwable ignored) {
-            // публичный
-        }
-        sender = sp;
-        StreakSticker.adoptClass(sp.m.getParameterTypes()[sp.sticker]);
-        if (!senderNote.startsWith("подходящих")) {
-            senderNote = "найден " + sp.m.getName() + " (" + sp.m.getParameterTypes().length + " арг.)";
-        }
-        if (!senderHooked) {
-            senderHooked = true;
+    }
+
+    private static volatile Real real;
+    private static volatile int realCalls;
+    private static final Set<String> watching = new HashSet<>();
+    /** Установлена ли своя отправка: её вызовы не считаются «настоящими». */
+    private static final ThreadLocal<Boolean> OWN = new ThreadLocal<>();
+
+    /** Наблюдатель: ничего не меняет; видит настоящую отправку стикера и запоминает способ вызова. */
+    private static final XC_MethodHook WATCH = new XC_MethodHook() {
+        @Override
+        protected void beforeHookedMethod(MethodHookParam param) {
             try {
-                XposedBridge.hookMethod(sp.m, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        try {
-                            Object[] a = param.args;
-                            if (a != null && a.length > sp.sticker) StreakSticker.offer(a[sp.sticker], "отправка стикера в чат");
-                        } catch (Throwable ignored) {
-                            // не мешаем отправке
-                        }
+                if (OWN.get() != null) return;
+                Object[] a = param.args;
+                if (a == null || !(param.method instanceof Method)) return;
+                Method m = (Method) param.method;
+                Class<?>[] p = m.getParameterTypes();
+                int st = -1;
+                for (int i = 0; i < a.length && i < p.length; i++) {
+                    if (a[i] != null && StreakSticker.adopt(a[i])) {
+                        st = i;
+                        break;
                     }
-                });
+                }
+                if (st < 0) return;
+                int cv = convIndex(a, p, st);
+                if (cv >= 0) {
+                    realCalls++;
+                    Real r = new Real(m, a.clone(), st, cv);
+                    real = r;
+                    saveRecipe(r);
+                }
+                try {
+                    StreakSticker.offer(a[st], "отправка стикера в чат");
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                }
+            } catch (Throwable ignored) {
+                // не мешаем отправке
+            }
+        }
+    };
+
+    /** Ставит наблюдателей на все методы службы со стикером и строкой (до 12). Повторно ничего не делает. */
+    private static void observeAll(Object ms) {
+        for (Method m : methodsOf(ms.getClass())) {
+            if (Modifier.isAbstract(m.getModifiers())) continue;
+            Class<?>[] p = m.getParameterTypes();
+            if (p.length < 3 || p.length > 24 || stickerIndex(p) < 0) continue;
+            boolean text = false;
+            for (Class<?> c : p) text |= c == String.class;
+            if (!text) continue;
+            synchronized (watching) {
+                if (watching.size() >= 12 || !watching.add(m.toString())) continue;
+            }
+            try {
+                m.setAccessible(true);
+                XposedBridge.hookMethod(m, WATCH);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
         }
-        return true;
+    }
+
+    private static final String RECIPE_FILE = "streak_sender.json";
+
+    /**
+     * Запоминает на диск, как выглядела настоящая отправка (имя метода, типы, номера стикера и чата и
+     * безликие аргументы: константы enum, числа и флаги). Идентификаторов чатов и стикеров здесь нет.
+     */
+    private static void saveRecipe(Real r) {
+        try {
+            File d = FlagStore.dir();
+            if (d == null) return;
+            org.json.JSONObject o = new org.json.JSONObject();
+            Class<?>[] p = r.m.getParameterTypes();
+            o.put("name", r.m.getName());
+            o.put("sticker", r.sticker);
+            o.put("conv", r.conv);
+            org.json.JSONArray types = new org.json.JSONArray();
+            org.json.JSONArray args = new org.json.JSONArray();
+            for (int i = 0; i < p.length; i++) {
+                types.put(p[i].getName());
+                Object v = i < r.args.length ? r.args[i] : null;
+                org.json.JSONObject a = new org.json.JSONObject();
+                if (i == r.sticker || i == r.conv || v == null) {
+                    a.put("k", "none");
+                } else if (v instanceof Enum) {
+                    a.put("k", "enum").put("v", ((Enum<?>) v).name());
+                } else if (v instanceof Boolean || v instanceof Number || v instanceof Character) {
+                    a.put("k", "prim").put("v", String.valueOf(v));
+                } else if (v instanceof String && ((String) v).length() <= 32 && !hasDigit((String) v)) {
+                    a.put("k", "str").put("v", v);
+                } else {
+                    a.put("k", "none");
+                }
+                args.put(a);
+            }
+            o.put("types", types);
+            o.put("args", args);
+            FlagStore.writeAtomic(new File(d, RECIPE_FILE), o.toString());
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    private static boolean hasDigit(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.isDigit(s.charAt(i))) return true;
+        }
+        return false;
+    }
+
+    /** Отправка по записанному на диск способу, если такой метод на службе есть. */
+    private static Sender fromRecipe(Object ms) {
+        try {
+            File d = FlagStore.dir();
+            if (d == null) return null;
+            File f = new File(d, RECIPE_FILE);
+            if (!f.exists()) return null;
+            org.json.JSONObject o = new org.json.JSONObject(FlagStore.readFile(f));
+            org.json.JSONArray types = o.optJSONArray("types");
+            org.json.JSONArray args = o.optJSONArray("args");
+            String name = o.optString("name", "");
+            int st = o.optInt("sticker", -1);
+            int cv = o.optInt("conv", -1);
+            if (types == null || args == null || name.isEmpty() || st < 0 || cv < 0) return null;
+            for (Method m : methodsOf(ms.getClass())) {
+                if (!m.getName().equals(name) || Modifier.isAbstract(m.getModifiers())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length != types.length() || st >= p.length || cv >= p.length) continue;
+                boolean same = true;
+                for (int i = 0; i < p.length && same; i++) same = p[i].getName().equals(types.optString(i, ""));
+                if (!same) continue;
+                Object[] t = new Object[p.length];
+                for (int i = 0; i < p.length; i++) {
+                    org.json.JSONObject a = args.optJSONObject(i);
+                    t[i] = a == null ? null : recipeValue(p[i], a.optString("k"), a.optString("v"));
+                }
+                try {
+                    m.setAccessible(true);
+                } catch (Throwable ignored) {
+                    // публичный
+                }
+                int ctx = -1;
+                for (int i = 0; i < p.length && ctx < 0; i++) {
+                    if (Context.class.isAssignableFrom(p[i])) ctx = i;
+                }
+                return new Sender(m, ctx, -1, st, cv, t);
+            }
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+        return null;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object recipeValue(Class<?> type, String kind, String v) {
+        try {
+            if (kind.equals("enum") && type.isEnum()) return Enum.valueOf((Class<Enum>) type, v);
+            if (kind.equals("prim")) {
+                if (type == boolean.class || type == Boolean.class) return Boolean.valueOf(v);
+                if (type == int.class || type == Integer.class) return Integer.valueOf(v);
+                if (type == long.class || type == Long.class) return Long.valueOf(v);
+                if (type == float.class || type == Float.class) return Float.valueOf(v);
+                if (type == double.class || type == Double.class) return Double.valueOf(v);
+                if (type == short.class) return Short.valueOf(v);
+                if (type == byte.class) return Byte.valueOf(v);
+                if (type == char.class && !v.isEmpty()) return v.charAt(0);
+            }
+            if (kind.equals("str") && type == String.class) return v;
+        } catch (Throwable ignored) {
+            // подставим пустое значение ниже
+        }
+        if (type.isPrimitive()) return blank(type);
+        if (type == String.class || platform(type) || type.isEnum()) return null;
+        return options(type);
+    }
+
+    /** Подробно про метод отправки: чтобы по сведениям было видно, чем эта версия TikTok отличается. */
+    static String anatomy() {
+        StringBuilder sb = new StringBuilder();
+        Object ms = message;
+        if (ms == null) return "служба стикеров сообщений ещё не получена";
+        sb.append("служба ").append(ms.getClass().getName()).append(", наблюдателей ").append(watching.size())
+                .append(", настоящих отправок замечено ").append(realCalls).append('\n');
+        Sender sp = sender;
+        if (sp != null) {
+            sb.append("выбран: ").append(sp.m.getName()).append(sp.template != null ? " (по подсмотренному способу)" : "")
+                    .append('\n');
+        }
+        int n = 0;
+        for (Method m : methodsOf(ms.getClass())) {
+            Class<?>[] p = m.getParameterTypes();
+            int st = stickerIndex(p);
+            if (st < 0) continue;
+            if (n++ >= 6) {
+                sb.append("…\n");
+                break;
+            }
+            sb.append(m.getName()).append('(');
+            for (int i = 0; i < p.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(platform(p[i]) ? p[i].getSimpleName() : p[i].getName());
+                if (i == st) sb.append("*");
+            }
+            sb.append(")→").append(m.getReturnType().getSimpleName()).append('\n');
+            for (int i = 0; i < p.length; i++) {
+                if (!p[i].isEnum()) continue;
+                sb.append("  аргумент ").append(i).append(" — enum ").append(p[i].getName()).append(": ")
+                        .append(p[i].getEnumConstants() == null ? 0 : p[i].getEnumConstants().length)
+                        .append(" констант, нужная ").append(sourceFor(p[i]) != null ? "есть" : "нет")
+                        .append("; похожие: ").append(likeNames(p[i])).append('\n');
+            }
+        }
+        if (n == 0) sb.append("методов со стикером у службы нет\n");
+        Real r = real;
+        if (r != null) {
+            sb.append("подсмотрено: ").append(r.m.getName()).append(" с ").append(r.args.length).append(" арг., стикер №")
+                    .append(r.sticker).append(", чат №").append(r.conv);
+            for (int i = 0; i < r.args.length; i++) {
+                if (r.args[i] instanceof Enum) {
+                    sb.append(", enum №").append(i).append("=").append(((Enum<?>) r.args[i]).name());
+                }
+            }
+            sb.append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    /** Константы enum, в имени которых есть AUTO или STICKER (до 10): так видно, как TikTok теперь называет источник. */
+    static String likeNames(Class<?> e) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            Object[] cs = e.getEnumConstants();
+            int n = 0;
+            if (cs != null) {
+                for (Object c : cs) {
+                    String name = ((Enum<?>) c).name();
+                    if (!name.contains("AUTO") && !name.contains("STICKER")) continue;
+                    if (n++ >= 10) {
+                        sb.append(",…");
+                        break;
+                    }
+                    if (sb.length() > 0) sb.append(',');
+                    sb.append(name);
+                }
+            }
+        } catch (Throwable t) {
+            return "?";
+        }
+        return sb.length() == 0 ? "-" : sb.toString();
+    }
+
+    /** Находит метод отправки и ставит наблюдателей за настоящими отправками стикеров. Главный поток. */
+    static boolean ensureSender() {
+        if (sender != null) return true;
+        Object ms = messageService();
+        if (ms == null) return false;
+        observeAll(ms);
+        Sender sp = pickSender(ms, true);
+        if (sp != null) {
+            try {
+                sp.m.setAccessible(true);
+            } catch (Throwable ignored) {
+                // публичный
+            }
+            sender = sp;
+            StreakSticker.adoptClass(sp.m.getParameterTypes()[sp.sticker]);
+            if (!senderNote.startsWith("подходящих")) {
+                senderNote = "найден " + sp.m.getName() + " (" + sp.m.getParameterTypes().length + " арг.)";
+            }
+            return true;
+        }
+        // нужного источника в этой версии нет: используем способ, подсмотренный у настоящей отправки
+        Real r = real;
+        if (r != null) {
+            Class<?>[] p = r.m.getParameterTypes();
+            int ctx = -1;
+            for (int i = 0; i < p.length && ctx < 0; i++) {
+                if (Context.class.isAssignableFrom(p[i])) ctx = i;
+            }
+            sender = new Sender(r.m, ctx, -1, r.sticker, r.conv, r.args);
+            senderNote = "способ отправки подсмотрен у TikTok: " + r.m.getName() + " (" + p.length + " арг.)";
+            return true;
+        }
+        Sender saved = fromRecipe(ms);
+        if (saved != null) {
+            StreakSticker.adoptClass(saved.m.getParameterTypes()[saved.sticker]);
+            sender = saved;
+            senderNote = "способ отправки взят из записи прошлой настоящей отправки: " + saved.m.getName();
+            return true;
+        }
+        senderNote = "метод отправки не найден на " + ms.getClass().getName() + ": отправьте любой стикер в "
+                + "личном чате, мод подсмотрит способ (наблюдателей " + watching.size() + ")";
+        return false;
     }
 
     /** Подготовка в фоне: найти отправку на главном потоке, чтобы поймать первый настоящий стикер. */
@@ -1094,29 +1448,52 @@ final class StreakHooks {
         }
     }
 
+    /** Аргументы вызова отправки. Чистая сборка: проверяется без TikTok. */
+    static Object[] buildArgs(Class<?>[] types, Object[] template, int ctxIdx, int sourceIdx, Object source,
+                              int stickerIdx, Object sticker, int convIdx, String conv, Context appCtx) {
+        Object[] args = new Object[types.length];
+        for (int i = 0; i < types.length; i++) {
+            Object t = template != null && i < template.length ? template[i] : null;
+            if (i == stickerIdx) args[i] = sticker;
+            else if (i == convIdx) args[i] = conv;
+            else if (template != null) {
+                if (t instanceof Context && appCtx != null && types[i].isInstance(appCtx)) args[i] = appCtx;
+                else if (t == null && types[i].isPrimitive()) args[i] = blank(types[i]);
+                else args[i] = t;
+                if (i == ctxIdx && appCtx != null && types[i].isInstance(appCtx)) args[i] = appCtx;
+            } else if (types[i].isPrimitive()) args[i] = blank(types[i]);
+            else if (i == ctxIdx) args[i] = appCtx;
+            else if (i == sourceIdx) args[i] = source;
+            else if (i == stickerIdx + 1) args[i] = options(types[i]);
+            else args[i] = null;
+        }
+        return args;
+    }
+
     private static boolean sendOnMain(Context ctx, Object sticker, String conv) {
         try {
             if (!ensureSender()) return false;
             Sender sp = sender;
             Object ms = message;
             Class<?>[] types = sp.m.getParameterTypes();
-            Object source = sourceFor(types[sp.source]);
-            if (source == null) {
-                senderNote = "источник " + Targets.STREAK_SOURCE + " не найден";
-                return false;
+            Object source = null;
+            if (sp.template == null) {
+                source = sourceFor(types[sp.source]);
+                if (source == null) {
+                    senderNote = "источник " + Targets.STREAK_SOURCE + " не найден";
+                    return false;
+                }
             }
-            Object[] args = new Object[types.length];
-            for (int i = 0; i < types.length; i++) {
-                if (types[i].isPrimitive()) args[i] = blank(types[i]);
-                else if (i == sp.ctx) args[i] = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
-                else if (i == sp.source) args[i] = source;
-                else if (i == sp.sticker) args[i] = sticker;
-                else if (i == sp.sticker + 1) args[i] = options(types[i]);
-                else if (i == sp.conv) args[i] = conv;
-                else args[i] = null;
+            Context app = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+            Object[] args = buildArgs(types, sp.template, sp.ctx, sp.source, source, sp.sticker, sticker, sp.conv, conv, app);
+            OWN.set(Boolean.TRUE);
+            try {
+                sp.m.invoke(ms, args);
+            } finally {
+                OWN.remove();
             }
-            sp.m.invoke(ms, args);
-            senderNote = "последняя отправка: вызов прошёл (" + sp.m.getName() + "), доставка не подтверждена";
+            senderNote = "последняя отправка: вызов прошёл (" + sp.m.getName() + (sp.template != null ? ", по подсмотренному способу" : "")
+                    + "), доставка не подтверждена";
             return true;
         } catch (Throwable t) {
             Throwable why = t instanceof InvocationTargetException && t.getCause() != null ? t.getCause() : t;

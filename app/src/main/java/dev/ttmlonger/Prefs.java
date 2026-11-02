@@ -55,6 +55,13 @@ final class Prefs {
     /** Вид плашки региона: 0 флаг и код, 1 только флаг, 2 только код. */
     static volatile int vtRegionMode = 0;
 
+    /** Вид плашек: 0 по теме приложения, 1 тёмные, 2 светлые. */
+    static volatile int vtStyle = 0;
+    /** Где плашки: 0 авто (там, где свободно), 1 справа от имени, 2 над именем, 3 под именем. */
+    static volatile int vtPos = 0;
+    /** Непрозрачность плашек в процентах, 20..100. */
+    static volatile int vtOpacity = 90;
+
     /** Убирать рекламные посты из ленты ещё до показа. */
     static volatile boolean hideAds = true;
     /** Прятать кнопку LIVE в левом верхнем углу главной. */
@@ -97,6 +104,9 @@ final class Prefs {
             vtSeconds = o.optBoolean("vtSeconds", true);
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
+            vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
+            vtPos = Math.max(0, Math.min(3, o.optInt("vtPos", 0)));
+            vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
             hideAds = o.optBoolean("hideAds", true);
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
@@ -208,6 +218,26 @@ final class Prefs {
         save();
     }
 
+    /** Нужны ли вообще плашки времени и региона. */
+    static boolean vtMaster() {
+        return vtTime || vtRegion;
+    }
+
+    static void setVtStyle(int v) {
+        vtStyle = Math.max(0, Math.min(2, v));
+        save();
+    }
+
+    static void setVtPos(int v) {
+        vtPos = Math.max(0, Math.min(3, v));
+        save();
+    }
+
+    static void setVtOpacity(int v) {
+        vtOpacity = Math.max(20, Math.min(100, v));
+        save();
+    }
+
     static void setHideAds(boolean v) {
         hideAds = v;
         save();
@@ -258,6 +288,9 @@ final class Prefs {
             o.put("vtSeconds", vtSeconds);
             o.put("vtRegion", vtRegion);
             o.put("vtRegionMode", vtRegionMode);
+            o.put("vtStyle", vtStyle);
+            o.put("vtPos", vtPos);
+            o.put("vtOpacity", vtOpacity);
             o.put("hideAds", hideAds);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);
