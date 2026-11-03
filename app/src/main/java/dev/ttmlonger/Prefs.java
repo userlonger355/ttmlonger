@@ -69,6 +69,11 @@ final class Prefs {
     /** true — прятать блокировку на любом экране, а не только на экранах профиля. */
     static volatile boolean viewBlockedEverywhere = false;
 
+    /** «Невидимка»: не отправлять статус «печатает…». */
+    static volatile boolean hideTyping = false;
+    /** «Невидимка»: не отправлять отчёт об активности («в сети»). */
+    static volatile boolean hideOnline = false;
+
     /** Убирать рекламные посты из ленты ещё до показа. */
     static volatile boolean hideAds = true;
     /** Прятать кнопку LIVE в левом верхнем углу главной. */
@@ -120,6 +125,8 @@ final class Prefs {
             vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
             viewBlocked = o.optBoolean("viewBlocked", false);
             viewBlockedEverywhere = o.optBoolean("viewBlockedEverywhere", false);
+            hideTyping = o.optBoolean("hideTyping", false);
+            hideOnline = o.optBoolean("hideOnline", false);
             hideAds = o.optBoolean("hideAds", true);
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
@@ -267,6 +274,16 @@ final class Prefs {
         save();
     }
 
+    static void setHideTyping(boolean v) {
+        hideTyping = v;
+        save();
+    }
+
+    static void setHideOnline(boolean v) {
+        hideOnline = v;
+        save();
+    }
+
     static void setHideAds(boolean v) {
         hideAds = v;
         save();
@@ -328,6 +345,8 @@ final class Prefs {
             o.put("vtOpacity", vtOpacity);
             o.put("viewBlocked", viewBlocked);
             o.put("viewBlockedEverywhere", viewBlockedEverywhere);
+            o.put("hideTyping", hideTyping);
+            o.put("hideOnline", hideOnline);
             o.put("hideAds", hideAds);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);

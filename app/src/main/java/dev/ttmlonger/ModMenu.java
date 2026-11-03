@@ -59,8 +59,16 @@ final class ModMenu extends Screen {
                         UnlocksScreen.show(act);
                     }
                 }));
+        body.addView(ui.menuRow(Icons.EYE_OFF, "Невидимка",
+                "Не показывать «печатает…» и «в сети»", InvisibleScreen.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        InvisibleScreen.show(act);
+                    }
+                }));
         body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
-                "Для «Невидимки» и просмотра заблокированного профиля", ReconScreen.menuSummary(),
+                "Если «Невидимка» или заблокированный профиль не сработали", ReconScreen.menuSummary(),
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {

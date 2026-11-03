@@ -37,7 +37,11 @@ final class Recon {
     static final String[] FULL = {
             "com.ss.android.ugc.aweme.im.saas.host.impl.feature.activestatus.ActiveStatusFeatureImpl",
             "com.ss.android.ugc.profile.business.ci.viewer.viewmodel.ProfileViewerViewModel",
-            "com.ss.android.ugc.aweme.profile.model.BlockStatus"};
+            "com.ss.android.ugc.aweme.profile.model.BlockStatus",
+            "com.bytedance.im.core.proto.SendInputStatusRequestBody",
+            "com.bytedance.im.core.proto.RequestBody$Builder",
+            "com.ss.android.ugc.aweme.requesttask.idle.ReportActivityStatusTask",
+            "com.ss.android.ugc.aweme.im.saas.host.impl.feature.privacy.IMPrivacySettingsImpl"};
 
     private static final String MEMBER = "(?i).*(block|status|online|visit|viewer|typing|privacy).*";
     private static final int PER_NEEDLE = 20;
