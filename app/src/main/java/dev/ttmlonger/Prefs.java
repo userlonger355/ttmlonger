@@ -43,6 +43,8 @@ final class Prefs {
     static volatile boolean streakAuto = false;
     /** true — раз в день отправлять во все огоньки (после времени streakMinute), а не только в гаснущие. */
     static volatile boolean streakDaily = false;
+    /** true — продлевать огонёк только людям, отмеченным галочкой на экране «Люди». */
+    static volatile boolean streakOnlyPicked = false;
     /** Время суток для ежедневной отправки, минут от полуночи. */
     static volatile int streakMinute = 20 * 60;
 
@@ -108,6 +110,7 @@ final class Prefs {
             streakAuto = o.optBoolean("streakAuto", false);
             streakDaily = o.optBoolean("streakDaily", false);
             streakMinute = Math.max(0, Math.min(1439, o.optInt("streakMinute", 20 * 60)));
+            streakOnlyPicked = o.optBoolean("streakOnlyPicked", false);
             vtTime = o.optBoolean("vtTime", true);
             vtSeconds = o.optBoolean("vtSeconds", true);
             vtRegion = o.optBoolean("vtRegion", true);
@@ -201,6 +204,11 @@ final class Prefs {
 
     static void setStreakDaily(boolean v) {
         streakDaily = v;
+        save();
+    }
+
+    static void setStreakOnlyPicked(boolean v) {
+        streakOnlyPicked = v;
         save();
     }
 
@@ -310,6 +318,7 @@ final class Prefs {
             o.put("streakAuto", streakAuto);
             o.put("streakDaily", streakDaily);
             o.put("streakMinute", streakMinute);
+            o.put("streakOnlyPicked", streakOnlyPicked);
             o.put("vtTime", vtTime);
             o.put("vtSeconds", vtSeconds);
             o.put("vtRegion", vtRegion);

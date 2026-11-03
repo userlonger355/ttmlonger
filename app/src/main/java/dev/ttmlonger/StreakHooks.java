@@ -488,6 +488,16 @@ final class StreakHooks {
     }
 
     /** Номер аккаунта у объекта пользователя из списка друзей. */
+    /** Имя друга: заданное вами («примечание»), иначе никнейм, иначе уникальное имя. Не обязательно. */
+    static String nameOf(Object user) {
+        if (user == null) return null;
+        for (String name : new String[]{"getRemarkName", "getNickname", "getUniqueId"}) {
+            Object v = DownloadHooks.call(user, name);
+            if (v instanceof String && !((String) v).trim().isEmpty()) return ((String) v).trim();
+        }
+        return null;
+    }
+
     static String uidOf(Object user) {
         if (user == null) return null;
         for (String name : new String[]{"getUid", "getUserId", "getUidStr", "getId"}) {
@@ -568,9 +578,14 @@ final class StreakHooks {
         for (Object u : users) {
             if (uids.size() >= 600) break;
             String uid = uidOf(u);
-            if (uid == null) bad++;
-            else uids.add(uid);
+            if (uid == null) {
+                bad++;
+            } else {
+                uids.add(uid);
+                StreakStore.noteName(StreakLogic.stripZeros(uid), nameOf(u));
+            }
         }
+        StreakStore.flush();
         friendUids = uids;
         friendsNote = "друзей в списке " + users.size() + ", с номером " + uids.size() + (bad > 0 ? ", без номера " + bad : "");
         applyFriends();

@@ -19,6 +19,8 @@ import android.widget.TextView;
 final class StreakScreen extends Screen {
     private TextView report;
     private LinearLayout stickerRow;
+    private LinearLayout peopleRow;
+    private LinearLayout sendRow;
     private LinearLayout timeRow;
 
     private StreakScreen(Activity act) {
@@ -94,15 +96,30 @@ final class StreakScreen extends Screen {
             }
         }));
 
-        body.addView(ui.header("Сейчас"));
-        body.addView(ui.row(Icons.SEND, "Отправить всем сейчас",
-                "Стикер уйдёт во все чаты с огоньком, не дожидаясь времени", null, false,
+        body.addView(ui.header("Люди"));
+        peopleRow = ui.menuRow(Icons.FLAME, "Кому продлевать",
+                "Список людей с серией дней и галочки: можно только выбранным", StreakPeopleScreen.menuSummary(),
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        sendAll();
+                        StreakPeopleScreen.show(act, new Runnable() {
+                            @Override
+                            public void run() {
+                                refresh();
+                            }
+                        });
                     }
-                }));
+                });
+        body.addView(peopleRow);
+
+        body.addView(ui.header("Сейчас"));
+        sendRow = ui.row(Icons.SEND, sendTitle(), sendNote(), null, false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sendAll();
+            }
+        });
+        body.addView(sendRow);
 
         body.addView(ui.header("Состояние"));
         report = ui.text("", 14f, Ui.INK, false);
@@ -253,9 +270,24 @@ final class StreakScreen extends Screen {
         Ui.style(d);
     }
 
+    private static String sendTitle() {
+        return Prefs.streakOnlyPicked ? "Отправить выбранным сейчас" : "Отправить всем сейчас";
+    }
+
+    private static String sendNote() {
+        return Prefs.streakOnlyPicked ? "Стикер уйдёт людям с галочкой, не дожидаясь времени"
+                : "Стикер уйдёт во все чаты с огоньком, не дожидаясь времени";
+    }
+
     private void refresh() {
         TextView sub = Ui.subtitleOf(stickerRow);
         if (sub != null) sub.setText(stickerSummary());
+        TextView pv = Ui.valueOf(peopleRow);
+        if (pv != null) pv.setText(StreakPeopleScreen.menuSummary());
+        TextView st = Ui.titleOf(sendRow);
+        if (st != null) st.setText(sendTitle());
+        TextView sn = Ui.subtitleOf(sendRow);
+        if (sn != null) sn.setText(sendNote());
         report.setText(StreakRunner.status());
     }
 }

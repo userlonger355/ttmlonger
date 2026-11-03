@@ -140,7 +140,7 @@ final class StreakLogic {
         return true;
     }
 
-    private static String stripZeros(String s) {
+    static String stripZeros(String s) {
         int i = 0;
         while (i < s.length() - 1 && s.charAt(i) == '0') i++;
         return s.substring(i);
@@ -206,6 +206,102 @@ final class StreakLogic {
         }
         // общий номер должен быть почти везде: допускаем один-два чужих чата (группы, старые данные)
         return !tie && best != null && bestN >= 2 && bestN * 10 >= n * 8 ? best : null;
+    }
+
+    // ---------------------------------------------------------------- выбранные люди
+
+    /** Годится ли чат для отправки: без режима «только выбранным» — любой, с ним — только отмеченный. */
+    static boolean allowed(boolean onlyPicked, java.util.Collection<String> picked, String conv) {
+        return !onlyPicked || (picked != null && picked.contains(conv));
+    }
+
+    /** Чаты, которые остаются после выбора людей; порядок сохраняется. */
+    static List<String> filterPicked(boolean onlyPicked, java.util.Collection<String> picked, List<String> convs) {
+        if (!onlyPicked) return new ArrayList<>(convs);
+        List<String> out = new ArrayList<>();
+        for (String c : convs) {
+            if (allowed(true, picked, c)) out.add(c);
+        }
+        return out;
+    }
+
+    /** Номер собеседника в личном чате (тот, что не свой) или null, если свой номер неизвестен или чат чужой. */
+    static String friendUid(String conv, String own) {
+        String[] u = uidsOf(conv);
+        if (u == null || own == null || !isUid(own)) return null;
+        String o = stripZeros(own);
+        boolean first = stripZeros(u[0]).equals(o);
+        boolean second = stripZeros(u[1]).equals(o);
+        if (first == second) return null;
+        return stripZeros(first ? u[1] : u[0]);
+    }
+
+    /** Подпись статуса огонька для списка людей. */
+    static String statusLabel(String status) {
+        if (status == null) return "";
+        if (isGrey(status)) return "серый, пора отправить";
+        if (ACTIVE.equals(status)) return "поддержан сегодня";
+        if ("EXPIRED".equals(status)) return "погас";
+        return "статус " + status.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Порядок в списке людей: сначала серые (их надо продлевать сейчас), затем по числу дней, самые длинные
+     * первыми, затем по имени.
+     */
+    static int order(String statusA, int streakA, String nameA, String statusB, int streakB, String nameB) {
+        boolean ga = isGrey(statusA);
+        boolean gb = isGrey(statusB);
+        if (ga != gb) return ga ? -1 : 1;
+        if (streakA != streakB) return streakA > streakB ? -1 : 1;
+        String x = nameA == null ? "" : nameA.toLowerCase(java.util.Locale.ROOT);
+        String y = nameB == null ? "" : nameB.toLowerCase(java.util.Locale.ROOT);
+        return x.compareTo(y);
+    }
+
+    /** «5 дней», «21 день», «2 дня» по-русски. */
+    static String days(int n) {
+        int m = Math.abs(n) % 100;
+        int d = m % 10;
+        String word = m >= 11 && m <= 14 ? "дней" : d == 1 ? "день" : d >= 2 && d <= 4 ? "дня" : "дней";
+        return n + " " + word;
+    }
+
+    /** Имя для списка: из списка друзей, а если его нет, «Чат …последние четыре цифры номера». */
+    static String displayName(String name, String uid) {
+        if (name != null && !name.trim().isEmpty()) return name.trim();
+        if (uid == null || uid.isEmpty()) return "Чат без имени";
+        return "Чат …" + (uid.length() > 4 ? uid.substring(uid.length() - 4) : uid);
+    }
+
+    /** Строки «номер\tимя»; имя без табуляций и переводов строк, не длиннее 40 знаков. */
+    static String encodeNames(Map<String, String> names) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : names.entrySet()) {
+            String name = cleanName(e.getValue());
+            if (name.isEmpty() || !isUid(e.getKey())) continue;
+            sb.append(e.getKey()).append('\t').append(name).append('\n');
+        }
+        return sb.toString();
+    }
+
+    static Map<String, String> decodeNames(String text) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (text == null) return out;
+        for (String line : text.split("\n")) {
+            int tab = line.indexOf('\t');
+            if (tab <= 0) continue;
+            String uid = line.substring(0, tab);
+            String name = cleanName(line.substring(tab + 1));
+            if (isUid(uid) && !name.isEmpty()) out.put(uid, name);
+        }
+        return out;
+    }
+
+    static String cleanName(String s) {
+        if (s == null) return "";
+        String t = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim();
+        return t.length() > 40 ? t.substring(0, 40).trim() : t;
     }
 
     // ---------------------------------------------------------------- хранение «когда отправляли»

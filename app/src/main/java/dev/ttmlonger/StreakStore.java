@@ -18,6 +18,9 @@ final class StreakStore {
     private static final int MAX_CONVS = 600;
     private static final String CONVS = "streak_convs.txt";
     private static final String SENT = "streak_sent.txt";
+    private static final String PICKED = "streak_picked.txt";
+    private static final String NAMES = "streak_names.txt";
+    private static final int MAX_NAMES = 800;
 
     private static final LinkedHashSet<String> convs = new LinkedHashSet<>();
     private static final Map<String, Long> sent = new LinkedHashMap<>();
@@ -25,6 +28,10 @@ final class StreakStore {
     private static boolean loaded;
     private static boolean dirtyConvs;
     private static boolean dirtySent;
+    private static final LinkedHashSet<String> picked = new LinkedHashSet<>();
+    private static final Map<String, String> names = new LinkedHashMap<>();
+    private static boolean dirtyPicked;
+    private static boolean dirtyNames;
 
     private StreakStore() {
     }
@@ -51,6 +58,74 @@ final class StreakStore {
         } catch (Throwable t) {
             FlagStore.log(t);
         }
+        try {
+            File f = file(PICKED);
+            if (f != null && f.isFile()) picked.addAll(StreakLogic.decodeConvs(FlagStore.readFile(f), MAX_CONVS));
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+        try {
+            File f = file(NAMES);
+            if (f != null && f.isFile()) names.putAll(StreakLogic.decodeNames(FlagStore.readFile(f)));
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    // ---------------------------------------------------------------- выбранные люди и их имена
+
+    /** Копия набора отмеченных чатов. */
+    static synchronized java.util.Set<String> picked() {
+        load();
+        return new LinkedHashSet<>(picked);
+    }
+
+    static synchronized boolean isPicked(String conv) {
+        load();
+        return picked.contains(conv);
+    }
+
+    static synchronized int pickedCount() {
+        load();
+        return picked.size();
+    }
+
+    static synchronized void setPicked(String conv, boolean on) {
+        if (!StreakLogic.isConvId(conv)) return;
+        load();
+        if (on ? picked.add(conv) : picked.remove(conv)) dirtyPicked = true;
+    }
+
+    static synchronized void pickMany(java.util.Collection<String> list) {
+        load();
+        for (String c : list) {
+            if (StreakLogic.isConvId(c) && picked.size() < MAX_CONVS && picked.add(c)) dirtyPicked = true;
+        }
+    }
+
+    static synchronized void clearPicked() {
+        load();
+        if (!picked.isEmpty()) {
+            picked.clear();
+            dirtyPicked = true;
+        }
+    }
+
+    /** Имя друга по номеру аккаунта или null. */
+    static synchronized String name(String uid) {
+        load();
+        return uid == null ? null : names.get(uid);
+    }
+
+    static synchronized void noteName(String uid, String name) {
+        String clean = StreakLogic.cleanName(name);
+        if (clean.isEmpty() || !StreakLogic.isUid(uid)) return;
+        load();
+        String have = names.get(uid);
+        if (clean.equals(have)) return;
+        if (have == null && names.size() >= MAX_NAMES) return;
+        names.put(uid, clean);
+        dirtyNames = true;
     }
 
     /** Запоминает чат; true, если он новый. */
@@ -136,6 +211,22 @@ final class StreakStore {
                     for (String c : convs) sb.append(c).append('\n');
                     FlagStore.writeAtomic(f, sb.toString());
                     dirtyConvs = false;
+                }
+            }
+            if (dirtyPicked) {
+                File f = file(PICKED);
+                if (f != null) {
+                    StringBuilder sb = new StringBuilder();
+                    for (String c : picked) sb.append(c).append('\n');
+                    FlagStore.writeAtomic(f, sb.toString());
+                    dirtyPicked = false;
+                }
+            }
+            if (dirtyNames) {
+                File f = file(NAMES);
+                if (f != null) {
+                    FlagStore.writeAtomic(f, StreakLogic.encodeNames(names));
+                    dirtyNames = false;
                 }
             }
             if (dirtySent) {

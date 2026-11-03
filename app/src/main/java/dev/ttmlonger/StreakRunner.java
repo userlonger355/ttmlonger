@@ -196,6 +196,13 @@ final class StreakRunner {
             hint = "Чатов с огоньком пока не видно: откройте в TikTok список чатов";
             return;
         }
+        int known = convs.size();
+        convs = StreakLogic.filterPicked(Prefs.streakOnlyPicked, StreakStore.picked(), convs);
+        if (convs.isEmpty()) {
+            last = "включено «только выбранным», но никто не отмечен (известно чатов " + known + ")";
+            hint = "Режим «только выбранным»: отметьте людей в «Люди»";
+            return;
+        }
 
         TimeZone tz = TimeZone.getDefault();
         long now = System.currentTimeMillis();
@@ -220,7 +227,8 @@ final class StreakRunner {
             if (v == StreakLogic.Verdict.SEND) due.add(conv);
         }
 
-        String head = "чатов " + convs.size() + ": к отправке " + due.size()
+        String head = "чатов " + convs.size() + (convs.size() != known ? " из " + known + " (выбранные)" : "")
+                + ": к отправке " + due.size()
                 + ", сегодня уже " + by[StreakLogic.Verdict.SENT_TODAY.ordinal()]
                 + ", живых " + by[StreakLogic.Verdict.LIT.ordinal()]
                 + ", без огонька " + by[StreakLogic.Verdict.NO_FLAME.ordinal()]
@@ -396,6 +404,10 @@ final class StreakRunner {
         if (convs.isEmpty()) {
             return Plan.blocked("Чатов пока не видно: откройте в TikTok список чатов и повторите");
         }
+        convs = StreakLogic.filterPicked(Prefs.streakOnlyPicked, StreakStore.picked(), convs);
+        if (convs.isEmpty()) {
+            return Plan.blocked("Включено «только выбранным», но никто не отмечен: откройте «Люди» и поставьте галочки");
+        }
         List<String> hot = new ArrayList<>();
         int unreadable = 0;
         // Сначала по кэшу TikTok; если нигде огонька не видно, перечитываем заново.
@@ -502,6 +514,118 @@ final class StreakRunner {
         return msg;
     }
 
+    // ---------------------------------------------------------------- список людей с серией
+
+    /** Один человек в списке: чат, имя, серия и статус. */
+    static final class Person {
+        final String conv;
+        final String name;
+        final int streak;
+        final String status;
+        final boolean sentToday;
+
+        Person(String conv, String name, int streak, String status, boolean sentToday) {
+            this.conv = conv;
+            this.name = name;
+            this.streak = streak;
+            this.status = status;
+            this.sentToday = sentToday;
+        }
+    }
+
+    /** Итог чтения для экрана «Люди». */
+    static final class People {
+        final List<Person> list;
+        final int known;
+        final int unreadable;
+        /** Что мешает прочитать (тогда список пуст), иначе null. */
+        final String problem;
+
+        People(List<Person> list, int known, int unreadable, String problem) {
+            this.list = list;
+            this.known = known;
+            this.unreadable = unreadable;
+            this.problem = problem;
+        }
+    }
+
+    /** Сколько имён друзей запомнено (для сведений, самих имён там нет). */
+    static int namesKnown() {
+        int n = 0;
+        for (String conv : StreakStore.conversations()) {
+            String uid = StreakLogic.friendUid(conv, ownForNames());
+            if (uid != null && StreakStore.name(uid) != null) n++;
+        }
+        return n;
+    }
+
+    private static String ownForNames() {
+        String own = StreakHooks.knownOwnUid();
+        return own != null ? own : StreakLogic.commonUid(StreakStore.conversations());
+    }
+
+    /** Читает огоньки известных чатов в фоне; результат в главном потоке. */
+    static void people(final Callback<People> cb) {
+        async(new Runnable() {
+            @Override
+            public void run() {
+                People p;
+                try {
+                    p = makePeople();
+                } catch (Throwable t) {
+                    FlagStore.log(t);
+                    p = new People(new ArrayList<Person>(), 0, 0, "Не удалось прочитать огоньки: " + t.getClass().getSimpleName());
+                }
+                final People result = p;
+                toMain(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.on(result);
+                    }
+                });
+            }
+        });
+    }
+
+    private static synchronized People makePeople() {
+        if (!Prefs.streakAuto) {
+            return new People(new ArrayList<Person>(), 0, 0, "Сначала включите автопродление и перезапустите TikTok");
+        }
+        StreakHooks.discover(false);
+        if (StreakHooks.service() == null) {
+            return new People(new ArrayList<Person>(), 0, 0,
+                    "Мод ещё не видит огоньков: откройте в TikTok список чатов и повторите");
+        }
+        List<String> convs = StreakStore.conversations();
+        if (convs.isEmpty()) {
+            return new People(new ArrayList<Person>(), 0, 0, "Чатов пока не видно: откройте в TikTok список чатов");
+        }
+        String own = ownForNames();
+        long now = System.currentTimeMillis();
+        TimeZone tz = TimeZone.getDefault();
+        List<Person> out = new ArrayList<>();
+        int unreadable = 0;
+        for (String conv : convs) {
+            StreakHooks.Info i = StreakHooks.read(conv, false);
+            if (i == null || i.streak < 0) {
+                unreadable++;
+                continue;
+            }
+            if (i.streak < StreakLogic.FLAME_FROM) continue;
+            String uid = StreakLogic.friendUid(conv, own);
+            String name = StreakLogic.displayName(StreakStore.name(uid), uid);
+            long sentAt = StreakStore.lastSent(conv);
+            out.add(new Person(conv, name, i.streak, i.status, sentAt > 0 && StreakLogic.sameDay(sentAt, now, tz)));
+        }
+        java.util.Collections.sort(out, new java.util.Comparator<Person>() {
+            @Override
+            public int compare(Person a, Person b) {
+                return StreakLogic.order(a.status, a.streak, a.name, b.status, b.streak, b.name);
+            }
+        });
+        return new People(out, convs.size(), unreadable, null);
+    }
+
     // ---------------------------------------------------------------- сведения для разработчика
 
     /** Сводка для копирования и пересылки: что нашлось и чего нет. Идентификаторов чатов в ней нет. */
@@ -521,6 +645,8 @@ final class StreakRunner {
         sb.append(StreakHooks.details()).append('\n');
         sb.append(StickerLibrary.details()).append('\n');
         sb.append(StreakSticker.details()).append('\n');
+        sb.append("только выбранным: ").append(Prefs.streakOnlyPicked ? "да" : "нет").append(", отмечено ")
+                .append(StreakStore.pickedCount()).append(", имён друзей запомнено ").append(namesKnown()).append('\n');
         sb.append("чатов известно ").append(StreakStore.count()).append(", проходов ").append(rounds)
                 .append(", отправок ").append(sends).append(", ошибок ").append(fails).append('\n');
         sb.append("последнее: ").append(last);
