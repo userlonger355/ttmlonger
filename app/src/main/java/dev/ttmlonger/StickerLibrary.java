@@ -359,36 +359,124 @@ final class StickerLibrary {
         return (item != null && item.isInstance(o)) || StreakSticker.isStickerClass(o.getClass());
     }
 
-    /** Список из состояния потока: сам список или первый метод/поле, отдающее список стикеров. */
-    private static List<?> listOf(Object state) {
-        if (state == null) return null;
-        if (state instanceof List) return (List<?>) state;
-        List<?> any = null;
+    /**
+     * Список стикеров внутри состояния потока. В TikTok состояние — обёртка (идёт загрузка, готово и так
+     * далее) с обобщённым значением: и метод, и поле отдают Object, а не List, поэтому искать по типу
+     * нельзя. Мод смотрит значения: сам список, затем методы без параметров и поля, а в найденных
+     * объектах приложения ещё на два уровня вглубь. Список, где первый элемент похож на стикер, главнее
+     * любого другого; пустой список отдаётся, только если стикерного не нашлось.
+     */
+    static List<?> listOf(Object state) {
+        return listIn(state, 0, new int[]{0});
+    }
+
+    private static final int PROBE_BUDGET = 80;
+    private static final int PROBE_DEPTH = 2;
+
+    private static boolean appObject(Object o) {
+        String n = o.getClass().getName();
+        return !(n.startsWith("java.") || n.startsWith("javax.") || n.startsWith("android.")
+                || n.startsWith("dalvik.") || n.startsWith("libcore.") || n.startsWith("sun."));
+    }
+
+    private static List<?> better(List<?> have, List<?> found) {
+        if (found == null) return have;
+        if (have == null) return found;
+        boolean haveSticker = !have.isEmpty() && looksSticker(have.get(0));
+        boolean foundSticker = !found.isEmpty() && looksSticker(found.get(0));
+        if (foundSticker && !haveSticker) return found;
+        if (haveSticker) return have;
+        return have.isEmpty() && !found.isEmpty() ? found : have;
+    }
+
+    private static List<?> listIn(Object o, int depth, int[] budget) {
+        if (o == null) return null;
+        if (o instanceof List) return (List<?>) o;
+        if (depth > PROBE_DEPTH || !appObject(o)) return null;
+        List<?> best = null;
         try {
-            for (Method m : state.getClass().getMethods()) {
-                if (m.getParameterTypes().length != 0 || !List.class.isAssignableFrom(m.getReturnType())) continue;
-                m.setAccessible(true);
-                Object v = m.invoke(state);
-                if (!(v instanceof List)) continue;
-                List<?> l = (List<?>) v;
-                if (!l.isEmpty() && looksSticker(l.get(0))) return l;
-                if (any == null) any = l;
-            }
-            for (Class<?> k = state.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                for (Method m : k.getDeclaredMethods()) {
+                    if (budget[0] >= PROBE_BUDGET) return best;
+                    Class<?> rt = m.getReturnType();
+                    if (Modifier.isStatic(m.getModifiers()) || m.getParameterTypes().length != 0 || rt.isPrimitive()
+                            || rt == String.class || rt == Class.class || m.isSynthetic() && m.isBridge()) continue;
+                    String name = m.getName();
+                    if (name.equals("toString") || name.equals("hashCode") || name.equals("clone")
+                            || name.equals("copy") || name.equals("iterator")) continue;
+                    budget[0]++;
+                    m.setAccessible(true);
+                    Object v = m.invoke(o);
+                    best = better(best, listIn(v, depth + 1, budget));
+                    if (best != null && !best.isEmpty() && looksSticker(best.get(0))) return best;
+                }
                 for (Field f : k.getDeclaredFields()) {
-                    if (Modifier.isStatic(f.getModifiers()) || !List.class.isAssignableFrom(f.getType())) continue;
+                    if (budget[0] >= PROBE_BUDGET) return best;
+                    if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive() || f.getType() == String.class) continue;
+                    budget[0]++;
                     f.setAccessible(true);
-                    Object v = f.get(state);
-                    if (!(v instanceof List)) continue;
-                    List<?> l = (List<?>) v;
-                    if (!l.isEmpty() && looksSticker(l.get(0))) return l;
-                    if (any == null) any = l;
+                    best = better(best, listIn(f.get(o), depth + 1, budget));
+                    if (best != null && !best.isEmpty() && looksSticker(best.get(0))) return best;
                 }
             }
         } catch (Throwable ignored) {
             // отдаём что нашли
         }
-        return any;
+        return best;
+    }
+
+    /** Стикер из элемента списка: сам элемент или то, что лежит в его полях (элемент может быть обёрткой). */
+    static Object stickerOf(Object o) {
+        if (o == null) return null;
+        if (looksSticker(o)) return o;
+        if (!appObject(o)) return null;
+        try {
+            int tries = 0;
+            for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                for (Field f : k.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive() || tries++ > 20) continue;
+                    f.setAccessible(true);
+                    Object v = f.get(o);
+                    if (v != null && looksSticker(v)) return v;
+                }
+                for (Method m : k.getDeclaredMethods()) {
+                    if (Modifier.isStatic(m.getModifiers()) || m.getParameterTypes().length != 0 || m.getReturnType().isPrimitive()
+                            || tries++ > 20) continue;
+                    String name = m.getName();
+                    if (name.equals("toString") || name.equals("hashCode") || name.equals("clone")) continue;
+                    m.setAccessible(true);
+                    Object v = m.invoke(o);
+                    if (v != null && looksSticker(v)) return v;
+                }
+            }
+        } catch (Throwable ignored) {
+            // не обёртка
+        }
+        return null;
+    }
+
+    /** Из чего состоит состояние потока: для сведений, когда список не нашёлся. */
+    static String anatomy(Object state) {
+        if (state == null) return "состояние пусто (null)";
+        StringBuilder sb = new StringBuilder(state.getClass().getName());
+        try {
+            int shown = 0;
+            sb.append(" {");
+            for (Class<?> k = state.getClass(); k != null && k != Object.class && shown < 8; k = k.getSuperclass()) {
+                for (Field f : k.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers()) || shown >= 8) continue;
+                    f.setAccessible(true);
+                    Object v = f.get(state);
+                    sb.append(shown++ > 0 ? ", " : "").append(f.getType().getSimpleName()).append(' ').append(f.getName())
+                            .append('=').append(v == null ? "null" : v instanceof List ? "список " + ((List<?>) v).size()
+                                    : v.getClass().getSimpleName());
+                }
+            }
+            sb.append('}');
+        } catch (Throwable ignored) {
+            sb.append('}');
+        }
+        return sb.toString();
     }
 
     /** Читает избранные из репозитория; возвращает число найденных или -1, если репозитория нет. */
@@ -423,15 +511,25 @@ final class StickerLibrary {
                 favNote = "у потока нет getValue (" + flow.getClass().getName() + ")";
                 return -1;
             }
-            List<?> list = listOf(gv.invoke(flow));
+            Object state = gv.invoke(flow);
+            List<?> list = listOf(state);
             if (list == null) {
-                favNote = "в состоянии потока нет списка стикеров";
+                favNote = "в состоянии потока нет списка стикеров: " + anatomy(state);
+                return 0;
+            }
+            if (list.isEmpty()) {
+                favNote = "список избранных в TikTok пуст (состояние " + state.getClass().getSimpleName() + ")";
+                return 0;
+            }
+            if (stickerOf(list.get(0)) == null) {
+                favNote = "в списке не стикеры: " + list.get(0).getClass().getName() + " (" + list.size() + ")";
                 return 0;
             }
             int n = 0;
             for (Object o : new ArrayList<Object>(list)) {
-                add(o, true);
-                n++;
+                Object sticker = stickerOf(o);
+                if (sticker != null && add(sticker, true)) n++;
+                else if (sticker != null) n++;
             }
             favCount = n;
             favNote = "избранных в TikTok: " + n;

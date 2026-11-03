@@ -62,6 +62,11 @@ final class Prefs {
     /** Непрозрачность плашек в процентах, 20..100. */
     static volatile int vtOpacity = 90;
 
+    /** Просмотр заблокированного профиля: прятать от экрана профиля, что аккаунт заблокирован. */
+    static volatile boolean viewBlocked = false;
+    /** true — прятать блокировку на любом экране, а не только на экранах профиля. */
+    static volatile boolean viewBlockedEverywhere = false;
+
     /** Убирать рекламные посты из ленты ещё до показа. */
     static volatile boolean hideAds = true;
     /** Прятать кнопку LIVE в левом верхнем углу главной. */
@@ -110,6 +115,8 @@ final class Prefs {
             vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
             vtPos = Math.max(0, Math.min(3, o.optInt("vtPos", 0)));
             vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
+            viewBlocked = o.optBoolean("viewBlocked", false);
+            viewBlockedEverywhere = o.optBoolean("viewBlockedEverywhere", false);
             hideAds = o.optBoolean("hideAds", true);
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
@@ -242,6 +249,16 @@ final class Prefs {
         save();
     }
 
+    static void setViewBlocked(boolean v) {
+        viewBlocked = v;
+        save();
+    }
+
+    static void setViewBlockedEverywhere(boolean v) {
+        viewBlockedEverywhere = v;
+        save();
+    }
+
     static void setHideAds(boolean v) {
         hideAds = v;
         save();
@@ -300,6 +317,8 @@ final class Prefs {
             o.put("vtStyle", vtStyle);
             o.put("vtPos", vtPos);
             o.put("vtOpacity", vtOpacity);
+            o.put("viewBlocked", viewBlocked);
+            o.put("viewBlockedEverywhere", viewBlockedEverywhere);
             o.put("hideAds", hideAds);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);

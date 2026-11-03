@@ -22,15 +22,27 @@ import java.util.TreeSet;
  */
 final class Recon {
     /** Куски строк в коде, по которым ищутся нужные места. */
-    static final String[] PARTS = {"typing", "activity_status", "profile_view", "profile_visit", "is_block",
-            "block_status", "blocked_by", "has_blocked", "online_status", "hide_online"};
+    static final String[] PARTS = {"input_status", "inputstatus", "is_typing", "typing_status", "set_typing",
+            "activity_status", "active_status", "presence", "user_online", "online_report", "profile_visitor",
+            "visit_record", "view_record", "viewed_profile", "visitor_report"};
 
     /** Настоящие (не обфусцированные) классы, у которых смотрим поля и методы. */
     static final String[] CLASSES = {"com.ss.android.ugc.aweme.profile.model.User",
             "com.ss.android.ugc.profile.platform.base.data.UserProfileInfo"};
 
+    /**
+     * Настоящие классы, найденные первой разведкой: их показываем целиком (все методы и поля), потому что
+     * по именам методов видно, где TikTok сообщает статус «в сети» и просмотры профиля.
+     */
+    static final String[] FULL = {
+            "com.ss.android.ugc.aweme.im.saas.host.impl.feature.activestatus.ActiveStatusFeatureImpl",
+            "com.ss.android.ugc.profile.business.ci.viewer.viewmodel.ProfileViewerViewModel",
+            "com.ss.android.ugc.aweme.profile.model.BlockStatus"};
+
     private static final String MEMBER = "(?i).*(block|status|online|visit|viewer|typing|privacy).*";
-    private static final int PER_NEEDLE = 10;
+    private static final int PER_NEEDLE = 20;
+    private static final int FULL_LINES = 70;
+    private static final int AUTO_CLASSES = 8;
     private static final int SITES = 3;
     private static final long LIMIT_MS = 150_000L;
 
@@ -69,6 +81,12 @@ final class Recon {
                     StringBuilder sb = new StringBuilder();
                     sb.append(render(r, new KnownKeys()));
                     sb.append('\n').append(classes(StreakHooks.loader()));
+                    List<String> names = new ArrayList<>();
+                    for (String f : FULL) names.add(f);
+                    for (String f : realClasses(r, new KnownKeys())) {
+                        if (!names.contains(f)) names.add(f);
+                    }
+                    sb.append(full(StreakHooks.loader(), names));
                     report = sb.toString();
                     state = "готово: " + r.dexes + " dex, " + r.classes + " классов, " + r.ms + " мс";
                 } catch (Throwable e) {
@@ -119,8 +137,12 @@ final class Recon {
             if (bar < 0) continue;
             String needle = h.substring(0, bar);
             String text = h.substring(bar + 1);
+            if (known != null && known.is(text)) continue;
             Map<String, List<String>> strings = byNeedle.get(needle);
-            if (strings == null || (known != null && known.is(text))) continue;
+            if (strings == null) {
+                strings = new LinkedHashMap<>();
+                byNeedle.put(needle, strings);
+            }
             List<String> sites = strings.get(text);
             if (sites == null) {
                 sites = new ArrayList<>();
@@ -144,6 +166,81 @@ final class Recon {
                 }
                 if (sites.size() > SITES) sb.append("; ещё ").append(sites.size() - SITES);
                 sb.append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Настоящие (не обфусцированные) классы, в чьих методах встретились искомые строки: по ним сразу
+     * видно, какой класс отвечает за функцию. Класс обфусцированного кода (X.…) сюда не попадает.
+     */
+    static List<String> realClasses(DexScan.Result r, Known known) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (DexScan.Ref ref : r.refs) {
+            if (!ref.label.startsWith("const:~")) continue;
+            String h = ref.label.substring(7);
+            int bar = h.indexOf('|');
+            if (bar < 0 || (known != null && known.is(h.substring(bar + 1)))) continue;
+            String name = pretty(ref.cls);
+            if (name.startsWith("com.") && !name.startsWith("com.google.") && !name.startsWith("com.facebook.")
+                    && !name.startsWith("com.bytedance.ies.abmock") && !name.contains("$")) {
+                out.add(name);
+            }
+            if (out.size() >= AUTO_CLASSES * 3) break;
+        }
+        List<String> list = new ArrayList<>(out);
+        return list.size() > AUTO_CLASSES ? list.subList(0, AUTO_CLASSES) : list;
+    }
+
+    /** «имя(типы): результат» для метода; типы короткие. */
+    static String signature(Method m) {
+        StringBuilder sb = new StringBuilder(m.getName()).append('(');
+        Class<?>[] p = m.getParameterTypes();
+        for (int i = 0; i < p.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(p[i].getSimpleName());
+        }
+        return sb.append("): ").append(m.getReturnType().getSimpleName()).toString();
+    }
+
+    /** Все объявленные методы и поля класса, до FULL_LINES строк; для классов, которые уже известны по имени. */
+    static String full(ClassLoader cl, List<String> names) {
+        StringBuilder sb = new StringBuilder();
+        for (String name : names) {
+            sb.append('\n').append(name).append(": ");
+            Class<?> c = null;
+            try {
+                c = cl == null ? Class.forName(name) : Class.forName(name, false, cl);
+            } catch (Throwable ignored) {
+                // нет такого класса
+            }
+            if (c == null) {
+                sb.append("класса нет\n");
+                continue;
+            }
+            Set<String> lines = new TreeSet<>();
+            try {
+                for (Method m : c.getDeclaredMethods()) {
+                    if (!m.isSynthetic()) lines.add("метод " + signature(m));
+                }
+                for (Field f : c.getDeclaredFields()) {
+                    if (!f.isSynthetic()) lines.add("поле " + f.getName() + ": " + f.getType().getSimpleName());
+                }
+            } catch (Throwable ignored) {
+                // класс ссылается на то, чего нет
+            }
+            sb.append(lines.size()).append(" членов");
+            Class<?> sup = c.getSuperclass();
+            if (sup != null && sup != Object.class) sb.append(", родитель ").append(sup.getName());
+            sb.append('\n');
+            int n = 0;
+            for (String l : lines) {
+                if (n++ >= FULL_LINES) {
+                    sb.append("  ещё ").append(lines.size() - FULL_LINES).append('\n');
+                    break;
+                }
+                sb.append("  ").append(l).append('\n');
             }
         }
         return sb.toString();
