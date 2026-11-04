@@ -51,6 +51,10 @@ final class BadgeStore {
             return size() > MAX_RECENT;
         }
     };
+    /** Общий список (badges.json): номер → бейджики. Заменяется целиком. */
+    private static volatile Map<String, List<String>> remote = Collections.emptyMap();
+    /** Больше стольких бейджиков после имени не рисуется, даже если свои и общие вместе дают больше. */
+    static final int MAX_SHOWN = 4;
     /** uid → готовая метка из знаков нулевой ширины; заменяется целиком. */
     private static volatile Map<String, String> marks = Collections.emptyMap();
     private static boolean loaded;
@@ -139,14 +143,44 @@ final class BadgeStore {
 
     // ------------------------------------------------------------ метки
 
+    /** Бейджики, которые видны после имени: сначала общие, затем ваши, без повторов, не больше {@link #MAX_SHOWN}. */
+    static List<String> shown(List<String> shared, List<String> mine) {
+        List<String> out = new ArrayList<>();
+        if (shared != null) {
+            for (String id : shared) {
+                if (BadgeSet.indexOf(id) >= 0 && !out.contains(id) && out.size() < MAX_SHOWN) out.add(id);
+            }
+        }
+        if (mine != null) {
+            for (String id : mine) {
+                if (BadgeSet.indexOf(id) >= 0 && !out.contains(id) && out.size() < MAX_SHOWN) out.add(id);
+            }
+        }
+        return out;
+    }
+
     private static void rebuild() {
         Map<String, String> next = new HashMap<>();
-        for (Rule r : rules.values()) {
+        java.util.Set<String> uids = new java.util.LinkedHashSet<>(remote.keySet());
+        uids.addAll(rules.keySet());
+        for (String uid : uids) {
+            Rule r = rules.get(uid);
+            List<String> ids = shown(remote.get(uid), r == null ? null : r.ids);
             StringBuilder sb = new StringBuilder();
-            for (String id : r.ids) sb.append(BadgeLogic.mark(BadgeSet.indexOf(id)));
-            if (sb.length() > 0) next.put(r.uid, sb.toString());
+            for (String id : ids) sb.append(BadgeLogic.mark(BadgeSet.indexOf(id)));
+            if (sb.length() > 0) next.put(uid, sb.toString());
         }
         marks = next;
+    }
+
+    /** Подставляет общий список (из файла на GitHub или кэша) и пересобирает метки. */
+    static synchronized void setRemote(Map<String, List<String>> shared) {
+        remote = shared == null ? Collections.<String, List<String>>emptyMap() : shared;
+        rebuild();
+    }
+
+    static int remoteCount() {
+        return remote.size();
     }
 
     /** Рисовать ли метки в тексте: бейджики включены и есть хотя бы одно правило. */
@@ -273,6 +307,7 @@ final class BadgeStore {
             rules.clear();
             loaded = false;
             dirty = false;
+            remote = Collections.emptyMap();
             marks = Collections.emptyMap();
         }
         synchronized (recent) {

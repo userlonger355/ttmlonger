@@ -7,6 +7,9 @@ name: Build TTMLonger
 on:
   workflow_dispatch:
   push:
+    # правка общего списка бейджиков не должна запускать сборку
+    paths-ignore:
+      - badges.json
 
 permissions:
   contents: write

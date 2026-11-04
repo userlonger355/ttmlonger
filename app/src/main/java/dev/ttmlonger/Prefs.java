@@ -71,6 +71,8 @@ final class Prefs {
 
     /** Бейджики после имён аккаунтов (нужен перезапуск TikTok). */
     static volatile boolean badgesOn = false;
+    /** Читать общий список бейджиков (badges.json на GitHub). */
+    static volatile boolean badgesRemote = true;
 
     /** «Невидимка»: не отправлять статус «печатает…». */
     static volatile boolean hideTyping = false;
@@ -129,6 +131,7 @@ final class Prefs {
             viewBlocked = o.optBoolean("viewBlocked", false);
             viewBlockedEverywhere = o.optBoolean("viewBlockedEverywhere", false);
             badgesOn = o.optBoolean("badgesOn", false);
+            badgesRemote = o.optBoolean("badgesRemote", true);
             hideTyping = o.optBoolean("hideTyping", false);
             hideOnline = o.optBoolean("hideOnline", false);
             hideAds = o.optBoolean("hideAds", true);
@@ -283,6 +286,11 @@ final class Prefs {
         save();
     }
 
+    static void setBadgesRemote(boolean v) {
+        badgesRemote = v;
+        save();
+    }
+
     static void setHideTyping(boolean v) {
         hideTyping = v;
         save();
@@ -355,6 +363,7 @@ final class Prefs {
             o.put("viewBlocked", viewBlocked);
             o.put("viewBlockedEverywhere", viewBlockedEverywhere);
             o.put("badgesOn", badgesOn);
+            o.put("badgesRemote", badgesRemote);
             o.put("hideTyping", hideTyping);
             o.put("hideOnline", hideOnline);
             o.put("hideAds", hideAds);

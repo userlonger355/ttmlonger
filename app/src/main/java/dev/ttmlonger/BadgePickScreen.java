@@ -37,6 +37,26 @@ final class BadgePickScreen extends Screen {
         summary.setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(4));
         body.addView(summary, ui.matchWrap());
         for (int i = 0; i < BadgeSet.ALL.length; i++) body.addView(row(BadgeSet.ALL[i]));
+        body.addView(ui.row(Icons.COPY, "Скопировать для общего списка", "Пункт для badges.json на GitHub: "
+                + "тогда этот бейджик увидят все с модом", null, false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                BadgeStore.Rule rule = BadgeStore.rule(uid);
+                if (rule == null) {
+                    Toasts.show(act, "Сначала выберите бейджик");
+                    return;
+                }
+                try {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) act
+                            .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("badges.json",
+                            BadgeRemote.snippet(uid, name, rule.ids)));
+                    Toasts.show(act, "Скопировано. Вставьте в список accounts в badges.json");
+                } catch (Throwable t) {
+                    Toasts.show(act, "Не удалось скопировать");
+                }
+            }
+        }));
         body.addView(ui.row(Icons.TRASH, "Убрать все бейджики", null, null, false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -95,6 +115,8 @@ final class BadgePickScreen extends Screen {
         for (ImageView ck : checks) {
             ck.setVisibility(rule != null && rule.ids.contains((String) ck.getTag()) ? View.VISIBLE : View.INVISIBLE);
         }
-        summary.setText(rule == null ? "Сейчас без бейджиков" : "Сейчас: " + BadgeSet.titles(rule.ids));
+        BadgeRemote.Entry shared = BadgeRemote.shared().get(uid);
+        String own = rule == null ? "у вас без бейджиков" : "ваши: " + BadgeSet.titles(rule.ids);
+        summary.setText(shared == null ? "Сейчас " + own : "Из общего списка: " + BadgeSet.titles(shared.ids) + "; " + own);
     }
 }

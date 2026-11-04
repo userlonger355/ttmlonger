@@ -172,6 +172,7 @@ final class BadgeHooks {
         }
         startedOn = true;
         BadgeStore.load();
+        BadgeRemote.start();
         int n = 0;
         StringBuilder what = new StringBuilder();
         for (String cn : new String[]{BlockedProfile.USER, PROFILE}) {

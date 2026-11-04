@@ -6,6 +6,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.net.Uri;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -21,6 +23,7 @@ import android.widget.TextView;
  */
 final class BadgesScreen extends Screen {
     private TextView status;
+    private TextView remoteStatus;
     private LinearLayout rulesBox;
 
     private BadgesScreen(Activity act) {
@@ -34,7 +37,7 @@ final class BadgesScreen extends Screen {
     }
 
     static String menuSummary() {
-        return Prefs.badgesOn ? BadgeStore.count() + " акк." : "Выкл";
+        return Prefs.badgesOn ? (BadgeStore.count() + BadgeRemote.count()) + " акк." : "Выкл";
     }
 
     @Override
@@ -53,6 +56,60 @@ final class BadgesScreen extends Screen {
         status.setLineSpacing(0f, 1.15f);
         status.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
         body.addView(status, ui.matchWrap());
+
+        body.addView(ui.header("Общий список"));
+        body.addView(toggleRow(Icons.GLOBE, "Бейджики от других",
+                "Раз в 10 минут читать файл badges.json из репозитория мода на GitHub: бейджики, которые в нём выданы, "
+                        + "видны всем, у кого стоит мод",
+                Prefs.badgesRemote, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setBadgesRemote(on);
+                        refresh();
+                        if (on) BadgeRemote.refreshNow(new Runnable() {
+                            @Override
+                            public void run() {
+                                refresh();
+                            }
+                        });
+                    }
+                }));
+        remoteStatus = ui.text("", 14f, Ui.INK, false);
+        remoteStatus.setLineSpacing(0f, 1.15f);
+        remoteStatus.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
+        body.addView(remoteStatus, ui.matchWrap());
+        body.addView(ui.row(Icons.REFRESH, "Обновить сейчас", "Скачать список заново", null, false,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (!Prefs.badgesOn || !BadgeHooks.running()) {
+                            Toasts.show(act, "Сначала включите бейджики и перезапустите TikTok");
+                            return;
+                        }
+                        remoteStatus.setText("Загружаю…");
+                        BadgeRemote.refreshNow(new Runnable() {
+                            @Override
+                            public void run() {
+                                refresh();
+                            }
+                        });
+                    }
+                }));
+        body.addView(ui.row(Icons.COPY, "Скопировать файл для GitHub",
+                "Общий список вместе с вашими бейджиками: вставьте целиком в badges.json, и их увидят все", null, false,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        copyFile();
+                    }
+                }));
+        body.addView(ui.row(Icons.GLOBE, "Открыть badges.json на GitHub", "Страница правки файла в браузере или "
+                + "приложении GitHub (нужен вход под владельцем репозитория)", null, true, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openEditor();
+            }
+        }));
 
         body.addView(ui.header("Аккаунты с бейджиками"));
         rulesBox = new LinearLayout(act);
@@ -115,6 +172,7 @@ final class BadgesScreen extends Screen {
 
     private void refresh() {
         if (status != null) status.setText(BadgeHooks.status());
+        if (remoteStatus != null) remoteStatus.setText(BadgeRemote.status(System.currentTimeMillis()));
         if (rulesBox == null) return;
         rulesBox.removeAllViews();
         java.util.List<BadgeStore.Rule> all = BadgeStore.rules();
@@ -177,11 +235,32 @@ final class BadgesScreen extends Screen {
         Ui.style(dlg);
     }
 
+    private void copyFile() {
+        try {
+            String text = BadgeRemote.export(BadgeRemote.shared(), BadgeStore.rules());
+            ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("badges.json", text));
+            Toasts.show(act, "Скопировано. Откройте badges.json на GitHub и вставьте вместо всего содержимого");
+        } catch (Throwable t) {
+            Toasts.show(act, "Не удалось скопировать");
+        }
+    }
+
+    private void openEditor() {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(BadgeRemote.EDIT_URL));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            act.startActivity(i);
+        } catch (Throwable t) {
+            Toasts.show(act, "Не удалось открыть: откройте github.com/" + BadgeRemote.OWNER + "/" + BadgeRemote.REPO);
+        }
+    }
+
     private void copy() {
         try {
             ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", "TTMLonger " + Targets.VERSION + " · Android "
-                    + android.os.Build.VERSION.SDK_INT + "\n" + BadgeHooks.details()));
+                    + android.os.Build.VERSION.SDK_INT + "\n" + BadgeHooks.details() + "\n" + BadgeRemote.details()));
             Toasts.show(act, "Скопировано. Вставьте в сообщение разработчику");
         } catch (Throwable t) {
             Toasts.show(act, "Не удалось скопировать");
