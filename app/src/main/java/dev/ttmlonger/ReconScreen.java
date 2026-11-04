@@ -11,8 +11,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * «Разведка»: сбор названий в коде TikTok для функций «Невидимка» и «Просмотр заблокированного
- * профиля». Эти функции нельзя безопасно сделать наугад, поэтому сначала снимаются сведения.
+ * «Разведка»: сбор названий в коде TikTok для функций «Невидимка», «Просмотр заблокированного
+ * профиля» и массового удаления репостов, лайков и избранного. Такие функции нельзя безопасно сделать
+ * наугад, поэтому сначала снимаются сведения.
  */
 final class ReconScreen extends Screen {
     private TextView state;
@@ -42,6 +43,15 @@ final class ReconScreen extends Screen {
                         poll();
                     }
                 }));
+        body.addView(ui.row(Icons.SEARCH, "Разведка для удаления",
+                "Репосты, лайки и избранное: адреса запросов TikTok для массового удаления", null, false,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        Recon.start(act.getApplicationContext(), true);
+                        poll();
+                    }
+                }));
         state = ui.text("", 14f, Ui.INK, false);
         state.setLineSpacing(0f, 1.15f);
         state.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
@@ -54,6 +64,9 @@ final class ReconScreen extends Screen {
                         copy();
                     }
                 }));
+        body.addView(ui.note("Запускайте что-то одно: отчёт каждый раз заменяется. «Разведка для удаления» нужна для "
+                + "массового удаления репостов, лайков и избранного, остальное — для «Невидимки» и заблокированного "
+                + "профиля."));
         body.addView(ui.note("Скопируйте отчёт после слов «готово» и пришлите разработчику: по нему подключаются "
                 + "«Скрыть мой онлайн», «Не показывать «печатает…»», «Не сообщать о просмотре профилей» и "
                 + "просмотр заблокированного профиля."));

@@ -5,6 +5,7 @@ import android.content.Context;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,9 @@ import java.util.TreeSet;
  * просмотры профиля) и просмотр заблокированного профиля. Чтобы подключить такую функцию к нужному
  * методу, надо знать, как он называется в этой версии приложения. Имена внутри TikTok обфусцированы,
  * но строки в коде остаются: по ним и по настоящим названиям модели пользователя мод собирает отчёт.
+ *
+ * Второй режим разведки — под массовое удаление своих репостов, лайков и избранного: там нужны адреса
+ * внутренних запросов TikTok (список своих лайков, отмена лайка и так далее) и классы ответа.
  *
  * В отчёт попадают только названия классов, методов и полей TikTok и строки из его кода. Ни ваших
  * данных, ни текстов с экрана в нём нет. Разбор идёт только по кнопке, а не при запуске приложения.
@@ -43,9 +47,41 @@ final class Recon {
             "com.ss.android.ugc.aweme.requesttask.idle.ReportActivityStatusTask",
             "com.ss.android.ugc.aweme.im.saas.host.impl.feature.privacy.IMPrivacySettingsImpl"};
 
+    /**
+     * Куски строк для режима «удаление». Порядок важен: строка относится к первому подошедшему куску, поэтому
+     * точные адреса стоят раньше общих слов. Адреса запросов лежат в аннотациях методов (Retrofit), поэтому
+     * рядом с ними печатаются имена параметров запроса.
+     */
+    static final String[] DELETE_PARTS = {
+            // репосты
+            "repost/list", "aweme/repost", "repost/delete", "delete_repost", "cancel_repost", "remove_repost",
+            "unrepost", "repost_list", "repost/", "/repost", "repost",
+            // лайки
+            "item/digg", "aweme/favorite", "favorite/list", "digg_list", "user_digg", "cancel_digg", "undigg",
+            // избранное («коллекции»)
+            "listcollection", "aweme/collect", "collect/list", "collect_list", "collection/", "collect/",
+            "uncollect", "unfavorite", "cancel_collect", "collect_stat"};
+
+    /** Классы запросов TikTok (сетевая библиотека не обфусцирована): как создаётся и вызывается запрос. */
+    static final String[] DELETE_FULL = {
+            "com.bytedance.retrofit2.Retrofit",
+            "com.bytedance.retrofit2.Call",
+            "com.bytedance.retrofit2.SsResponse"};
+
+    /** Классы модели видео и пользователя: смотрим только поля и методы про лайки, избранное, репосты и страницы. */
+    static final String[] FOCUS = {
+            "com.ss.android.ugc.aweme.feed.model.Aweme",
+            "com.ss.android.ugc.aweme.feed.model.AwemeStatistics",
+            "com.ss.android.ugc.aweme.feed.model.FeedItemList",
+            "com.ss.android.ugc.aweme.profile.model.User"};
+
+    static final String FOCUS_MEMBER = "(?i).*(digg|like|collect|favor|repost|delete|remove|cancel|cursor|hasmore|"
+            + "awemeid|getaid|createtime|secuid|sec_uid|items|list).*";
+
     private static final String MEMBER = "(?i).*(block|status|online|visit|viewer|typing|privacy).*";
-    private static final int PER_NEEDLE = 20;
+    private static final int PER_NEEDLE = 25;
     private static final int FULL_LINES = 70;
+    private static final int FOCUS_LINES = 80;
     private static final int AUTO_CLASSES = 8;
     private static final int SITES = 3;
     private static final long LIMIT_MS = 150_000L;
@@ -70,7 +106,12 @@ final class Recon {
     }
 
     /** Запускает разбор в фоне; повторный запуск, пока идёт первый, ничего не делает. */
-    static synchronized void start(final Context ctx) {
+    static void start(Context ctx) {
+        start(ctx, false);
+    }
+
+    /** forDelete — режим под массовое удаление репостов, лайков и избранного. */
+    static synchronized void start(final Context ctx, final boolean forDelete) {
         if (running) return;
         running = true;
         state = "идёт разбор кода TikTok (до пары минут)…";
@@ -79,18 +120,31 @@ final class Recon {
             public void run() {
                 try {
                     DexScan.Options o = new DexScan.Options();
-                    o.parts = PARTS;
+                    o.parts = forDelete ? DELETE_PARTS : PARTS;
                     o.deadline = System.currentTimeMillis() + LIMIT_MS;
                     DexScan.Result r = DexHooks.scanApp(ctx, o);
                     StringBuilder sb = new StringBuilder();
-                    sb.append(render(r, new KnownKeys()));
-                    sb.append('\n').append(classes(StreakHooks.loader()));
-                    List<String> names = new ArrayList<>();
-                    for (String f : FULL) names.add(f);
-                    for (String f : realClasses(r, new KnownKeys())) {
-                        if (!names.contains(f)) names.add(f);
+                    ClassLoader cl = StreakHooks.loader();
+                    if (forDelete) {
+                        sb.append("режим: удаление репостов, лайков и избранного\n");
+                        sb.append(render(r, new KnownKeys(), DELETE_PARTS));
+                        List<String> names = new ArrayList<>();
+                        for (String f : DELETE_FULL) names.add(f);
+                        for (String f : realClasses(r, new KnownKeys(), 12)) {
+                            if (!names.contains(f)) names.add(f);
+                        }
+                        sb.append(full(cl, names));
+                        sb.append(focused(cl, Arrays.asList(FOCUS), FOCUS_MEMBER));
+                    } else {
+                        sb.append(render(r, new KnownKeys()));
+                        sb.append('\n').append(classes(cl));
+                        List<String> names = new ArrayList<>();
+                        for (String f : FULL) names.add(f);
+                        for (String f : realClasses(r, new KnownKeys())) {
+                            if (!names.contains(f)) names.add(f);
+                        }
+                        sb.append(full(cl, names));
                     }
-                    sb.append(full(StreakHooks.loader(), names));
                     report = sb.toString();
                     state = "готово: " + r.dexes + " dex, " + r.classes + " классов, " + r.ms + " мс";
                 } catch (Throwable e) {
@@ -131,8 +185,12 @@ final class Recon {
 
     /** Отчёт по найденным строкам: по куску, затем по строке и местам, где она используется. */
     static String render(DexScan.Result r, Known known) {
+        return render(r, known, PARTS);
+    }
+
+    static String render(DexScan.Result r, Known known, String[] parts) {
         Map<String, Map<String, List<String>>> byNeedle = new LinkedHashMap<>();
-        for (String n : PARTS) byNeedle.put(n, new LinkedHashMap<String, List<String>>());
+        for (String n : parts) byNeedle.put(n, new LinkedHashMap<String, List<String>>());
         int total = 0;
         for (DexScan.Ref ref : r.refs) {
             if (!ref.label.startsWith("const:~")) continue;
@@ -180,6 +238,10 @@ final class Recon {
      * видно, какой класс отвечает за функцию. Класс обфусцированного кода (X.…) сюда не попадает.
      */
     static List<String> realClasses(DexScan.Result r, Known known) {
+        return realClasses(r, known, AUTO_CLASSES);
+    }
+
+    static List<String> realClasses(DexScan.Result r, Known known, int limit) {
         java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
         for (DexScan.Ref ref : r.refs) {
             if (!ref.label.startsWith("const:~")) continue;
@@ -191,10 +253,10 @@ final class Recon {
                     && !name.startsWith("com.bytedance.ies.abmock") && !name.contains("$")) {
                 out.add(name);
             }
-            if (out.size() >= AUTO_CLASSES * 3) break;
+            if (out.size() >= limit * 3) break;
         }
         List<String> list = new ArrayList<>(out);
-        return list.size() > AUTO_CLASSES ? list.subList(0, AUTO_CLASSES) : list;
+        return list.size() > limit ? list.subList(0, limit) : list;
     }
 
     /** «имя(типы): результат» для метода; типы короткие. */
@@ -242,6 +304,47 @@ final class Recon {
             for (String l : lines) {
                 if (n++ >= FULL_LINES) {
                     sb.append("  ещё ").append(lines.size() - FULL_LINES).append('\n');
+                    break;
+                }
+                sb.append("  ").append(l).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Как full, но только члены, чьё имя подходит под regex (у больших моделей остальное — шум). */
+    static String focused(ClassLoader cl, List<String> names, String regex) {
+        StringBuilder sb = new StringBuilder();
+        for (String name : names) {
+            sb.append('\n').append(name).append(": ");
+            Class<?> c = null;
+            try {
+                c = cl == null ? Class.forName(name) : Class.forName(name, false, cl);
+            } catch (Throwable ignored) {
+                // нет такого класса
+            }
+            if (c == null) {
+                sb.append("класса нет\n");
+                continue;
+            }
+            Set<String> lines = new TreeSet<>();
+            try {
+                for (Method m : c.getDeclaredMethods()) {
+                    if (!m.isSynthetic() && m.getName().matches(regex)) lines.add("метод " + signature(m));
+                }
+                for (Field f : c.getDeclaredFields()) {
+                    if (!f.isSynthetic() && f.getName().matches(regex)) {
+                        lines.add("поле " + f.getName() + ": " + f.getType().getSimpleName());
+                    }
+                }
+            } catch (Throwable ignored) {
+                // класс ссылается на то, чего нет
+            }
+            sb.append(lines.size()).append(" подходящих\n");
+            int n = 0;
+            for (String l : lines) {
+                if (n++ >= FOCUS_LINES) {
+                    sb.append("  ещё ").append(lines.size() - FOCUS_LINES).append('\n');
                     break;
                 }
                 sb.append("  ").append(l).append('\n');

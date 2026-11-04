@@ -76,7 +76,7 @@ final class ModMenu extends Screen {
                     }
                 }));
         body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
-                "Если «Невидимка» или заблокированный профиль не сработали", ReconScreen.menuSummary(),
+                "Для «Невидимки», заблокированного профиля и удаления репостов/лайков", ReconScreen.menuSummary(),
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {

@@ -917,6 +917,10 @@ final class DexScan {
                         }
                     }
                 }
+                if (isConst != null && o.parts.length > 0) {
+                    int annOff = u32(def + 20);
+                    if (annOff != 0 && annOff < b.length - 16) scanAnnotated(annOff, refs);
+                }
                 int kinds = Integer.bitCount(mask);
                 if (kinds >= 4) {
                     if (clsName == null) clsName = typeDesc(u32(def));
@@ -938,6 +942,121 @@ final class DexScan {
                         have.uses += a.uses;
                     }
                 }
+            }
+        }
+
+        // ---- аннотации методов
+
+        /**
+         * Строки из аннотаций методов класса. Адреса запросов TikTok (Retrofit: @GET("/aweme/v1/…")) лежат
+         * только там, в коде их нет, поэтому const-string их не видит. Метод, у которого в аннотации есть
+         * строка с куском из Options.parts, попадает в результат как Ref("const:~кусок|строка", класс, метод,
+         * сигнатура + « @[остальные строки аннотаций метода и его параметров]»): по ним видно имена
+         * параметров запроса (count, max_cursor…).
+         */
+        private void scanAnnotated(int dir, Map<String, Ref> refs) {
+            int save = pos;
+            try {
+                int fields = u32(dir + 4);
+                int methods = u32(dir + 8);
+                int params = u32(dir + 12);
+                if (fields < 0 || fields > 8192 || methods < 0 || methods > 8192 || params < 0 || params > 8192) return;
+                int base = dir + 16 + 8 * fields;
+                if (base + 8 * methods + 8 * params > b.length) return;
+                for (int i = 0; i < methods; i++) {
+                    int mid = u32(base + 8 * i);
+                    int set = u32(base + 8 * i + 4);
+                    if (mid < 0 || mid >= mthN || set == 0 || set >= b.length - 4) continue;
+                    List<Integer> own = new ArrayList<>();
+                    annotationStrings(set, own);
+                    List<String> hits = new ArrayList<>();
+                    List<String> rest = new ArrayList<>();
+                    for (int s : own) {
+                        if (s < 0 || s >= strN) continue;
+                        if (isConst[s] && constName[s] != null && constName[s].charAt(0) == '~') hits.add(constName[s]);
+                        else rest.add(str(s));
+                    }
+                    if (hits.isEmpty()) continue;
+                    for (int j = 0; j < params; j++) {
+                        if (u32(base + 8 * methods + 8 * j) != mid) continue;
+                        int list = u32(base + 8 * methods + 8 * j + 4);
+                        if (list == 0 || list >= b.length - 4) break;
+                        int n = u32(list);
+                        if (n < 0 || n > 32) break;
+                        for (int k = 0; k < n; k++) {
+                            int ps = u32(list + 4 + 4 * k);
+                            if (ps == 0 || ps >= b.length - 4) continue;
+                            List<Integer> strs = new ArrayList<>();
+                            annotationStrings(ps, strs);
+                            for (int s : strs) {
+                                if (s >= 0 && s < strN) rest.add(str(s));
+                            }
+                        }
+                        break;
+                    }
+                    StringBuilder extra = new StringBuilder();
+                    int shown = 0;
+                    for (String r : rest) {
+                        if (r.isEmpty() || r.length() > 40 || r.indexOf('\t') >= 0 || r.indexOf('\n') >= 0) continue;
+                        if (shown++ >= 10) break;
+                        extra.append(shown == 1 ? " @[" : ", ").append(r);
+                    }
+                    if (shown > 0) extra.append(']');
+                    String cls = typeDesc(u16(mthOff + 8 * mid));
+                    String name = str(u32(mthOff + 8 * mid + 4));
+                    String proto = protoDesc(u16(mthOff + 8 * mid + 2)) + extra;
+                    for (String h : hits) {
+                        if (++partRefs > 3000) return;
+                        Ref r = new Ref("const:" + h, cls, name, proto);
+                        if (!refs.containsKey(r.id())) refs.put(r.id(), r);
+                    }
+                }
+            } catch (RuntimeException broken) {
+                // испорченные аннотации просто пропускаем
+            } finally {
+                pos = save;
+            }
+        }
+
+        /** Индексы строк из всех аннотаций набора (annotation_set_item), с запасом по глубине и числу. */
+        private void annotationStrings(int set, List<Integer> out) {
+            int n = u32(set);
+            if (n < 0 || n > 32) return;
+            for (int k = 0; k < n; k++) {
+                int a = u32(set + 4 + 4 * k);
+                if (a <= 0 || a >= b.length - 4) continue;
+                pos = a + 1;                // видимость
+                uleb();                     // тип аннотации
+                int cnt = uleb();
+                annotationElements(cnt, out, 0);
+            }
+        }
+
+        private void annotationElements(int cnt, List<Integer> out, int depth) {
+            if (cnt < 0 || cnt > 64 || depth > 3) throw new IllegalStateException("annotation");
+            for (int i = 0; i < cnt; i++) {
+                uleb();                     // имя элемента
+                encodedValue(out, depth);
+            }
+        }
+
+        private void encodedValue(List<Integer> out, int depth) {
+            int h = b[pos++] & 0xff;
+            int type = h & 0x1f;
+            int arg = h >> 5;
+            if (type == 0x17) {
+                int idx = 0;
+                for (int i = 0; i <= arg; i++) idx |= (b[pos++] & 0xff) << (8 * i);
+                if (out.size() < 64) out.add(idx);
+            } else if (type == 0x1c) {
+                int n = uleb();
+                if (n < 0 || n > 64 || depth > 3) throw new IllegalStateException("annotation");
+                for (int i = 0; i < n; i++) encodedValue(out, depth + 1);
+            } else if (type == 0x1d) {
+                uleb();
+                annotationElements(uleb(), out, depth + 1);
+            } else if (type != 0x1e && type != 0x1f) {
+                pos += arg + 1;
             }
         }
 

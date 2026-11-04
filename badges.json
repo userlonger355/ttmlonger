@@ -2,6 +2,6 @@
   "version": 1,
   "note": "Общий список бейджиков TTMLonger. Формат пункта: {\"uid\": \"номер аккаунта\", \"name\": \"имя для подсказки\", \"badges\": [\"star\"]}. Бейджики: verified, verified_gold, verified_green, star, heart, flame, crown, diamond, bolt. До трёх на аккаунт.",
   "accounts": [
+    {"uid": "7382149583910241288", "name": "🇫🇷slavaketpoganka🇫🇷", "badges": ["verified", "diamond", "star"]}
   ]
 }
-{"uid": "7382149583910241288", "name": "🇫🇷slavaketpoganka🇫🇷", "badges": ["verified", "diamond", "star"]}
