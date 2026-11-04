@@ -123,6 +123,11 @@ public final class MainHook implements IXposedHookLoadPackage {
         try {
             FlagStore.init(ctx);      // внутри читаются и Prefs
             AccentHooks.installIfNeeded(); // глубокая подмена акцента: только если акцент выбран
+            try {
+                BadgeHooks.install(cl); // бейджики после имён: только если включены
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
             Trigger.install();
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);

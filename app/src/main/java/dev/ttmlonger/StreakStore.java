@@ -117,6 +117,12 @@ final class StreakStore {
         return uid == null ? null : names.get(uid);
     }
 
+    /** Копия списка имён друзей: номер → имя. */
+    static synchronized Map<String, String> names() {
+        load();
+        return new LinkedHashMap<>(names);
+    }
+
     static synchronized void noteName(String uid, String name) {
         String clean = StreakLogic.cleanName(name);
         if (clean.isEmpty() || !StreakLogic.isUid(uid)) return;

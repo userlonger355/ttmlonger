@@ -122,7 +122,12 @@ final class Icons {
 
     /** Разбирает описание значка и выдаёт команды в Sink. Координаты на сетке 24×24. */
     static void parse(int id, Sink s) {
-        String[] t = DATA[id].trim().split("\\s+");
+        parseText(DATA[id], id, s);
+    }
+
+    /** То же для произвольного описания (бейджики). */
+    static void parseText(String data, int id, Sink s) {
+        String[] t = data.trim().split("\\s+");
         int i = 0;
         while (i < t.length) {
             String c = t[i++];

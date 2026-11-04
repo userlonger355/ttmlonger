@@ -69,6 +69,9 @@ final class Prefs {
     /** true — прятать блокировку на любом экране, а не только на экранах профиля. */
     static volatile boolean viewBlockedEverywhere = false;
 
+    /** Бейджики после имён аккаунтов (нужен перезапуск TikTok). */
+    static volatile boolean badgesOn = false;
+
     /** «Невидимка»: не отправлять статус «печатает…». */
     static volatile boolean hideTyping = false;
     /** «Невидимка»: не отправлять отчёт об активности («в сети»). */
@@ -125,6 +128,7 @@ final class Prefs {
             vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
             viewBlocked = o.optBoolean("viewBlocked", false);
             viewBlockedEverywhere = o.optBoolean("viewBlockedEverywhere", false);
+            badgesOn = o.optBoolean("badgesOn", false);
             hideTyping = o.optBoolean("hideTyping", false);
             hideOnline = o.optBoolean("hideOnline", false);
             hideAds = o.optBoolean("hideAds", true);
@@ -274,6 +278,11 @@ final class Prefs {
         save();
     }
 
+    static void setBadgesOn(boolean v) {
+        badgesOn = v;
+        save();
+    }
+
     static void setHideTyping(boolean v) {
         hideTyping = v;
         save();
@@ -345,6 +354,7 @@ final class Prefs {
             o.put("vtOpacity", vtOpacity);
             o.put("viewBlocked", viewBlocked);
             o.put("viewBlockedEverywhere", viewBlockedEverywhere);
+            o.put("badgesOn", badgesOn);
             o.put("hideTyping", hideTyping);
             o.put("hideOnline", hideOnline);
             o.put("hideAds", hideAds);

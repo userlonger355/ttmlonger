@@ -300,6 +300,7 @@ final class StreakLogic {
 
     static String cleanName(String s) {
         if (s == null) return "";
+        s = BadgeLogic.strip(s);
         String t = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim();
         return t.length() > 40 ? t.substring(0, 40).trim() : t;
     }
