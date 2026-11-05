@@ -50,8 +50,10 @@ final class Prefs {
 
     /** Плашка с точным временем публикации над именем автора в ленте. */
     static volatile boolean vtTime = true;
-    /** Показывать в плашке секунды. */
+    /** Показывать в плашке секунды (только для точного времени). */
     static volatile boolean vtSeconds = true;
+    /** Вид времени в плашке: 0 точное («26.09 02:32:00»), 1 давность, а для старых видео дата («3 дн. назад», «26.09.2026»). */
+    static volatile int vtFormat = 1;
     /** Плашка с регионом видео: флаг и код страны. */
     static volatile boolean vtRegion = true;
     /** Вид плашки региона: 0 флаг и код, 1 только флаг, 2 только код. */
@@ -123,6 +125,7 @@ final class Prefs {
             streakOnlyPicked = o.optBoolean("streakOnlyPicked", false);
             vtTime = o.optBoolean("vtTime", true);
             vtSeconds = o.optBoolean("vtSeconds", true);
+            vtFormat = Math.max(0, Math.min(1, o.optInt("vtFormat", 1)));
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
             vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
@@ -241,6 +244,11 @@ final class Prefs {
         save();
     }
 
+    static void setVtFormat(int v) {
+        vtFormat = Math.max(0, Math.min(1, v));
+        save();
+    }
+
     static void setVtRegion(boolean v) {
         vtRegion = v;
         save();
@@ -355,6 +363,7 @@ final class Prefs {
             o.put("streakOnlyPicked", streakOnlyPicked);
             o.put("vtTime", vtTime);
             o.put("vtSeconds", vtSeconds);
+            o.put("vtFormat", vtFormat);
             o.put("vtRegion", vtRegion);
             o.put("vtRegionMode", vtRegionMode);
             o.put("vtStyle", vtStyle);

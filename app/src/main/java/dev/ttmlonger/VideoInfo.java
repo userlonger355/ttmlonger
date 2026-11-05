@@ -33,7 +33,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /**
- * Плашки над именем автора в ленте: точное время публикации («26.09 02:32:00») и регион видео
+ * Плашки над именем автора в ленте: время публикации («26.09 02:32:00» или «3 дн. назад») и регион видео
  * (флаг и код страны). Данные берутся из самой модели видео TikTok (Aweme.getCreateTime и
  * getRegion), которую трекер уже запоминает, поэтому новых хуков здесь нет и перезапуск не нужен.
  *
@@ -68,6 +68,45 @@ final class VideoInfo {
         if (raw > 100_000_000_000L) raw /= 1000L;
         if (raw < 1_388_534_400L || raw > 4_102_444_800L) return 0;
         return raw;
+    }
+
+    static final int FORMAT_EXACT = 0;
+    static final int FORMAT_AGO = 1;
+    private static final String[] FORMAT_LABELS = {"Точное время", "Давность, потом дата"};
+
+    static String formatLabel(int f) {
+        return FORMAT_LABELS[f < 0 || f > 1 ? 1 : f];
+    }
+
+    static int nextFormat(int f) {
+        return (f < 0 || f > 1 ? 1 : f) == 0 ? 1 : 0;
+    }
+
+    /**
+     * Свежее видео называется по давности: «5 мин. назад», «3 ч. назад», «2 дн. назад»; видео старше
+     * недели — датой «26.09.2026» (в часовом поясе телефона). null, если на время не похоже или оно
+     * дальше суток в будущем.
+     */
+    static String agoLabel(long raw, long nowMs, TimeZone tz) {
+        long sec = toSeconds(raw);
+        long now = nowMs / 1000L;
+        if (sec == 0 || sec > now + 86_400L) return null;
+        long ago = Math.max(0L, now - sec);
+        if (ago < 3600L) return Math.max(1L, ago / 60L) + " мин. назад";
+        if (ago < 86_400L) return ago / 3600L + " ч. назад";
+        if (ago < 7L * 86_400L) return ago / 86_400L + " дн. назад";
+        SimpleDateFormat f = new SimpleDateFormat("dd.MM.yyyy", Locale.US);
+        f.setTimeZone(tz);
+        return f.format(new Date(sec * 1000L));
+    }
+
+    /** Текст плашки времени по выбранному виду; если «давность» не получилась, показывается точное время. */
+    static String timeText(long sec, int format, boolean seconds, TimeZone tz, long nowMs) {
+        if (format == FORMAT_AGO) {
+            String s = agoLabel(sec, nowMs, tz);
+            if (s != null) return s;
+        }
+        return formatTime(sec, seconds, tz, nowMs);
     }
 
     /** «26.09 02:32:00»; для прошлых лет «26.09.25 02:32:00». */
@@ -659,7 +698,7 @@ final class VideoInfo {
         Pills p = new Pills(c);
         p.style(Prefs.vtStyle, isNight(c), Prefs.vtOpacity);
         long sample = System.currentTimeMillis() / 1000L - 2 * 86400L - 3600L * 5;
-        p.timeView.setText(formatTime(sample, Prefs.vtSeconds, TimeZone.getDefault(), System.currentTimeMillis()));
+        p.timeView.setText(timeText(sample, Prefs.vtFormat, Prefs.vtSeconds, TimeZone.getDefault(), System.currentTimeMillis()));
         String r = regionText("KZ", Prefs.vtRegionMode);
         p.regionView.setText(r == null ? "KZ" : r);
         p.timeView.setVisibility(Prefs.vtTime ? View.VISIBLE : View.GONE);
@@ -733,7 +772,7 @@ final class VideoInfo {
             iso = m.region;
             pills.style(Prefs.vtStyle, isNight(act), Prefs.vtOpacity);
             if (wantTime) {
-                timeView.setText(formatTime(m.created, Prefs.vtSeconds, TimeZone.getDefault(), System.currentTimeMillis()));
+                timeView.setText(timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, TimeZone.getDefault(), System.currentTimeMillis()));
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
             if (wantRegion) regionView.setText(regionText(m.region, Prefs.vtRegionMode));
@@ -1023,7 +1062,8 @@ final class VideoInfo {
         StringBuilder sb = new StringBuilder();
         sb.append("TTMLonger ").append(Targets.VERSION).append(" · Android ").append(android.os.Build.VERSION.SDK_INT)
                 .append('\n');
-        sb.append("время: ").append(Prefs.vtTime ? "вкл" : "выкл").append(", секунды: ").append(Prefs.vtSeconds ? "да" : "нет")
+        sb.append("время: ").append(Prefs.vtTime ? "вкл" : "выкл").append(" (").append(formatLabel(Prefs.vtFormat))
+                .append("), секунды: ").append(Prefs.vtSeconds ? "да" : "нет")
                 .append(", регион: ").append(Prefs.vtRegion ? "вкл" : "выкл").append(" (").append(modeLabel(Prefs.vtRegionMode))
                 .append(")\n");
         sb.append("видео в трекере: ").append(VideoTracker.size()).append(", всего видено ").append(VideoTracker.total())

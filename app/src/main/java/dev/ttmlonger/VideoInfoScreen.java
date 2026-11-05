@@ -22,6 +22,7 @@ final class VideoInfoScreen extends Screen {
     private TextView state;
     private LinearLayout modeRow;
     private LinearLayout secondsRow;
+    private LinearLayout formatRow;
     private LinearLayout styleRow;
     private LinearLayout posRow;
     private FrameLayout previewHost;
@@ -33,8 +34,8 @@ final class VideoInfoScreen extends Screen {
 
     static void show(Activity act) {
         new VideoInfoScreen(act).open("Время и регион видео",
-                "Рядом с именем автора в ленте появляются плашки: когда выложено видео (с секундами) и из какой "
-                        + "оно страны. Нажмите на плашку, чтобы увидеть подробности.");
+                "Рядом с именем автора в ленте появляются плашки: когда выложено видео («3 дн. назад», у старых — "
+                        + "дата, или точное время) и из какой оно страны. Нажмите на плашку, чтобы увидеть подробности.");
     }
 
     static String menuSummary() {
@@ -43,9 +44,9 @@ final class VideoInfoScreen extends Screen {
 
     @Override
     void build(LinearLayout body) {
-        body.addView(ui.header("Точное время"));
+        body.addView(ui.header("Время"));
         body.addView(toggleRow(Icons.CLOCK, "Время публикации",
-                "Дата и время, когда автор выложил видео: 26.09 02:32:00",
+                "Когда автор выложил видео: «3 дн. назад», «26.09.2026» или точное время",
                 Prefs.vtTime, new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
@@ -53,7 +54,19 @@ final class VideoInfoScreen extends Screen {
                         changed();
                     }
                 }));
-        secondsRow = toggleRow(-1, "Секунды", "Показывать секунды: 02:32:00 вместо 02:32",
+        formatRow = ui.menuRow(-1, "Вид времени", "«Давность, потом дата»: «5 ч. назад», а видео старше недели — "
+                        + "«26.09.2026». «Точное время»: «26.09 02:32:00»", VideoInfo.formatLabel(Prefs.vtFormat),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        Prefs.setVtFormat(VideoInfo.nextFormat(Prefs.vtFormat));
+                        TextView val = Ui.valueOf(formatRow);
+                        if (val != null) val.setText(VideoInfo.formatLabel(Prefs.vtFormat));
+                        changed();
+                    }
+                });
+        body.addView(formatRow);
+        secondsRow = toggleRow(-1, "Секунды", "Для точного времени: 02:32:00 вместо 02:32",
                 Prefs.vtSeconds, new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
