@@ -13,7 +13,7 @@ final class Targets {
     private Targets() {
     }
 
-    static final String VERSION = "0.1.0m";
+    static final String VERSION = "0.1.0n";
 
     /**
      * Заголовок страницы настроек TikTok на разных языках. По нему мод понимает, что открыта
@@ -186,7 +186,7 @@ final class Targets {
             {"feed_banner_inactive_opt", "int", "1"},
             // Баннер профиля: установка своей картинки-шапки в «Изменить профиль» (флаги функции profile_bg).
             {"profile_bg_in_allow_list", "int", "1"},
-            {"profile_bg_enable_consumption_group", "int", "1"},
+            {"profile_bg_enable_consumption_group", "int", "3"},
             // Голосовые комментарии: включить запись и убрать запрет входа.
             {"audio_comment_publish", "int", "1"},
             {"comment_audio_publish_entry_forbidden", "bool", "false"},
@@ -195,7 +195,18 @@ final class Targets {
     /** Флаги функции «баннер профиля»: переключатель в меню мода включает и выключает их вместе. */
     static final String[][] BANNER_FLAGS = {
             {"profile_bg_in_allow_list", "int", "1"},
-            {"profile_bg_enable_consumption_group", "int", "1"},
+            // 1 показывало баннер только на своей странице; 3 — значение из набора флагов (RefForcedData),
+            // при нём баннеры должны показываться и у других людей.
+            {"profile_bg_enable_consumption_group", "int", "3"},
+    };
+
+    /**
+     * Однократные замены прежних значений по умолчанию: {ключ, было, стало}. Если у флага сейчас стоит
+     * «было» (то есть человек его не менял), он получает «стало»; метка в seeded.json не даёт сделать это
+     * дважды, поэтому дальнейший выбор человека главнее.
+     */
+    static final String[][] FLAG_MIGRATIONS = {
+            {"profile_bg_enable_consumption_group", "1", "3"},
     };
 
     /** Флаги голосовых комментариев (запись голосом в комментарии). */

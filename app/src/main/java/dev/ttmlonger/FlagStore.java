@@ -155,6 +155,17 @@ final class FlagStore {
                 flags.putIfAbsent(key, new Flag(key, type, null));
                 overridesChanged = true;
             }
+            for (String[] m : Targets.FLAG_MIGRATIONS) {
+                String mark = "migrate:" + m[0] + ":" + m[1] + ">" + m[2];
+                if (seeded.contains(mark)) continue;
+                seeded.add(mark);
+                seededChanged = true;
+                Patch have = overrides.get(m[0]);
+                if (have != null && sameRaw(have.raw, m[1])) {
+                    overrides.put(m[0], new Patch(have.type, m[2]));
+                    overridesChanged = true;
+                }
+            }
             if (overridesChanged) {
                 catalogDirty = true;
                 saveOverridesAsync();
