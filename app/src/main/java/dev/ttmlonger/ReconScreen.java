@@ -48,7 +48,16 @@ final class ReconScreen extends Screen {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        Recon.start(act.getApplicationContext(), true);
+                        Recon.start(act.getApplicationContext(), Recon.MODE_DELETE);
+                        poll();
+                    }
+                }));
+        body.addView(ui.row(Icons.SEARCH, "Разведка для личных сообщений",
+                "Голосовые сообщения, обои чата и пузырь чата: где TikTok их включает и проверяет", null, false,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        Recon.start(act.getApplicationContext(), Recon.MODE_DM);
                         poll();
                     }
                 }));

@@ -128,6 +128,11 @@ public final class MainHook implements IXposedHookLoadPackage {
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
+            try {
+                ApiTap.install(); // перехват запросов лайков/избранного/репостов: только если включён
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
             Trigger.install();
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);

@@ -75,8 +75,16 @@ final class ModMenu extends Screen {
                         InvisibleScreen.show(act);
                     }
                 }));
+        body.addView(ui.menuRow(Icons.SEARCH, "Перехват запросов",
+                "Для удаления лайков, избранного и репостов: запись настоящих вызовов TikTok", ApiTap.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        ApiTapScreen.show(act);
+                    }
+                }));
         body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
-                "Для «Невидимки», заблокированного профиля и удаления репостов/лайков", ReconScreen.menuSummary(),
+                "Для «Невидимки», заблокированного профиля, удаления и личных сообщений", ReconScreen.menuSummary(),
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {

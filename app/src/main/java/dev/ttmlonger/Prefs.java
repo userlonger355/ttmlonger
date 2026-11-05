@@ -54,6 +54,8 @@ final class Prefs {
     static volatile boolean vtTime = true;
     /** Показывать в плашке секунды (только для точного времени). */
     static volatile boolean vtSeconds = true;
+    /** Перехват запросов лайков/избранного/репостов (ApiTap): запись настоящих вызовов TikTok для будущего удаления. */
+    static volatile boolean apiTapOn = true;
     /** Вид времени в плашке: 0 точное («26.09 02:32:00»), 1 давность, а для старых видео дата («3 дн. назад», «26.09.2026»). */
     static volatile int vtFormat = 1;
     /** Плашка с регионом видео: флаг и код страны. */
@@ -135,6 +137,7 @@ final class Prefs {
             vtTime = o.optBoolean("vtTime", true);
             vtSeconds = o.optBoolean("vtSeconds", true);
             vtFormat = Math.max(0, Math.min(1, o.optInt("vtFormat", 1)));
+            apiTapOn = o.optBoolean("apiTap", true);
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
             vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
@@ -250,6 +253,11 @@ final class Prefs {
 
     static void setVtSeconds(boolean v) {
         vtSeconds = v;
+        save();
+    }
+
+    static void setApiTapOn(boolean v) {
+        apiTapOn = v;
         save();
     }
 
@@ -374,6 +382,7 @@ final class Prefs {
             o.put("vtTime", vtTime);
             o.put("vtSeconds", vtSeconds);
             o.put("vtFormat", vtFormat);
+            o.put("apiTap", apiTapOn);
             o.put("vtRegion", vtRegion);
             o.put("vtRegionMode", vtRegionMode);
             o.put("vtStyle", vtStyle);

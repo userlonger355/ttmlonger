@@ -50,23 +50,40 @@ final class Recon {
     /**
      * Куски строк для режима «удаление». Порядок важен: строка относится к первому подошедшему куску, поэтому
      * точные адреса стоят раньше общих слов. Адреса запросов лежат в аннотациях методов (Retrofit), поэтому
-     * рядом с ними печатаются имена параметров запроса.
+     * рядом с ними печатаются имена параметров запроса. Репосты внутри TikTok называются «upvote».
      */
     static final String[] DELETE_PARTS = {
             // репосты
             "repost/list", "aweme/repost", "repost/delete", "delete_repost", "cancel_repost", "remove_repost",
-            "unrepost", "repost_list", "repost/", "/repost", "repost",
+            "unrepost", "repost_list", "repost/",
+            "upvote/", "/upvote", "upvote_list", "upvote_delete", "upvote",
             // лайки
             "item/digg", "aweme/favorite", "favorite/list", "digg_list", "user_digg", "cancel_digg", "undigg",
             // избранное («коллекции»)
             "listcollection", "aweme/collect", "collect/list", "collect_list", "collection/", "collect/",
             "uncollect", "unfavorite", "cancel_collect", "collect_stat"};
 
+    /**
+     * Куски строк для режима «личные сообщения»: голосовые сообщения, обои чата и пузырь чата. Это ключи
+     * флагов и названия функций; по местам, где они читаются, видно, какие проверки стоят перед функцией.
+     */
+    static final String[] DM_PARTS = {
+            "im_voice", "voice_message", "voice_msg", "audio_message", "chat_wallpaper", "wallpaper",
+            "chat_background", "chat_bg", "customize_message_bubble", "message_bubble", "chat_bubble",
+            "bubble_style", "dm_customize", "chat_theme", "im_region", "region_limit"};
+
+    /** Члены классов, найденных по строкам личных сообщений: проверки региона, доступности и сами функции. */
+    static final String DM_MEMBER = "(?i).*(region|country|support|enable|allow|avail|voice|wallpaper|bubble|theme|"
+            + "background|permit|limit).*";
+
+    static final int MODE_CHAT = 0;
+    static final int MODE_DELETE = 1;
+    static final int MODE_DM = 2;
+
     /** Классы запросов TikTok (сетевая библиотека не обфусцирована): как создаётся и вызывается запрос. */
     static final String[] DELETE_FULL = {
-            "com.bytedance.retrofit2.Retrofit",
-            "com.bytedance.retrofit2.Call",
-            "com.bytedance.retrofit2.SsResponse"};
+            "com.ss.android.ugc.aweme.favorites.business.aweme.AwemeCollectionAgent",
+            "com.ss.android.ugc.aweme.feed.assem.digg.request.VideoDiggApi"};
 
     /** Классы модели видео и пользователя: смотрим только поля и методы про лайки, избранное, репосты и страницы. */
     static final String[] FOCUS = {
@@ -81,7 +98,10 @@ final class Recon {
     private static final String MEMBER = "(?i).*(block|status|online|visit|viewer|typing|privacy).*";
     private static final int PER_NEEDLE = 25;
     private static final int FULL_LINES = 70;
-    private static final int FOCUS_LINES = 80;
+    private static final int FOCUS_LINES = 40;
+    /** Отчёт длиннее обрезается: вложение длиннее примерно 20 тысяч знаков доходит не целиком. */
+    static final int REPORT_MAX = 17_500;
+    private static final int LINE_MAX = 420;
     private static final int AUTO_CLASSES = 8;
     private static final int SITES = 3;
     private static final long LIMIT_MS = 150_000L;
@@ -107,11 +127,11 @@ final class Recon {
 
     /** Запускает разбор в фоне; повторный запуск, пока идёт первый, ничего не делает. */
     static void start(Context ctx) {
-        start(ctx, false);
+        start(ctx, MODE_CHAT);
     }
 
-    /** forDelete — режим под массовое удаление репостов, лайков и избранного. */
-    static synchronized void start(final Context ctx, final boolean forDelete) {
+    /** mode: MODE_CHAT («Невидимка», блок), MODE_DELETE (репосты, лайки, избранное), MODE_DM (голосовые, обои, пузырь). */
+    static synchronized void start(final Context ctx, final int mode) {
         if (running) return;
         running = true;
         state = "идёт разбор кода TikTok (до пары минут)…";
@@ -120,32 +140,11 @@ final class Recon {
             public void run() {
                 try {
                     DexScan.Options o = new DexScan.Options();
-                    o.parts = forDelete ? DELETE_PARTS : PARTS;
+                    o.parts = mode == MODE_DELETE ? DELETE_PARTS : mode == MODE_DM ? DM_PARTS : PARTS;
                     o.deadline = System.currentTimeMillis() + LIMIT_MS;
                     DexScan.Result r = DexHooks.scanApp(ctx, o);
-                    StringBuilder sb = new StringBuilder();
                     ClassLoader cl = StreakHooks.loader();
-                    if (forDelete) {
-                        sb.append("режим: удаление репостов, лайков и избранного\n");
-                        sb.append(render(r, new KnownKeys(), DELETE_PARTS));
-                        List<String> names = new ArrayList<>();
-                        for (String f : DELETE_FULL) names.add(f);
-                        for (String f : realClasses(r, new KnownKeys(), 12)) {
-                            if (!names.contains(f)) names.add(f);
-                        }
-                        sb.append(full(cl, names));
-                        sb.append(focused(cl, Arrays.asList(FOCUS), FOCUS_MEMBER));
-                    } else {
-                        sb.append(render(r, new KnownKeys()));
-                        sb.append('\n').append(classes(cl));
-                        List<String> names = new ArrayList<>();
-                        for (String f : FULL) names.add(f);
-                        for (String f : realClasses(r, new KnownKeys())) {
-                            if (!names.contains(f)) names.add(f);
-                        }
-                        sb.append(full(cl, names));
-                    }
-                    report = sb.toString();
+                    report = cap(build(r, cl, mode), REPORT_MAX);
                     state = "готово: " + r.dexes + " dex, " + r.classes + " классов, " + r.ms + " мс";
                 } catch (Throwable e) {
                     state = "сбой: " + e;
@@ -158,6 +157,42 @@ final class Recon {
         t.setDaemon(true);
         t.setPriority(Thread.MIN_PRIORITY);
         t.start();
+    }
+
+    /** Собирает отчёт нужного режима: сначала самое важное, потому что длинный отчёт обрезается с конца. */
+    static String build(DexScan.Result r, ClassLoader cl, int mode) {
+        StringBuilder sb = new StringBuilder();
+        if (mode == MODE_DELETE) {
+            sb.append("режим: удаление репостов, лайков и избранного\n");
+            sb.append(render(r, new KnownKeys(), DELETE_PARTS, 12));
+            List<String> names = new ArrayList<>(Arrays.asList(DELETE_FULL));
+            for (String f : realClasses(r, new KnownKeys(), 4)) {
+                if (!names.contains(f)) names.add(f);
+            }
+            sb.append(full(cl, names));
+            sb.append(focused(cl, Arrays.asList(FOCUS), FOCUS_MEMBER));
+        } else if (mode == MODE_DM) {
+            sb.append("режим: личные сообщения (голосовые, обои чата, пузырь чата)\n");
+            sb.append(render(r, null, DM_PARTS, 14));
+            sb.append(focused(cl, realClasses(r, null, 6), DM_MEMBER));
+        } else {
+            sb.append(render(r, new KnownKeys()));
+            sb.append('\n').append(classes(cl));
+            List<String> names = new ArrayList<>(Arrays.asList(FULL));
+            for (String f : realClasses(r, new KnownKeys())) {
+                if (!names.contains(f)) names.add(f);
+            }
+            sb.append(full(cl, names));
+        }
+        return sb.toString();
+    }
+
+    /** Обрезает текст до max знаков по границе строки и говорит об этом. */
+    static String cap(String text, int max) {
+        if (text == null || text.length() <= max) return text == null ? "" : text;
+        int cut = text.lastIndexOf('\n', max);
+        if (cut < max / 2) cut = max;
+        return text.substring(0, cut) + "\n… обрезано: отчёт был длиннее " + max + " знаков\n";
     }
 
     /** Отсев строк, которые уже известны как ключи флагов. */
@@ -189,6 +224,10 @@ final class Recon {
     }
 
     static String render(DexScan.Result r, Known known, String[] parts) {
+        return render(r, known, parts, PER_NEEDLE);
+    }
+
+    static String render(DexScan.Result r, Known known, String[] parts, int perNeedle) {
         Map<String, Map<String, List<String>>> byNeedle = new LinkedHashMap<>();
         for (String n : parts) byNeedle.put(n, new LinkedHashMap<String, List<String>>());
         int total = 0;
@@ -220,14 +259,15 @@ final class Recon {
             sb.append("\n[").append(e.getKey()).append("] строк ").append(strings.size()).append('\n');
             int shown = 0;
             for (Map.Entry<String, List<String>> s : strings.entrySet()) {
-                if (shown++ >= PER_NEEDLE) break;
-                sb.append("  \"").append(s.getKey()).append("\"");
+                if (shown++ >= perNeedle) break;
+                StringBuilder line = new StringBuilder("  \"").append(s.getKey()).append("\"");
                 List<String> sites = s.getValue();
                 for (int i = 0; i < sites.size() && i < SITES; i++) {
-                    sb.append(i == 0 ? " ← " : "; ").append(sites.get(i));
+                    line.append(i == 0 ? " ← " : "; ").append(sites.get(i));
                 }
-                if (sites.size() > SITES) sb.append("; ещё ").append(sites.size() - SITES);
-                sb.append('\n');
+                if (sites.size() > SITES) line.append("; ещё ").append(sites.size() - SITES);
+                if (line.length() > LINE_MAX) line.setLength(LINE_MAX);
+                sb.append(line).append('\n');
             }
         }
         return sb.toString();
