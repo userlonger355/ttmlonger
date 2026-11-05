@@ -10,8 +10,8 @@ android {
         applicationId = "dev.ttmlonger.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 32
-        versionName = "0.1.0l"
+        versionCode = 33
+        versionName = "0.1.0m"
     }
 
     // Постоянный ключ лежит в репозитории: каждая сборка подписана одним и тем же ключом,

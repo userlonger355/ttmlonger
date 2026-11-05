@@ -10,8 +10,10 @@ import java.util.Locale;
  * Поля читаются из хуков на каждый вызов, поэтому они статические и volatile.
  */
 final class Prefs {
+    /** Регион по умолчанию: подмена на Беларусь, пока человек сам не выбрал другое (или «Не менять»). */
+    static final String DEFAULT_REGION = "BY";
     /** ISO-код региона SIM в верхнем регистре; пустая строка — не подменять. */
-    static volatile String region = "";
+    static volatile String region = DEFAULT_REGION;
     /** true — язык устройства не трогаем, подменяются только SIM и сеть. */
     static volatile boolean keepLanguage = true;
     /** 0 — стандартный цвет TikTok; иначе 0xFFRRGGBB. */
@@ -102,9 +104,16 @@ final class Prefs {
     static synchronized void init(File dir) {
         file = new File(dir, "prefs.json");
         try {
-            if (!file.exists()) return;
+            if (!file.exists()) {
+                region = DEFAULT_REGION;
+                return;
+            }
             JSONObject o = new JSONObject(FlagStore.readFile(file));
             region = o.optString("region", "").trim().toUpperCase(Locale.ROOT);
+            // Один раз для настроек, сохранённых до появления региона по умолчанию (нет метки regionInit):
+            // пустой регион означал «никто не выбирал», поэтому ставится Беларусь. Дальше выбор человека
+            // (в том числе «Не менять») сохраняется как есть.
+            if (!o.has("regionInit") && region.isEmpty()) region = DEFAULT_REGION;
             keepLanguage = o.optBoolean("keepLanguage", true);
             int a = o.optInt("accent", 0);
             accent = a == 0 ? 0 : (0xFF000000 | a);
@@ -344,6 +353,7 @@ final class Prefs {
         try {
             JSONObject o = new JSONObject();
             o.put("region", region);
+            o.put("regionInit", true);
             o.put("keepLanguage", keepLanguage);
             o.put("accent", accent);
             o.put("amoled", amoled);
