@@ -71,6 +71,7 @@ final class StreakScreen extends Screen {
                     }
                 });
         body.addView(timeRow);
+        body.addView(ui.note("Время считается по часам телефона: " + Zones.note() + "."));
 
         body.addView(ui.header("Стикер"));
         stickerRow = ui.menuRow(Icons.STICKER, "Стикер для огоньков", stickerSummary(), null,

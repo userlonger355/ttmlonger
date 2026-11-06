@@ -1,12 +1,19 @@
 package dev.ttmlonger;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Handler;
+import android.os.Build;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Process;
+import android.os.SystemClock;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
@@ -27,6 +34,12 @@ final class StreakRunner {
     private static final long PERIOD_MS = 10L * 60L * 1000L;
     private static final long FIRST_MS = 90L * 1000L;
     private static final int MAX_LOG = 40;
+    /** Свой сигнал будильника: проход в выбранное время, даже если телефон спал. */
+    private static final String ALARM_ACTION = "dev.ttmlonger.STREAK_ALARM";
+    private static final int ALARM_CODE = 7301;
+    /** Не чаще раза в две минуты запускать проход от включения экрана. */
+    private static final long WAKE_GAP_MS = 120_000L;
+    private static long lastWake = -WAKE_GAP_MS;
 
     private static Context app;
     private static Handler handler;
@@ -60,6 +73,7 @@ final class StreakRunner {
         t.setDaemon(true);
         t.start();
         handler = new Handler(t.getLooper());
+        registerWake(app);
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -84,9 +98,110 @@ final class StreakRunner {
         if (h == null) return;
         h.removeCallbacks(DAILY);
         if (Prefs.streakAuto && Prefs.streakDaily) {
-            long wait = StreakLogic.millisUntil(System.currentTimeMillis(), Prefs.streakMinute, TimeZone.getDefault());
+            long now = System.currentTimeMillis();
+            long wait = StreakLogic.millisUntil(now, Prefs.streakMinute, Zones.current());
+            // Задержка Handler считается по времени работы процессора и во сне не идёт: сам по себе он
+            // сработает позже срока. Поэтому рядом ставится будильник по настоящему времени, а на включение
+            // экрана и смену времени или пояса проход запрашивается заново (registerWake).
             h.postDelayed(DAILY, wait + 2000L);
+            setAlarm(now + wait + 2000L);
+        } else {
+            cancelAlarm();
         }
+    }
+
+    // ---------------------------------------------------------------- пробуждение по настоящему времени
+
+    private static PendingIntent alarmIntent() {
+        Intent i = new Intent(ALARM_ACTION).setPackage(app.getPackageName());
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        return PendingIntent.getBroadcast(app, ALARM_CODE, i, flags);
+    }
+
+    /** Неточный будильник без особых разрешений: сработает в пределах нескольких минут даже во сне. */
+    private static void setAlarm(long atMs) {
+        try {
+            if (app == null) return;
+            AlarmManager am = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, alarmIntent());
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    private static void cancelAlarm() {
+        try {
+            if (app == null) return;
+            AlarmManager am = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
+            if (am != null) am.cancel(alarmIntent());
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    private static void registerWake(Context c) {
+        try {
+            BroadcastReceiver system = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    onWake(intent == null ? null : intent.getAction());
+                }
+            };
+            IntentFilter f = new IntentFilter();
+            f.addAction(Intent.ACTION_SCREEN_ON);
+            f.addAction(Intent.ACTION_USER_PRESENT);
+            f.addAction(Intent.ACTION_TIME_CHANGED);
+            f.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+            f.addAction(Intent.ACTION_DATE_CHANGED);
+            c.registerReceiver(system, f);
+
+            BroadcastReceiver alarm = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    onWake(ALARM_ACTION);
+                }
+            };
+            IntentFilter af = new IntentFilter(ALARM_ACTION);
+            if (Build.VERSION.SDK_INT >= 33) {
+                c.registerReceiver(alarm, af, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                c.registerReceiver(alarm, af);
+            }
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
+    }
+
+    /**
+     * Телефон проснулся или поменялось время: старые задержки Handler устарели, а выбранное время уже могло
+     * наступить. Расписание ставится заново, проход проверяет настоящее время.
+     */
+    private static void onWake(String action) {
+        try {
+            Handler h = handler;
+            if (h == null || CrashGuard.tripped || !Prefs.streakAuto) return;
+            if (ALARM_ACTION.equals(action)) {
+                h.post(DAILY);
+                return;
+            }
+            boolean clock = Intent.ACTION_TIME_CHANGED.equals(action) || Intent.ACTION_TIMEZONE_CHANGED.equals(action)
+                    || Intent.ACTION_DATE_CHANGED.equals(action);
+            long t = SystemClock.elapsedRealtime();
+            if (!clock && t - lastWake < WAKE_GAP_MS) return;
+            lastWake = t;
+            if (Intent.ACTION_TIMEZONE_CHANGED.equals(action)) java.util.TimeZone.setDefault(null);
+            reschedule();
+            request(clock ? 2000L : 6000L);
+        } catch (Throwable e) {
+            FlagStore.log(e);
+        }
+    }
+
+    private static String timeStamp() {
+        SimpleDateFormat f = new SimpleDateFormat("HH:mm:ss", Locale.US);
+        f.setTimeZone(Zones.current());
+        return f.format(new Date());
     }
 
     /** Выполнить в фоне (запись файлов и тому подобное). */
@@ -154,7 +269,7 @@ final class StreakRunner {
     }
 
     static void note(String s) {
-        String line = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()) + "  " + s;
+        String line = timeStamp() + "  " + s;
         synchronized (LOG) {
             if (LOG.size() >= MAX_LOG) LOG.removeFirst();
             LOG.addLast(line);
@@ -204,7 +319,7 @@ final class StreakRunner {
             return;
         }
 
-        TimeZone tz = TimeZone.getDefault();
+        TimeZone tz = Zones.current();
         long now = System.currentTimeMillis();
         int[] by = new int[StreakLogic.Verdict.values().length];
         int unreadable = 0;
@@ -309,7 +424,7 @@ final class StreakRunner {
         sb.append(seen ? "✓ Огоньки видны" : "✗ Огоньки не видны: мод ищет службу сам, можно открыть в TikTok список чатов").append('\n');
         sb.append(stk ? "✓ Стикер выбран" : "✗ Стикер не выбран: без него ничего не отправится").append('\n');
         sb.append("Чатов известно: ").append(StreakStore.count()).append(" · отправлено сегодня: ")
-                .append(StreakStore.sentToday(System.currentTimeMillis(), TimeZone.getDefault()));
+                .append(StreakStore.sentToday(System.currentTimeMillis(), Zones.current()));
         if (!hint.isEmpty()) sb.append('\n').append(hint);
         return sb.toString();
     }
@@ -471,7 +586,7 @@ final class StreakRunner {
         if (!online()) return "Нет сети: отправка не начата";
         Object sticker = StreakSticker.get();
         if (sticker == null) return "Стикер не выбран: отправка не начата";
-        TimeZone tz = TimeZone.getDefault();
+        TimeZone tz = Zones.current();
         int total = p.targets.size();
         int ok = 0;
         int bad = 0;
@@ -602,7 +717,7 @@ final class StreakRunner {
         }
         String own = ownForNames();
         long now = System.currentTimeMillis();
-        TimeZone tz = TimeZone.getDefault();
+        TimeZone tz = Zones.current();
         List<Person> out = new ArrayList<>();
         int unreadable = 0;
         for (String conv : convs) {
@@ -642,6 +757,8 @@ final class StreakRunner {
         sb.append('\n');
         sb.append("автопродление: ").append(Prefs.streakAuto ? "вкл" : "выкл")
                 .append(", каждый день: ").append(Prefs.streakDaily ? "да" : "нет").append('\n');
+        sb.append("часовой пояс расписания: ").append(Zones.note()).append(" · по умолчанию в процессе: ")
+                .append(TimeZone.getDefault().getID()).append('\n');
         sb.append(StreakHooks.details()).append('\n');
         sb.append(StickerLibrary.details()).append('\n');
         sb.append(StreakSticker.details()).append('\n');

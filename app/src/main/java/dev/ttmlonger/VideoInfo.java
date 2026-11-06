@@ -698,7 +698,7 @@ final class VideoInfo {
         Pills p = new Pills(c);
         p.style(Prefs.vtStyle, isNight(c), Prefs.vtOpacity);
         long sample = System.currentTimeMillis() / 1000L - 2 * 86400L - 3600L * 5;
-        p.timeView.setText(timeText(sample, Prefs.vtFormat, Prefs.vtSeconds, TimeZone.getDefault(), System.currentTimeMillis()));
+        p.timeView.setText(timeText(sample, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
         String r = regionText("KZ", Prefs.vtRegionMode);
         p.regionView.setText(r == null ? "KZ" : r);
         p.timeView.setVisibility(Prefs.vtTime ? View.VISIBLE : View.GONE);
@@ -744,7 +744,7 @@ final class VideoInfo {
                 @Override
                 public void onClick(View v) {
                     if (created <= 0) return;
-                    TimeZone tz = TimeZone.getDefault();
+                    TimeZone tz = Zones.current();
                     long age = System.currentTimeMillis() / 1000L - created;
                     Toasts.show(act, "Опубликовано " + fullTime(created, tz) + " · " + ageText(age));
                 }
@@ -772,7 +772,7 @@ final class VideoInfo {
             iso = m.region;
             pills.style(Prefs.vtStyle, isNight(act), Prefs.vtOpacity);
             if (wantTime) {
-                timeView.setText(timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, TimeZone.getDefault(), System.currentTimeMillis()));
+                timeView.setText(timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
             if (wantRegion) regionView.setText(regionText(m.region, Prefs.vtRegionMode));
