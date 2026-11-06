@@ -35,7 +35,8 @@ final class UnsupportedTap {
     private static final int DUMP_CLASSES = 4;
     private static final int DUMP_LINES = 26;
     private static final String[] SKIP_FRAMES = {"android.", "java.", "javax.", "dalvik.", "libcore.", "sun.",
-            "com.android.", "de.robv.android.xposed.", "org.lsposed.", "LSPHooker", "dev.ttmlonger.", "$Proxy",
+            "com.android.", "de.robv.android.xposed.", "org.lsposed.", "org.matrix.", "LSPatch_", "LSPHooker",
+            "dev.ttmlonger.", "$Proxy",
             "kotlin.", "kotlinx."};
 
     private static final Object LOCK = new Object();
@@ -143,6 +144,14 @@ final class UnsupportedTap {
 
     /** Записывает показ надписи; view — TextView (или null в проверках). */
     static void onText(String text, Object view, StackTraceElement[] stack) {
+        // Свои экраны мода тоже рисуют такие слова (в строке состояния разведки): их не записываем.
+        if (stack != null) {
+            for (StackTraceElement e : stack) {
+                String cn = e.getClassName();
+                // кадры самого хука (UnsupportedTap и его вложенные классы) есть в любой цепочке
+                if (cn.startsWith("dev.ttmlonger.") && !cn.startsWith("dev.ttmlonger.UnsupportedTap")) return;
+            }
+        }
         List<String> frames = appFrames(stack);
         String key = keyOf(text, frames);
         synchronized (LOCK) {

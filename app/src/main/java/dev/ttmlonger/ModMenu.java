@@ -133,6 +133,16 @@ final class ModMenu extends Screen {
                         StreakScreen.show(act);
                     }
                 }));
+        body.addView(toggleRow(Icons.MIC, "Голосовые и обои без региона",
+                "Пробует включить функции чата, которые сервер скрывает по региону аккаунта. Экспериментально. "
+                        + "Нужен перезапуск TikTok",
+                Prefs.dmGate, new ModSwitch.Listener() {
+                    @Override
+                    public void onChanged(boolean on) {
+                        Prefs.setDmGate(on);
+                        Restart.offer(act);
+                    }
+                }));
 
         body.addView(ui.header("Функции TikTok"));
         body.addView(toggleRow(Icons.IMAGE, "Баннер профиля",

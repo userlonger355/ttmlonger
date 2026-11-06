@@ -86,7 +86,8 @@ final class ReconScreen extends Screen {
     }
 
     private void refresh() {
-        state.setText("Состояние: " + Recon.state() + "\nНадпись «не поддерживается в регионе»: " + UnsupportedTap.status());
+        state.setText("Состояние: " + Recon.state() + "\nНадпись «не поддерживается в регионе»: " + UnsupportedTap.status()
+                + "\nМодель настроек голосовых: " + DmGate.status());
     }
 
     private void poll() {

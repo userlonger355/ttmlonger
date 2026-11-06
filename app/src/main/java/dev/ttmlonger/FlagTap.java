@@ -52,9 +52,11 @@ final class FlagTap {
                 || k.contains("im_wallpaper")) {
             return true;
         }
-        boolean im = k.startsWith("im_") || k.startsWith("dm_") || k.startsWith("imsdk") || k.startsWith("chat_");
-        return im && (k.contains("voice") || k.contains("audio") || k.contains("region") || k.contains("wallpaper")
-                || k.contains("unsupport") || k.contains("bubble"));
+        boolean im = k.startsWith("im_") || k.startsWith("dm_") || k.startsWith("chat_");
+        boolean sdk = k.startsWith("imsdk");
+        return (im && (k.contains("voice") || k.contains("audio") || k.contains("region") || k.contains("wallpaper")
+                || k.contains("unsupport") || k.contains("bubble")))
+                || (sdk && (k.contains("voice") || k.contains("unsupport")));
     }
 
     private static String show(Object v) {

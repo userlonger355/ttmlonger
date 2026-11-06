@@ -94,7 +94,7 @@ final class DexHooks {
             o.stickerTemplate = Targets.STICKER_TEMPLATE;
             o.shapes = concat(Targets.STICKER_SHAPES, Targets.ACTIVE_SHAPES);
             o.interfaces = new String[][]{{"streak", Targets.STREAK_SERVICE_ANY}};
-            o.consts = new String[]{Targets.STREAK_SOURCE};
+            o.consts = new String[]{Targets.STREAK_SOURCE, DmGate.MARKERS[0], DmGate.MARKERS[1]};
             o.methods = concat(Targets.FAV_METHODS, Targets.FRIEND_METHODS);
             o.deadline = System.currentTimeMillis() + SCAN_LIMIT_MS;
             ApkSource src = new ApkSource(apks);
@@ -185,6 +185,11 @@ final class DexHooks {
         }
 
         StickerHooks.apply(r, cl);
+        try {
+            DmGate.apply(r, cl);
+        } catch (Throwable t) {
+            FlagStore.log(t);
+        }
         try {
             StreakHooks.apply(r, cl, ctx);
         } catch (Throwable t) {

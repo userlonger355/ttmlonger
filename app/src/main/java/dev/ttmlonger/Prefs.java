@@ -56,6 +56,8 @@ final class Prefs {
     static volatile boolean vtSeconds = true;
     /** Перехват запросов лайков/избранного/репостов (ApiTap): запись настоящих вызовов TikTok для будущего удаления. */
     static volatile boolean apiTapOn = true;
+    /** Пробовать включать голосовые, обои и пузырь чата в модели настроек, которую шлёт сервер (DmGate). */
+    static volatile boolean dmGate = true;
     /** Вид времени в плашке: 0 точное («26.09 02:32:00»), 1 давность, а для старых видео дата («3 дн. назад», «26.09.2026»). */
     static volatile int vtFormat = 1;
     /** Плашка с регионом видео: флаг и код страны. */
@@ -138,6 +140,7 @@ final class Prefs {
             vtSeconds = o.optBoolean("vtSeconds", true);
             vtFormat = Math.max(0, Math.min(1, o.optInt("vtFormat", 1)));
             apiTapOn = o.optBoolean("apiTap", true);
+            dmGate = o.optBoolean("dmGate", true);
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
             vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
@@ -258,6 +261,11 @@ final class Prefs {
 
     static void setApiTapOn(boolean v) {
         apiTapOn = v;
+        save();
+    }
+
+    static void setDmGate(boolean v) {
+        dmGate = v;
         save();
     }
 
@@ -383,6 +391,7 @@ final class Prefs {
             o.put("vtSeconds", vtSeconds);
             o.put("vtFormat", vtFormat);
             o.put("apiTap", apiTapOn);
+            o.put("dmGate", dmGate);
             o.put("vtRegion", vtRegion);
             o.put("vtRegionMode", vtRegionMode);
             o.put("vtStyle", vtStyle);

@@ -73,14 +73,20 @@ final class Recon {
     static final String[] DM_PARTS = {
             "im_voice", "voice_message", "voice_msg", "audio_message", "chat_wallpaper", "wallpaper",
             "chat_background", "chat_bg", "customize_message_bubble", "message_bubble", "chat_bubble",
-            "bubble_style", "dm_customize", "chat_theme", "im_region", "region_limit"};
+            "bubble_style", "dm_customize", "chat_theme", "entrance_status", "display_status", "chat_customize",
+            "im_region", "region_limit"};
 
     /**
      * Точные ключи функций личных сообщений: места, где они читаются, печатаются вместе с вызовами рядом
      * (так видно, какая проверка региона или доступности стоит у чтения флага).
      */
     static final String[] DM_KEYS = {"im_voice_message", "im_chat_wallpaper_chatroom", "dm_customize_message_bubble",
-            "im_wallpaper_strategy"};
+            "im_wallpaper_strategy", DmGate.MARKERS[0], DmGate.MARKERS[1]};
+
+    /** Настоящие классы настроек обоев и эффектов чата: поля и методы целиком. */
+    static final String[] DM_FULL = {"com.ss.android.ugc.aweme.experiment.WallpaperStrategyConfig"};
+    static final String[] DM_FOCUS = {
+            "com.ss.android.ugc.aweme.im.saas.host.impl.feature.effect.EffectPlatformFeatureImpl"};
 
     /** Члены классов, найденных по строкам личных сообщений: проверки региона, доступности и сами функции. */
     static final String DM_MEMBER = "(?i).*(region|country|support|enable|allow|avail|voice|wallpaper|bubble|theme|"
@@ -114,12 +120,14 @@ final class Recon {
     private static final int LINE_MAX = 420;
     private static final int AUTO_CLASSES = 8;
     /** Сколько знаков отводится разделам отчёта «личные сообщения» (остальное — общий список строк). */
-    private static final int TAP_MAX = 3_600;
-    private static final int FLAGS_MAX = 2_400;
-    private static final int RES_MAX = 1_400;
-    private static final int IDS_MAX = 3_200;
-    private static final int KEYS_MAX = 2_800;
-    private static final int DUMPS_MAX = 2_600;
+    private static final int GATE_MAX = 2_200;
+    private static final int TAP_MAX = 2_600;
+    private static final int FLAGS_MAX = 2_200;
+    private static final int RES_MAX = 900;
+    private static final int IDS_MAX = 1_800;
+    private static final int KEYS_MAX = 3_400;
+    private static final int DUMPS_MAX = 2_400;
+    private static final int CONF_MAX = 1_800;
     /** Сколько найденных строк-ресурсов искать в коде. */
     private static final int ID_LIMIT = 8;
     private static final int SITES = 3;
@@ -209,6 +217,7 @@ final class Recon {
             sb.append(focused(cl, Arrays.asList(FOCUS), FOCUS_MEMBER));
         } else if (mode == MODE_DM) {
             sb.append("режим: личные сообщения (голосовые, обои чата, пузырь чата)\n");
+            sb.append(cap(DmGate.report(), GATE_MAX)).append('\n');
             sb.append(cap(UnsupportedTap.report(cl), TAP_MAX)).append('\n');
             sb.append(cap(FlagTap.report(), FLAGS_MAX)).append('\n');
             sb.append(cap(renderRes(res), RES_MAX));
@@ -216,8 +225,9 @@ final class Recon {
             sb.append(cap(renderKeys(r), KEYS_MAX));
             List<String> siteClasses = siteClasses(r, 5);
             sb.append(cap(compact(cl, siteClasses, 22), DUMPS_MAX));
+            sb.append(cap(full(cl, Arrays.asList(DM_FULL)), CONF_MAX));
+            sb.append(cap(focused(cl, Arrays.asList(DM_FOCUS), DM_MEMBER), 800));
             sb.append(render(r, null, DM_PARTS, 4));
-            sb.append(focused(cl, realClasses(r, null, 3), DM_MEMBER));
         } else {
             sb.append(render(r, new KnownKeys()));
             sb.append('\n').append(classes(cl));
