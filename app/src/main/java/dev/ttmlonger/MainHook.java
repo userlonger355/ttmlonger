@@ -133,6 +133,11 @@ public final class MainHook implements IXposedHookLoadPackage {
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
+            try {
+                UnsupportedTap.install(); // ловит надпись «не поддерживается в вашем регионе» для разведки
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
             Trigger.install();
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);

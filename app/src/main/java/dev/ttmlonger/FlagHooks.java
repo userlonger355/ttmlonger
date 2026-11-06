@@ -248,12 +248,13 @@ final class FlagHooks {
                 if (!(k instanceof String)) return;
                 String key = (String) k;
 
-                if (!param.hasThrowable()) FlagStore.onRead(key, type, param.getResult());
+                Object orig = param.hasThrowable() ? null : param.getResult();
+                if (!param.hasThrowable()) FlagStore.onRead(key, type, orig);
 
                 FlagStore.Patch o = FlagStore.getOverride(key);
-                if (o == null) return;
-                Object v = FlagStore.coerce(o.raw, type);
+                Object v = o == null ? null : FlagStore.coerce(o.raw, type);
                 if (v != null) param.setResult(v);
+                if (!param.hasThrowable() && FlagTap.watched(key)) FlagTap.onRead(key, orig, v != null ? v : orig, v != null);
             } catch (Throwable t) {
                 // Ошибка в модуле не должна ронять TikTok.
             }

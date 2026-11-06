@@ -87,6 +87,16 @@ final class DexScan {
          * найденный метод попадает в результат как Ref("method:имя", класс, имя, сигнатура).
          */
         String[] methods = new String[0];
+        /**
+         * Числа-ресурсы (например, номера строк 0x7f14…): метод, где такое число загружается командой const,
+         * попадает в результат как Ref("const:id:0x…", класс, метод, сигнатура + « @[вызовы и строки метода]»).
+         */
+        int[] ints = new int[0];
+        /**
+         * Для методов, где найдена точная строка из consts, тоже записывать вызовы и строки метода
+         * (« @[…]» в конце сигнатуры): по ним видно, какие проверки стоят рядом с чтением ключа.
+         */
+        boolean notes;
         /** Момент (System.currentTimeMillis), после которого разбор прекращается; 0 — без лимита. */
         long deadline;
     }
@@ -344,6 +354,12 @@ final class DexScan {
         final byte[] b;
         final Options o;
         final int strN, strOff, typN, typOff, proN, proOff, mthN, mthOff, clsN, clsOff;
+        /** Таблица полей (для заметок о методе); 0, если в заголовке мусор. */
+        int fldN, fldOff;
+        /** Числа, которые ищем в const; null, если не нужны. */
+        int[] lits;
+        /** Заметки о последнем разобранном методе (вызовы, строки, поля) или null. */
+        String litNotes;
         /** Курсор для чтения ULEB128 из class_data. Строковые помощники его не трогают. */
         int pos;
 
@@ -396,6 +412,12 @@ final class DexScan {
             check(proOff, proN, 12);
             check(mthOff, mthN, 8);
             check(clsOff, clsN, 32);
+            int fn = u32(0x50);
+            int fo = u32(0x54);
+            if (fn > 0 && fo > 0 && (long) fo + (long) fn * 8 <= b.length) {
+                fldN = fn;
+                fldOff = fo;
+            }
         }
 
         private void check(int off, int n, int size) throws IOException {
@@ -591,6 +613,7 @@ final class DexScan {
         }
 
         private void prepare() {
+            lits = o.ints != null && o.ints.length > 0 ? o.ints : null;
             byte[] sString = "Ljava/lang/String;".getBytes(LATIN1);
             byte[] sClick = o.clickInterface == null ? null : o.clickInterface.getBytes(LATIN1);
             byte[] sTemplate = o.stickerTemplate == null ? null : o.stickerTemplate.getBytes(LATIN1);
@@ -902,14 +925,16 @@ final class DexScan {
                             Ref r = new Ref(label, clsName, name, protoDesc(pro));
                             if (!refs.containsKey(r.id())) refs.put(r.id(), r);
                         }
-                        if ((local != null || isConst != null) && code != 0 && code < b.length) {
+                        if ((local != null || isConst != null || lits != null) && code != 0 && code < b.length) {
                             scanCode(code, res, local);
                             if (constHits != null && !constHits.isEmpty()) {
                                 if (clsName == null) clsName = typeDesc(u32(def));
                                 String mname = str(u32(mthOff + 8 * mid + 4));
+                                String pd = protoDesc(pro);
                                 for (String h : constHits) {
                                     if (h.charAt(0) == '~' && ++partRefs > 3000) continue;
-                                    Ref r = new Ref("const:" + h, clsName, mname, protoDesc(pro));
+                                    String shown = litNotes != null && h.charAt(0) != '~' ? pd + " @[" + litNotes + "]" : pd;
+                                    Ref r = new Ref("const:" + h, clsName, mname, shown);
                                     if (!refs.containsKey(r.id())) refs.put(r.id(), r);
                                 }
                                 constHits.clear();
@@ -1103,23 +1128,37 @@ final class DexScan {
         }
 
         private void scanCode(int code, Result res, Map<Integer, Anchored> out) {
-            if (out == null && isConst == null) return;
+            litNotes = null;
+            if (out == null && isConst == null && lits == null) return;
             int size = u32(code + 12);
             int base = code + 16;
             if (size <= 0 || (long) base + 2L * size > b.length) return;
             int i = 0;
             int n = 0;
             int pending = 0;
+            boolean litHit = false;
+            boolean exactHit = false;
             while (i < size) {
                 int w = u16(base + 2 * i);
                 int op = w & 0xff;
                 int len = insnLen(base, i, size, w);
                 if (len < 0) break;
-                if (op == 0x1a || op == 0x1b) {
+                if (op == 0x14 && lits != null) {
+                    int v = u32(base + 2 * (i + 1));
+                    for (int l : lits) {
+                        if (l != v) continue;
+                        if (constHits == null) constHits = new ArrayList<>();
+                        String h = "id:0x" + Integer.toHexString(v);
+                        if (!constHits.contains(h)) constHits.add(h);
+                        litHit = true;
+                        break;
+                    }
+                } else if (op == 0x1a || op == 0x1b) {
                     int sidx = op == 0x1a ? u16(base + 2 * (i + 1)) : u32(base + 2 * (i + 1));
                     if (isConst != null && sidx >= 0 && sidx < strN && isConst[sidx]) {
                         if (constHits == null) constHits = new ArrayList<>();
                         if (!constHits.contains(constName[sidx])) constHits.add(constName[sidx]);
+                        if (constName[sidx].charAt(0) != '~') exactHit = true;
                     }
                     if (isAnchor != null && sidx >= 0 && sidx < strN && isAnchor[sidx]) {
                         res.anchorStrings++;
@@ -1151,6 +1190,106 @@ final class DexScan {
                 i += len;
                 n++;
             }
+            if (litHit || (exactHit && o.notes)) litNotes = notesOf(base, size);
+        }
+
+        private static final int NOTE_MAX = 44;
+        private static final int NOTE_CHARS = 900;
+
+        /** «Lx/y/Z;» → «Z» (обфусцированные «LX/0abc;» → «X.0abc»), массивы и примитивы как есть. */
+        private static String noteType(String d) {
+            if (d == null || d.isEmpty()) return "";
+            int dims = 0;
+            while (dims < d.length() && d.charAt(dims) == '[') dims++;
+            String t = d.substring(dims);
+            if (t.length() > 2 && t.charAt(0) == 'L' && t.endsWith(";")) {
+                String inner = t.substring(1, t.length() - 1);
+                t = inner.startsWith("X/") ? inner.replace('/', '.') : inner.substring(inner.lastIndexOf('/') + 1);
+            }
+            StringBuilder sb = new StringBuilder(t);
+            for (int k = 0; k < dims; k++) sb.append("[]");
+            return sb.toString();
+        }
+
+        /** «(Lx/A;I)Z» → «(A,I)Z». */
+        private static String noteProto(String p) {
+            int close = p.indexOf(')');
+            if (close < 0 || p.charAt(0) != '(') return p;
+            StringBuilder sb = new StringBuilder("(");
+            int i = 1;
+            boolean first = true;
+            while (i < close) {
+                int st = i;
+                while (p.charAt(i) == '[') i++;
+                if (p.charAt(i) == 'L') i = p.indexOf(';', i);
+                if (i < 0 || i >= close) {
+                    sb.append(p, st, close);
+                    break;
+                }
+                i++;
+                if (!first) sb.append(',');
+                first = false;
+                sb.append(noteType(p.substring(st, i)));
+            }
+            return sb.append(')').append(noteType(p.substring(close + 1))).toString();
+        }
+
+        private static boolean plainText(String t) {
+            for (int k = 0; k < t.length(); k++) {
+                char c = t.charAt(k);
+                if (c < 0x20 || c > 0x7e) return false;
+            }
+            return true;
+        }
+
+        /**
+         * Что делает метод: вызываемые методы, короткие строки, номера ресурсов и поля, в порядке появления.
+         * По этому видно, какие проверки стоят рядом с искомым местом. Без табуляций и переводов строки.
+         */
+        private String notesOf(int base, int size) {
+            java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+            int i = 0;
+            while (i < size && set.size() < NOTE_MAX) {
+                int w = u16(base + 2 * i);
+                int op = w & 0xff;
+                int len = insnLen(base, i, size, w);
+                if (len < 0) break;
+                if ((op >= 0x6e && op <= 0x72) || (op >= 0x74 && op <= 0x78)) {
+                    int mid = u16(base + 2 * (i + 1));
+                    if (mid < mthN) {
+                        String name = str(u32(mthOff + 8 * mid + 4));
+                        if (plainText(name)) {
+                            set.add(noteType(typeDesc(u16(mthOff + 8 * mid))) + "." + name
+                                    + noteProto(protoDesc(u16(mthOff + 8 * mid + 2))));
+                        }
+                    }
+                } else if (op == 0x1a || op == 0x1b) {
+                    int sidx = op == 0x1a ? u16(base + 2 * (i + 1)) : u32(base + 2 * (i + 1));
+                    if (sidx >= 0 && sidx < strN) {
+                        String t = str(sidx);
+                        if (t.length() >= 2 && t.length() <= 48 && plainText(t)) set.add("\"" + t + "\"");
+                    }
+                } else if (op == 0x14) {
+                    int v = u32(base + 2 * (i + 1));
+                    if ((v >>> 24) == 0x7f) set.add("0x" + Integer.toHexString(v));
+                } else if (fldOff != 0 && ((op >= 0x52 && op <= 0x58) || (op >= 0x60 && op <= 0x66))) {
+                    int fid = u16(base + 2 * (i + 1));
+                    if (fid < fldN) {
+                        String name = str(u32(fldOff + 8 * fid + 4));
+                        if (plainText(name)) {
+                            set.add(op >= 0x60 ? noteType(typeDesc(u16(fldOff + 8 * fid))) + "." + name : "." + name);
+                        }
+                    }
+                }
+                i += len;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (String e : set) {
+                if (sb.length() + e.length() + 3 > NOTE_CHARS) break;
+                if (sb.length() > 0) sb.append(" | ");
+                sb.append(e);
+            }
+            return sb.length() == 0 ? null : sb.toString();
         }
 
         private void invoke(int base, int i, int op, int w, int n, int pending, Map<Integer, Anchored> out) {

@@ -6,6 +6,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +75,13 @@ final class Recon {
             "chat_background", "chat_bg", "customize_message_bubble", "message_bubble", "chat_bubble",
             "bubble_style", "dm_customize", "chat_theme", "im_region", "region_limit"};
 
+    /**
+     * Точные ключи функций личных сообщений: места, где они читаются, печатаются вместе с вызовами рядом
+     * (так видно, какая проверка региона или доступности стоит у чтения флага).
+     */
+    static final String[] DM_KEYS = {"im_voice_message", "im_chat_wallpaper_chatroom", "dm_customize_message_bubble",
+            "im_wallpaper_strategy"};
+
     /** Члены классов, найденных по строкам личных сообщений: проверки региона, доступности и сами функции. */
     static final String DM_MEMBER = "(?i).*(region|country|support|enable|allow|avail|voice|wallpaper|bubble|theme|"
             + "background|permit|limit).*";
@@ -103,6 +113,15 @@ final class Recon {
     static final int REPORT_MAX = 17_500;
     private static final int LINE_MAX = 420;
     private static final int AUTO_CLASSES = 8;
+    /** Сколько знаков отводится разделам отчёта «личные сообщения» (остальное — общий список строк). */
+    private static final int TAP_MAX = 3_600;
+    private static final int FLAGS_MAX = 2_400;
+    private static final int RES_MAX = 1_400;
+    private static final int IDS_MAX = 3_200;
+    private static final int KEYS_MAX = 2_800;
+    private static final int DUMPS_MAX = 2_600;
+    /** Сколько найденных строк-ресурсов искать в коде. */
+    private static final int ID_LIMIT = 8;
     private static final int SITES = 3;
     private static final long LIMIT_MS = 150_000L;
 
@@ -141,10 +160,23 @@ final class Recon {
                 try {
                     DexScan.Options o = new DexScan.Options();
                     o.parts = mode == MODE_DELETE ? DELETE_PARTS : mode == MODE_DM ? DM_PARTS : PARTS;
+                    List<ResHit> res = new ArrayList<>();
+                    if (mode == MODE_DM) {
+                        // Надпись «не поддерживается в вашем регионе» лежит в ресурсах: по номеру строки в коде
+                        // находится тот, кто её показывает, а рядом с ним — проверка.
+                        try {
+                            res = findStrings(ctx.getResources());
+                        } catch (Throwable e) {
+                            FlagStore.log(e);
+                        }
+                        o.consts = DM_KEYS;
+                        o.notes = true;
+                        o.ints = idsOf(res, ID_LIMIT);
+                    }
                     o.deadline = System.currentTimeMillis() + LIMIT_MS;
                     DexScan.Result r = DexHooks.scanApp(ctx, o);
                     ClassLoader cl = StreakHooks.loader();
-                    report = cap(build(r, cl, mode), REPORT_MAX);
+                    report = cap(build(r, cl, mode, res), REPORT_MAX);
                     state = "готово: " + r.dexes + " dex, " + r.classes + " классов, " + r.ms + " мс";
                 } catch (Throwable e) {
                     state = "сбой: " + e;
@@ -161,6 +193,10 @@ final class Recon {
 
     /** Собирает отчёт нужного режима: сначала самое важное, потому что длинный отчёт обрезается с конца. */
     static String build(DexScan.Result r, ClassLoader cl, int mode) {
+        return build(r, cl, mode, null);
+    }
+
+    static String build(DexScan.Result r, ClassLoader cl, int mode, List<ResHit> res) {
         StringBuilder sb = new StringBuilder();
         if (mode == MODE_DELETE) {
             sb.append("режим: удаление репостов, лайков и избранного\n");
@@ -173,8 +209,15 @@ final class Recon {
             sb.append(focused(cl, Arrays.asList(FOCUS), FOCUS_MEMBER));
         } else if (mode == MODE_DM) {
             sb.append("режим: личные сообщения (голосовые, обои чата, пузырь чата)\n");
-            sb.append(render(r, null, DM_PARTS, 14));
-            sb.append(focused(cl, realClasses(r, null, 6), DM_MEMBER));
+            sb.append(cap(UnsupportedTap.report(cl), TAP_MAX)).append('\n');
+            sb.append(cap(FlagTap.report(), FLAGS_MAX)).append('\n');
+            sb.append(cap(renderRes(res), RES_MAX));
+            sb.append(cap(renderIds(r, res), IDS_MAX));
+            sb.append(cap(renderKeys(r), KEYS_MAX));
+            List<String> siteClasses = siteClasses(r, 5);
+            sb.append(cap(compact(cl, siteClasses, 22), DUMPS_MAX));
+            sb.append(render(r, null, DM_PARTS, 4));
+            sb.append(focused(cl, realClasses(r, null, 3), DM_MEMBER));
         } else {
             sb.append(render(r, new KnownKeys()));
             sb.append('\n').append(classes(cl));
@@ -183,6 +226,242 @@ final class Recon {
                 if (!names.contains(f)) names.add(f);
             }
             sb.append(full(cl, names));
+        }
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------ строки-ресурсы и места в коде
+
+    /** Строковый ресурс, похожий на «не поддерживается в вашем регионе». */
+    static final class ResHit {
+        final int id;
+        final String name;
+        final String text;
+        final int score;
+
+        ResHit(int id, String name, String text, int score) {
+            this.id = id;
+            this.name = name;
+            this.text = text;
+            this.score = score;
+        }
+    }
+
+    /** Насколько текст похож на заглушку «тип сообщений не поддерживается в вашем регионе»; 0 — не похож. */
+    static int regionScore(String text) {
+        if (text == null || text.length() < 8 || text.length() > 160) return 0;
+        String l = text.toLowerCase(Locale.ROOT);
+        boolean region = l.contains("регион") || l.contains("region") || l.contains("стран") || l.contains("country");
+        boolean unsupported = l.contains("поддерж") || l.contains("support") || l.contains("недоступ")
+                || l.contains("unavailab") || l.contains("not available");
+        if (!region || !unsupported) return 0;
+        int s = 1;
+        if (l.contains("сообщен") || l.contains("message")) s += 3;
+        if (l.contains("тип") || l.contains("type")) s += 2;
+        if (l.contains("чат") || l.contains("chat")) s++;
+        if (l.contains("вашем регионе") || l.contains("your region")) s++;
+        return s;
+    }
+
+    /**
+     * Перебирает строковые ресурсы приложения и возвращает похожие на заглушку, лучшие первыми. Номера
+     * ресурсов идут подряд внутри типа, поэтому перебор останавливается после длинного пропуска.
+     */
+    static List<ResHit> findStrings(android.content.res.Resources res) {
+        List<ResHit> out = new ArrayList<>();
+        for (int type = 1; type <= 0x30; type++) {
+            int base = 0x7f000000 | (type << 16);
+            String tn = null;
+            for (int e = 0; e < 64 && tn == null; e++) {
+                try {
+                    tn = res.getResourceTypeName(base | e);
+                } catch (Throwable ignored) {
+                    // такого номера нет
+                }
+            }
+            if (!"string".equals(tn)) continue;
+            int misses = 0;
+            for (int e = 0; e < 0x10000 && misses < 4000; e++) {
+                int id = base | e;
+                CharSequence cs = null;
+                try {
+                    cs = res.getText(id, null);
+                } catch (Throwable ignored) {
+                    // не строка
+                }
+                if (cs == null) {
+                    misses++;
+                    continue;
+                }
+                misses = 0;
+                String text = cs.toString();
+                int score = regionScore(text);
+                if (score == 0) continue;
+                String name = "?";
+                try {
+                    name = res.getResourceEntryName(id);
+                } catch (Throwable ignored) {
+                    // имя вырезано
+                }
+                out.add(new ResHit(id, name, text, score));
+                if (out.size() >= 200) break;
+            }
+        }
+        Collections.sort(out, new Comparator<ResHit>() {
+            @Override
+            public int compare(ResHit a, ResHit b) {
+                return b.score != a.score ? b.score - a.score : a.id - b.id;
+            }
+        });
+        return out;
+    }
+
+    /** Номера лучших строк-ресурсов для поиска в коде. */
+    static int[] idsOf(List<ResHit> hits, int limit) {
+        if (hits == null) return new int[0];
+        int n = Math.min(limit, hits.size());
+        int[] ids = new int[n];
+        for (int i = 0; i < n; i++) ids[i] = hits.get(i).id;
+        return ids;
+    }
+
+    static String renderRes(List<ResHit> hits) {
+        StringBuilder sb = new StringBuilder();
+        if (hits == null || hits.isEmpty()) {
+            return "[строки в ресурсах] похожих на «не поддерживается в регионе» не найдено\n";
+        }
+        sb.append("[строки в ресурсах] найдено ").append(hits.size()).append(", лучшие:\n");
+        for (int i = 0; i < hits.size() && i < ID_LIMIT; i++) {
+            ResHit h = hits.get(i);
+            String t = h.text.length() > 90 ? h.text.substring(0, 90) + "…" : h.text;
+            sb.append("  0x").append(Integer.toHexString(h.id)).append(' ').append(h.name).append(" «")
+                    .append(t.replace('\n', ' ')).append("»\n");
+        }
+        return sb.toString();
+    }
+
+    /** Разделяет «сигнатура @[заметки]» на две части. */
+    private static String[] splitNotes(String proto) {
+        int at = proto.indexOf(" @[");
+        if (at < 0 || !proto.endsWith("]")) return new String[]{proto, ""};
+        return new String[]{proto.substring(0, at), proto.substring(at + 3, proto.length() - 1)};
+    }
+
+    /** Места в коде, где загружается номер строки-ресурса, с вызовами рядом: тут и стоит заглушка. */
+    static String renderIds(DexScan.Result r, List<ResHit> hits) {
+        Map<String, String> names = new LinkedHashMap<>();
+        if (hits != null) {
+            for (ResHit h : hits) names.put("0x" + Integer.toHexString(h.id), h.name);
+        }
+        StringBuilder sb = new StringBuilder();
+        int total = 0;
+        Map<String, Integer> perId = new LinkedHashMap<>();
+        for (DexScan.Ref ref : r.refs) {
+            if (!ref.label.startsWith("const:id:")) continue;
+            String id = ref.label.substring(9);
+            Integer have = perId.get(id);
+            if (have != null && have >= 4) continue;
+            perId.put(id, have == null ? 1 : have + 1);
+            String[] p = splitNotes(ref.proto);
+            if (have == null) {
+                sb.append("  ").append(id);
+                String nm = names.get(id);
+                if (nm != null) sb.append(' ').append(nm);
+                sb.append('\n');
+            }
+            sb.append("    ← ").append(pretty(ref.cls)).append('.').append(ref.name).append(p[0]).append('\n');
+            if (!p[1].isEmpty()) sb.append("      ").append(capLine(p[1], 560)).append('\n');
+            total++;
+        }
+        if (total == 0) return "[места в коде со строкой-ресурсом] не найдены\n";
+        return "[места в коде со строкой-ресурсом] " + total + "\n" + sb;
+    }
+
+    /** Места, где читаются ключи функций личных сообщений, и вызовы рядом с чтением. */
+    static String renderKeys(DexScan.Result r) {
+        StringBuilder sb = new StringBuilder("[ключи функций: кто читает и что рядом]\n");
+        int shown = 0;
+        for (String key : DM_KEYS) {
+            int n = 0;
+            for (DexScan.Ref ref : r.refs) {
+                if (!ref.label.equals("const:" + key)) continue;
+                if (n == 0) sb.append("  \"").append(key).append("\"\n");
+                if (n++ >= 5) break;
+                String[] p = splitNotes(ref.proto);
+                sb.append("    ← ").append(pretty(ref.cls)).append('.').append(ref.name).append(p[0]).append('\n');
+                if (!p[1].isEmpty()) sb.append("      ").append(capLine(p[1], 420)).append('\n');
+                shown++;
+            }
+        }
+        return shown == 0 ? "[ключи функций] места чтения не найдены\n" : sb.toString();
+    }
+
+    private static String capLine(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    /** Классы, в чьих методах найдены номер ресурса или точный ключ: по ним смотрим список методов. */
+    static List<String> siteClasses(DexScan.Result r, int limit) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (DexScan.Ref ref : r.refs) {
+            boolean id = ref.label.startsWith("const:id:");
+            boolean key = false;
+            for (String k : DM_KEYS) {
+                if (ref.label.equals("const:" + k)) {
+                    key = true;
+                    break;
+                }
+            }
+            if (!id && !key) continue;
+            out.add(pretty(ref.cls));
+        }
+        List<String> list = new ArrayList<>(out);
+        return list.size() > limit ? list.subList(0, limit) : list;
+    }
+
+    /**
+     * Сжатый список методов классов, в том числе обфусцированных: сначала методы, возвращающие boolean
+     * (проверки), потом остальные. maxLines — на один класс.
+     */
+    static String compact(ClassLoader cl, List<String> names, int maxLines) {
+        StringBuilder sb = new StringBuilder();
+        for (String name : names) {
+            sb.append('\n').append(name).append(": ");
+            Class<?> c = null;
+            try {
+                c = cl == null ? Class.forName(name) : Class.forName(name, false, cl);
+            } catch (Throwable ignored) {
+                // нет такого класса
+            }
+            if (c == null) {
+                sb.append("класса нет\n");
+                continue;
+            }
+            List<String> bools = new ArrayList<>();
+            List<String> rest = new ArrayList<>();
+            try {
+                for (Method m : c.getDeclaredMethods()) {
+                    if (m.isSynthetic()) continue;
+                    (m.getReturnType() == boolean.class ? bools : rest).add(signature(m));
+                }
+            } catch (Throwable ignored) {
+                // класс ссылается на то, чего нет
+            }
+            Collections.sort(bools);
+            Collections.sort(rest);
+            Class<?> sup = c.getSuperclass();
+            sb.append(bools.size() + rest.size()).append(" методов");
+            if (sup != null && sup != Object.class) sb.append(", родитель ").append(sup.getName());
+            sb.append('\n');
+            int n = 0;
+            for (List<String> group : Arrays.asList(bools, rest)) {
+                for (String l : group) {
+                    if (n++ >= maxLines) break;
+                    sb.append("  ").append(l).append('\n');
+                }
+            }
+            int all = bools.size() + rest.size();
+            if (all > maxLines) sb.append("  ещё ").append(all - maxLines).append('\n');
         }
         return sb.toString();
     }
