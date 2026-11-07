@@ -42,6 +42,14 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow(Icons.SLIDERS, "Нижняя панель", "Оригинал или Liquid Glass: стеклянная капсула и линза",
+                GlassBarScreen.menuSummary(), new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        GlassBarScreen.show(act);
+                    }
+                }));
+
         body.addView(ui.header("Лента"));
         body.addView(ui.menuRow(Icons.CLOCK, "Время и регион видео",
                 "Точное время публикации, флаг и код страны над именем автора", VideoInfoScreen.menuSummary(),

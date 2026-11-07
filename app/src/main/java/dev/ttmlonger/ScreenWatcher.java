@@ -74,6 +74,7 @@ final class ScreenWatcher {
             watch(a);
             VideoInfo.kick();
             LiveButton.kick();
+            GlassBar.kick();
         } catch (Throwable t) {
             FlagStore.log(t);
         }

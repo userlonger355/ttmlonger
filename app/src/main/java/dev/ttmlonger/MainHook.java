@@ -139,6 +139,11 @@ public final class MainHook implements IXposedHookLoadPackage {
                 FlagStore.log(t);
             }
             Trigger.install();
+            try {
+                GlassBar.install(); // линза нижней панели видит касания; включается настройкой «Нижняя панель»
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);
             DexHooks.start(ctx, cl);  // второй читатель флагов и нажатия на стикеры: поиск в dex, в фоне

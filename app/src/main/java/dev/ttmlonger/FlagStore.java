@@ -124,6 +124,7 @@ final class FlagStore {
         //noinspection ResultOfMethodCallIgnored
         dir.mkdirs();
         Prefs.init(dir);
+        GlassCfg.init(dir);
         loadOverrides();
         seedDefaults(Targets.DEFAULT_FLAGS);
     }
