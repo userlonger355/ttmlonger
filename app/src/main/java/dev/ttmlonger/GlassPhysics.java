@@ -7,8 +7,19 @@ package dev.ttmlonger;
  *
  * <p>Положение pos измеряется в вкладках: 0 — первая, 1 — вторая и т. д. (дробное — между ними).
  * Всё считается без Android, поэтому проверяется обычными тестами.
+ *
+ * <p>Добавлено поверх index.html (в видео-образце так ведёт себя настоящая панель): линза-«надувание» включается не
+ * сразу, а когда палец задержался или поехал, поэтому короткое нажатие просто плавно переезжает светлой
+ * «таблеткой»; и сжатие панели до значков (cmp: 0 — развёрнута, 1 — сжата) на своей пружине.
  */
 final class GlassPhysics {
+    /** Через сколько секунд под пальцем появляется линза и на сколько вкладок надо сдвинуть палец, чтобы она появилась сразу. */
+    static final double HOLD_S = 0.14;
+    static final double MOVE_TABS = 0.35;
+    /** Пружина сжатия панели: почти критическое затухание, ≈ 0,2 с, как на видео. */
+    static final double CMP_K = 420.0;
+    static final double CMP_D = 38.0;
+
     /** Положение линзы и скорость. */
     double pos;
     double vel;
@@ -23,6 +34,13 @@ final class GlassPhysics {
     double sxv;
     /** Палец на панели. */
     boolean drag;
+    /** Сколько секунд палец лежит и где лёг: линза появляется после паузы или сдвига. */
+    double hold;
+    double downAt;
+    /** Сжатие панели: текущее значение, скорость и цель (0 или 1). */
+    double cmp;
+    double cmv;
+    double cmT;
     /** Последняя вкладка (для отскока у краёв). */
     int last = 3;
 
@@ -33,6 +51,9 @@ final class GlassPhysics {
         press = pvl = pressT = 0;
         sx = sxv = 0;
         drag = false;
+        hold = 0;
+        downAt = at;
+        cmp = cmv = cmT = 0;
     }
 
     /** Шаг на dt секунд с текущими настройками. */
@@ -44,7 +65,13 @@ final class GlassPhysics {
         double jl = GlassCfg.jl / 10.0;
         int n = Math.max(1, (int) Math.ceil(dt / 0.004));
         double h = dt / n;
+        if (drag) {
+            hold += dt;
+            if (pressT < 1 && hold >= HOLD_S) pressT = 1;
+        }
         for (int i = 0; i < n; i++) {
+            cmv += (CMP_K * (cmT - cmp) - CMP_D * cmv) * h;
+            cmp += cmv * h;
             vel += (k * (tgt - pos) - cd * vel) * h;
             pos += vel * h;
             pvl += (300.0 * (pressT - press) - 19.0 * pvl) * h;
@@ -58,29 +85,41 @@ final class GlassPhysics {
                 vel *= 0.6;
             }
         }
+        // сжатие доехало: встаёт ровно на цель, иначе панель так и осталась бы в «почти развёрнутом» кадре
+        if (Math.abs(cmT - cmp) < 0.002 && Math.abs(cmv) < 0.01) {
+            cmp = cmT;
+            cmv = 0;
+        }
     }
 
     /** Нужен ли ещё кадр: что-то движется или не дошло до цели. */
     boolean active() {
         return drag || Math.abs(tgt - pos) > 0.001 || Math.abs(vel) > 0.01 || Math.abs(press - pressT) > 0.002
-                || Math.abs(pvl) > 0.01 || Math.abs(sx) > 0.002 || Math.abs(sxv) > 0.02;
+                || Math.abs(pvl) > 0.01 || Math.abs(sx) > 0.002 || Math.abs(sxv) > 0.02
+                || Math.abs(cmT - cmp) > 0.002 || Math.abs(cmv) > 0.01;
     }
 
-    /** Палец лёг на панель в положении at (в вкладках). */
+    /** Палец лёг на панель в положении at (в вкладках): таблетка едет к нему, линза появится позже. */
     void down(double at) {
         drag = true;
-        pressT = 1;
-        tgt = clampPos(at);
+        pressT = 0;
+        hold = 0;
+        downAt = clampPos(at);
+        tgt = downAt;
     }
 
+    /** Палец поехал: сдвиг больше трети вкладки сразу включает линзу. */
     void move(double at) {
-        if (drag) tgt = clampPos(at);
+        if (!drag) return;
+        tgt = clampPos(at);
+        if (Math.abs(tgt - downAt) > MOVE_TABS) pressT = 1;
     }
 
     /** Палец поднят: линза доезжает до ближайшей вкладки. Возвращает её номер. */
     int up(double at) {
         drag = false;
         pressT = 0;
+        hold = 0;
         int n = (int) Math.round(clampPos(at));
         tgt = n;
         return n;

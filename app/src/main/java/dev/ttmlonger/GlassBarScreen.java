@@ -31,6 +31,7 @@ final class GlassBarScreen extends Screen {
     private LinearLayout choiceGlass;
     private LinearLayout glassBox;
     private TextView state;
+    private LinearLayout compactRow;
     private LinearLayout presetRow;
     private LinearLayout physRow;
     private LinearLayout modeRow;
@@ -177,8 +178,17 @@ final class GlassBarScreen extends Screen {
         box.addView(ui.header("Линза"));
         modeRow = chipRow();
         box.addView(modeRow);
-        box.addView(ui.note("«Как в iOS»: в покое выбранная вкладка лежит на тёмной «таблетке», линза появляется "
-                + "под пальцем. «Классика»: линза всегда видна."));
+        box.addView(ui.note("«Как в iOS»: в покое выбранная вкладка лежит на светлой матовой «таблетке», которая "
+                + "плавно переезжает на нажатую вкладку; линза появляется, если палец задержался или поехал по "
+                + "панели. «Классика»: линза всегда видна."));
+
+        box.addView(ui.header("Сжатие панели"));
+        compactRow = chipRow();
+        box.addView(compactRow);
+        box.addView(ui.note("Как на видео-образце: пока листаете ленту, панель сжимается до значков без подписей "
+                + "(«+» остаётся как есть), а когда лента остановилась, разворачивается. Нажатие на панель "
+                + "разворачивает её сразу. Работает на Android 13 и новее и только если мод смог определить цвет "
+                + "фона панели."));
     }
 
     private LinearLayout chipRow() {
@@ -322,6 +332,19 @@ final class GlassBarScreen extends Screen {
             GlassCfg.setIos(false);
             applyAll();
             demo();
+        }));
+        compactRow.removeAllViews();
+        compactRow.addView(chip("Сжимать", GlassCfg.cp, v -> {
+            GlassCfg.setCp(true);
+            applyAll();
+        }));
+        compactRow.addView(chip("Не сжимать", !GlassCfg.cp, v -> {
+            GlassCfg.setCp(false);
+            applyAll();
+        }));
+        compactRow.addView(chip("Показать сжатие", false, v -> {
+            if (previewSession != null) previewSession.demoCompact();
+            else Toasts.show(act, "Предпросмотр работает только при выборе «Liquid Glass»");
         }));
     }
 

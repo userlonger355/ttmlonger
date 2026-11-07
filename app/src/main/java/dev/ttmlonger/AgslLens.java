@@ -51,6 +51,15 @@ final class AgslLens {
         shader.setFloatUniform("ZM", (float) f.zm);
         shader.setFloatUniform("PS", (float) f.ps);
         shader.setFloatUniform("GA", (float) f.ga);
+        shader.setFloatUniform("V", (float) f.v);
+        shader.setFloatUniform("SC", (float) f.sc);
+        shader.setFloatUniform("CY", (float) f.cy);
+        shader.setFloatUniform("YC", (float) f.yc);
+        shader.setFloatUniform("LT", (float) f.lt);
+        shader.setFloatUniform("CX", (float) f.cx);
+        shader.setFloatUniform("EZ", (float) f.ez);
+        shader.setFloatUniform("LA", (float) f.la);
+        shader.setFloatUniform("CA", (float) f.ca);
         paint.setShader(shader);
         c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, paint);
     }

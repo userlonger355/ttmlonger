@@ -53,6 +53,13 @@ final class GlassSession implements Choreographer.FrameCallback {
     private boolean dark = true;
     /** Цвет панели под капсулой (RGB): цвет её фона или чёрный/белый по теме. */
     private int strip = 0x000000;
+    /** Цвет панели прочитан с настоящего фона (иначе сжимать панель нельзя: нечем закрыть прежние значки). */
+    private boolean stripKnown;
+    // сжатие панели: где значки по вертикали, где начинаются подписи, высота значка, ширина «+»
+    private double yc;
+    private double lt;
+    private double iconH;
+    private double plusHalf;
 
     // снимок значков
     private Bitmap tex;
@@ -70,6 +77,11 @@ final class GlassSession implements Choreographer.FrameCallback {
     private int downTab = -1;
     /** Идёт наше собственное нажатие на вкладку: оно не должно попадать в onTouch. */
     private boolean synthetic;
+    /** Палец лёг вне панели: ждём, поведёт ли он по вертикали (прокрутка ленты). */
+    private boolean sTrack;
+    private boolean scrolling;
+    private float sx0;
+    private float sy0;
     /** В снимке значков есть содержимое: только тогда шейдер перерисовывает панель сам. */
     private boolean texOk;
     private int lastSelected = -1;
@@ -79,6 +91,13 @@ final class GlassSession implements Choreographer.FrameCallback {
     private AgslLens agsl;
     private String shaderNote = "";
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint stripPaint = new Paint();
+    private final Runnable expandRun = new Runnable() {
+        @Override
+        public void run() {
+            if (attached) setCompact(false);
+        }
+    };
 
     GlassSession(ViewGroup bar, ArrayList<View> tabs, int create, boolean preview) {
         this.bar = bar;
@@ -119,6 +138,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (!attached) return;
         attached = false;
         h.removeCallbacks(poll);
+        h.removeCallbacks(expandRun);
         try {
             Choreographer.getInstance().removeFrameCallback(this);
         } catch (Throwable ignored) {
@@ -215,9 +235,50 @@ final class GlassSession implements Choreographer.FrameCallback {
             minW = Math.min(minW, t.getWidth());
         }
         tabW = minW == Double.MAX_VALUE ? 0 : Math.min(minW, 96.0 * dm);
+        scanIcons();
         dark = readDark();
         measured = true;
         lens.setBounds(capL, capT - pad, capR, capB + pad);
+    }
+
+    /**
+     * Где в снимке значки и где подписи (для сжатия панели): центр значков по вертикали, высота значка, линия между
+     * значками и подписями. Круглая метка с числом (99+) выше подписей, поэтому берётся самый нижний текст.
+     */
+    private void scanIcons() {
+        int[] ib = {Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
+        for (int e : eligible) icons(tabs.get(e), 0, 0, ib, 0);
+        int oy = capT - pad;
+        int texH = capB - capT + 2 * pad;
+        if (ib[0] == Integer.MAX_VALUE || ib[1] == Integer.MIN_VALUE) {
+            iconH = 24.0 * dm;
+            yc = texH / 2.0;
+            lt = texH * 4.0;
+            return;
+        }
+        iconH = Math.max(8.0 * dm, ib[1] - ib[0]);
+        yc = (ib[0] + ib[1]) / 2.0 - oy;
+        boolean label = ib[2] != Integer.MIN_VALUE && ib[2] >= ib[0] + (ib[1] - ib[0]) / 2;
+        lt = label ? (ib[1] + ib[2]) / 2.0 - oy : texH * 4.0;
+    }
+
+    private static void icons(View v, int ox, int oy, int[] ib, int depth) {
+        if (v == null || depth > 6 || v.getVisibility() != View.VISIBLE) return;
+        int left = ox + v.getLeft();
+        int top = oy + v.getTop();
+        if (v instanceof ImageView && ((ImageView) v).getDrawable() != null) {
+            ib[0] = Math.min(ib[0], top);
+            ib[1] = Math.max(ib[1], top + v.getHeight());
+            return;
+        }
+        if (v instanceof TextView && ((TextView) v).getText() != null && ((TextView) v).getText().length() > 0) {
+            ib[2] = Math.max(ib[2], top);
+            return;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) icons(g.getChildAt(i), left, top, ib, depth + 1);
+        }
     }
 
     /** Верх и низ значков и подписей вкладки в координатах панели. */
@@ -242,10 +303,13 @@ final class GlassSession implements Choreographer.FrameCallback {
     /** Тёмная ли подложка: по цвету прежнего фона панели или её родителей, иначе по теме мода. */
     private boolean readDark() {
         Drawable o = bg.orig;
+        // свой фон не сплошной цвет (градиент, слои): точный цвет под значками неизвестен
+        boolean ownUnknown = o != null && !(o instanceof ColorDrawable);
         for (int i = 0; i < 6; i++) {
             if (o instanceof ColorDrawable) {
                 int c = ((ColorDrawable) o).getColor();
                 if (Color.alpha(c) > 40) {
+                    stripKnown = Color.alpha(c) > 200 && !ownUnknown;
                     strip = c & 0xFFFFFF;
                     return (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) < 128;
                 }
@@ -255,6 +319,7 @@ final class GlassSession implements Choreographer.FrameCallback {
             o = v.getBackground();
         }
         strip = Ui.DARK ? 0x000000 : 0xFFFFFF;
+        stripKnown = false;
         return Ui.DARK;
     }
 
@@ -334,6 +399,10 @@ final class GlassSession implements Choreographer.FrameCallback {
                     if (old != dark) capDirty = true;
                 }
                 syncSelection();
+                if (!GlassCfg.cp && ph.cmT != 0) {
+                    ph.cmT = 0;
+                    kick();
+                }
                 if (seenRev != GlassCfg.rev) {
                     seenRev = GlassCfg.rev;
                     capDirty = true;
@@ -424,6 +493,47 @@ final class GlassSession implements Choreographer.FrameCallback {
             c.restoreToCount(save);
         }
         texOk = hasContent(tex);
+        plusHalf = texOk && GlassCfg.cp ? scanPlus() : 0;
+    }
+
+    /**
+     * Половина ширины кнопки «+» в снимке (с запасом): эта зона при сжатии панели не уменьшается. Ищется по снимку:
+     * от середины кнопки в обе стороны, пока не кончатся непрозрачные точки. 0 — «+» нет или она не по центру.
+     */
+    private double scanPlus() {
+        if (create < 0 || create >= tabs.size() || tex == null) return 0;
+        View t = tabs.get(create);
+        double pc = (t.getLeft() + t.getRight()) / 2.0 - capL;
+        double cx = (capR - capL) / 2.0;
+        if (Math.abs(pc - cx) > Math.max(8.0 * dm, tabW * 0.3)) return 0;
+        int w = tex.getWidth();
+        int hh = tex.getHeight();
+        int ci = (int) Math.round(pc);
+        int best = 0;
+        for (int dy = -8; dy <= 8; dy += 4) {
+            int y = (int) Math.round(yc) + dy;
+            if (y < 0 || y >= hh || ci < 0 || ci >= w) continue;
+            int gap = 0;
+            for (int x = ci; x < w && gap < 3; x++) {
+                if ((tex.getPixel(x, y) >>> 24) > 24) {
+                    best = Math.max(best, x - ci);
+                    gap = 0;
+                } else {
+                    gap++;
+                }
+            }
+            gap = 0;
+            for (int x = ci; x >= 0 && gap < 3; x--) {
+                if ((tex.getPixel(x, y) >>> 24) > 24) {
+                    best = Math.max(best, ci - x);
+                    gap = 0;
+                } else {
+                    gap++;
+                }
+            }
+        }
+        if (best < 4.0 * dm) best = (int) Math.round(tabW * 0.3);
+        return Math.min(best + 4.0 * dm, tabW);
     }
 
     /** Есть ли в снимке заметное число непрозрачных точек (проверка по сетке, дёшево). */
@@ -448,12 +558,23 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (a == MotionEvent.ACTION_DOWN) {
             track = false;
             downTab = -1;
+            sTrack = false;
+            scrolling = false;
             if (!bar.isShown()) return;
             int[] loc = new int[2];
             bar.getLocationOnScreen(loc);
             float x = ev.getRawX() - loc[0];
             float y = ev.getRawY() - loc[1];
-            if (x < capL || x > capR || y < capT - 6 * dm || y > capB + 6 * dm) return;
+            if (x < capL || x > capR || y < capT - 6 * dm || y > capB + 6 * dm) {
+                // палец лёг вне панели: если он поедет по вертикали, это прокрутка ленты, и панель сожмётся
+                if (GlassCfg.cp) {
+                    sTrack = true;
+                    sx0 = ev.getRawX();
+                    sy0 = ev.getRawY();
+                }
+                return;
+            }
+            setCompact(false);
             int t = tabAt(x);
             if (t < 0 || t == create) return;
             track = true;
@@ -462,6 +583,25 @@ final class GlassSession implements Choreographer.FrameCallback {
             capDirty = true;
             burstUntil = SystemClock.uptimeMillis() + BURST_MS;
             kick();
+        } else if (sTrack) {
+            if (a == MotionEvent.ACTION_MOVE) {
+                if (!scrolling) {
+                    float dy = Math.abs(ev.getRawY() - sy0);
+                    float dx = Math.abs(ev.getRawX() - sx0);
+                    if (dy > 12 * dm && dy > 1.4f * dx) {
+                        scrolling = true;
+                        setCompact(true);
+                    }
+                }
+            } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
+                sTrack = false;
+                if (scrolling) {
+                    scrolling = false;
+                    // лента докручивается ещё немного, потом панель разворачивается
+                    h.removeCallbacks(expandRun);
+                    h.postDelayed(expandRun, 550L);
+                }
+            }
         } else if (!track) {
             return;
         } else if (a == MotionEvent.ACTION_MOVE) {
@@ -559,12 +699,50 @@ final class GlassSession implements Choreographer.FrameCallback {
         return -1;
     }
 
+    // ------------------------------------------------------------ сжатие
+
+    /** Можно ли сжимать панель: включено в настройках, шейдер работает и цвет панели под значками известен. */
+    private boolean compactOk() {
+        return GlassCfg.cp && GlassCfg.glass() && measured && useAgsl() && stripKnown && !CrashGuard.tripped;
+    }
+
+    /** Сжимает панель до значков (on) или разворачивает обратно; сжатая панель сама развернётся через 4 с. */
+    private void setCompact(boolean on) {
+        h.removeCallbacks(expandRun);
+        if (on) {
+            if (!compactOk()) return;
+            ph.cmT = 1;
+            h.postDelayed(expandRun, 4000L);
+        } else {
+            ph.cmT = 0;
+        }
+        burstUntil = SystemClock.uptimeMillis() + BURST_MS;
+        kick();
+    }
+
+    /** Для предпросмотра в настройках: показывает сжатие и разворачивает через секунду с небольшим. */
+    void demoCompact() {
+        if (!attached) return;
+        capDirty = true;
+        setCompact(true);
+        h.removeCallbacks(expandRun);
+        h.postDelayed(expandRun, 1300L);
+    }
+
+    boolean compacted() {
+        return ph.cmT > 0.5;
+    }
+
     // ------------------------------------------------------------ рисунки
 
     private GlassGeo.Frame frame() {
         GlassGeo.Frame f = GlassGeo.frame(ph, centers, tabW, capR - capL, capB - capT, pad, dm, dark);
         int a = GlassGeo.fillAlpha(GlassCfg.tr, GlassCfg.br);
         GlassGeo.backdrop(f, strip, dark ? a : a / 2, dark);
+        double cx = (capR - capL) / 2.0;
+        double lastOff = 0;
+        for (double c : centers) lastOff = Math.max(lastOff, Math.abs(c - cx));
+        GlassGeo.compact(f, compactOk() ? ph.cmp : 0.0, cx, plusHalf, yc, lt, lastOff, iconH, dm);
         return f;
     }
 
@@ -609,7 +787,7 @@ final class GlassSession implements Choreographer.FrameCallback {
             GlassGeo.Frame f = frame();
             if (f.k <= 0.01) return;
             fill.setStyle(Paint.Style.FILL);
-            fill.setColor(((int) Math.round(255 * f.k * (0.10 + 0.27 * f.d)) << 24));
+            fill.setColor(((int) Math.round(255 * f.k * (0.10 + 0.12 * f.d)) << 24) | (f.d > 0.5 ? 0xFFFFFF : 0x000000));
             float cy = (capT + capB) / 2f;
             rect.set((float) (capL + f.px - f.bw), (float) (cy - f.bh), (float) (capL + f.px + f.bw),
                     (float) (cy + f.bh));
@@ -696,7 +874,14 @@ final class GlassSession implements Choreographer.FrameCallback {
                 c.translate(b.left, b.top);
                 GlassGeo.Frame f = frame();
                 if (useAgsl()) {
-                    if (c.isHardwareAccelerated()) agsl.draw(c, tex, f);
+                    if (c.isHardwareAccelerated()) {
+                        if (f.ca > 0.001) {
+                            // при сжатии прежние значки TikTok закрываются цветом панели, а панель рисует шейдер целиком
+                            stripPaint.setColor(0xFF000000 | strip);
+                            c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, stripPaint);
+                        }
+                        agsl.draw(c, tex, f);
+                    }
                 } else {
                     plain(c, f);
                 }
@@ -748,6 +933,11 @@ final class GlassSession implements Choreographer.FrameCallback {
         sb.append(", выбрана: ").append(lastSelected < 0 ? "не определена" : String.valueOf(lastSelected + 1));
         sb.append(", ").append(dark ? "тёмная" : "светлая").append(" подложка");
         sb.append("\n").append(shaderNote);
+        sb.append("\nсжатие панели: ").append(!GlassCfg.cp ? "выключено" : compactOk() ? "работает"
+                : "недоступно (" + (!useAgsl() ? "нет шейдера или снимка значков" : !stripKnown
+                ? "цвет фона панели неизвестен" : "панель не измерена") + ")");
+        sb.append(", «+» ").append(Math.round(plusHalf * 2)).append(" px, значки ").append(Math.round(iconH))
+                .append(" px");
         return sb.toString();
     }
 }

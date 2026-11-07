@@ -33,9 +33,11 @@ final class GlassCfg {
     /** Хроматическая аберрация по краю, %. */
     static volatile int tn = 100;
     /** Увеличение под линзой, % сверху к преломлению (в видео-образце значки под линзой крупнее). */
-    static volatile int zm = 12;
+    static volatile int zm = 8;
     /** Смещение соседних значков линзой, %: при касании остальные вкладки слегка раздвигаются. */
     static volatile int mv = 60;
+    /** Сжимать панель до значков, пока листают ленту (как в видео-образце). */
+    static volatile boolean cp = true;
     /** Жёсткость пружины. */
     static volatile int pk = 900;
     /** Затухание пружины. */
@@ -105,13 +107,14 @@ final class GlassCfg {
         gs = clamp(o.optInt("gs", 100), GS_MIN, GS_MAX);
         sr = clamp(o.optInt("sr", 100), SR_MIN, SR_MAX);
         tn = clamp(o.optInt("tn", 100), TN_MIN, TN_MAX);
-        zm = clamp(o.optInt("zm", 12), ZM_MIN, ZM_MAX);
+        zm = clamp(o.optInt("zm", 8), ZM_MIN, ZM_MAX);
         mv = clamp(o.optInt("mv", 60), MV_MIN, MV_MAX);
         pk = clamp(o.optInt("pk", 900), PK_MIN, PK_MAX);
         pd = clamp(o.optInt("pd", 52), PD_MIN, PD_MAX);
         jl = clamp(o.optInt("jl", 10), JL_MIN, JL_MAX);
         pz = clamp(o.optInt("pz", 10), PZ_MIN, PZ_MAX);
         ios = o.optBoolean("ios", true);
+        cp = o.optBoolean("cp", true);
     }
 
     static JSONObject toJson() {
@@ -131,6 +134,7 @@ final class GlassCfg {
             o.put("jl", jl);
             o.put("pz", pz);
             o.put("ios", ios);
+            o.put("cp", cp);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -229,6 +233,11 @@ final class GlassCfg {
         saved();
     }
 
+    static void setCp(boolean v) {
+        cp = v;
+        saved();
+    }
+
     /** Какой пресет стекла сейчас выбран: 0 «Прозрачное», 1 «Тонированное», -1 — свои значения. */
     static int glassPreset() {
         for (int i = 0; i < GLASS_PRESETS.length; i++) {
@@ -274,13 +283,14 @@ final class GlassCfg {
         gs = 100;
         sr = 100;
         tn = 100;
-        zm = 12;
+        zm = 8;
         mv = 60;
         pk = 900;
         pd = 52;
         jl = 10;
         pz = 10;
         ios = true;
+        cp = true;
         saved();
     }
 
