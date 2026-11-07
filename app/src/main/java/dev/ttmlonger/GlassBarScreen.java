@@ -157,6 +157,11 @@ final class GlassBarScreen extends Screen {
         slider(box, "Хроматическая аберрация", "Цветная кайма у края линзы", GlassCfg.TN_MIN, GlassCfg.TN_MAX,
                 () -> GlassCfg.tn, v -> GlassCfg.setTn(v), GlassBarScreen::hundredths);
 
+        slider(box, "Увеличение под линзой", "Значки под линзой крупнее, как в видео-образце", GlassCfg.ZM_MIN,
+                GlassCfg.ZM_MAX, () -> GlassCfg.zm, v -> GlassCfg.setZm(v), v -> v + "%");
+        slider(box, "Смещение значков", "Линза раздвигает соседние вкладки: Главная, Друзья и остальные",
+                GlassCfg.MV_MIN, GlassCfg.MV_MAX, () -> GlassCfg.mv, v -> GlassCfg.setMv(v), v -> v + "%");
+
         box.addView(ui.header("Физика линзы"));
         physRow = chipRow();
         box.addView(physRow);

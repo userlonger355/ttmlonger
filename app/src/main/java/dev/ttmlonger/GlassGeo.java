@@ -26,6 +26,8 @@ final class GlassGeo {
         double s, p, q, y, z, k, d, i;
         /** Насыщенность и яркость тела линзы. */
         double sat, brt;
+        /** Увеличение под линзой, смещение соседних значков (px при полном касании) и «перерисовывать всю панель». */
+        double zm, ps, ga;
         /** Цвет подложки капсулы (прежний фон панели с заливкой капсулы): им закрывается всё, что лежит под линзой. */
         double bgR, bgG, bgB;
     }
@@ -103,7 +105,7 @@ final class GlassGeo {
         double sv = clamp(ph.sx, -0.3, 0.3);
         double pz = GlassCfg.pz / 10.0;
         double halfTab = Math.max(2.0, tabW / 2.0 - 2.0 * dm);
-        double halfH = Math.max(2.0, capH / 2.0 - 5.0 * dm);
+        double halfH = Math.max(2.0, capH / 2.0 - 3.0 * dm);
         double hw = Math.max(1.0, halfTab * (1 + press * (io ? 0.46 : 0.2) * pz) * (1 + sv));
         double hh = Math.max(1.0, Math.min(capH / 2.0 + 3.0 * dm, halfH * (1 + press * 0.2 * pz) * (1 - sv * 0.5)));
         double vis = io ? clamp((press - 0.02) * 2.4, 0, 1) : 1;
@@ -132,6 +134,9 @@ final class GlassGeo {
         f.k = pillA;
         f.d = dark ? 1 : 0;
         f.i = io ? 1 : 0;
+        f.zm = GlassCfg.zm / 100.0;
+        f.ps = GlassCfg.mv / 100.0 * 0.30 * capH;
+        f.ga = 1;
         f.sat = Math.max(0.5, 1.22 * GlassCfg.sa / 180.0);
         f.brt = GlassCfg.br / 106.0;
         return f;

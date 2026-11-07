@@ -32,6 +32,10 @@ final class GlassCfg {
     static volatile int sr = 100;
     /** Хроматическая аберрация по краю, %. */
     static volatile int tn = 100;
+    /** Увеличение под линзой, % сверху к преломлению (в видео-образце значки под линзой крупнее). */
+    static volatile int zm = 12;
+    /** Смещение соседних значков линзой, %: при касании остальные вкладки слегка раздвигаются. */
+    static volatile int mv = 60;
     /** Жёсткость пружины. */
     static volatile int pk = 900;
     /** Затухание пружины. */
@@ -51,6 +55,8 @@ final class GlassCfg {
     static final int GS_MIN = 0, GS_MAX = 150;
     static final int SR_MIN = 0, SR_MAX = 200;
     static final int TN_MIN = 0, TN_MAX = 300;
+    static final int ZM_MIN = 0, ZM_MAX = 60;
+    static final int MV_MIN = 0, MV_MAX = 100;
     static final int PK_MIN = 100, PK_MAX = 1400;
     static final int PD_MIN = 6, PD_MAX = 90;
     static final int JL_MIN = 0, JL_MAX = 20;
@@ -99,6 +105,8 @@ final class GlassCfg {
         gs = clamp(o.optInt("gs", 100), GS_MIN, GS_MAX);
         sr = clamp(o.optInt("sr", 100), SR_MIN, SR_MAX);
         tn = clamp(o.optInt("tn", 100), TN_MIN, TN_MAX);
+        zm = clamp(o.optInt("zm", 12), ZM_MIN, ZM_MAX);
+        mv = clamp(o.optInt("mv", 60), MV_MIN, MV_MAX);
         pk = clamp(o.optInt("pk", 900), PK_MIN, PK_MAX);
         pd = clamp(o.optInt("pd", 52), PD_MIN, PD_MAX);
         jl = clamp(o.optInt("jl", 10), JL_MIN, JL_MAX);
@@ -116,6 +124,8 @@ final class GlassCfg {
             o.put("gs", gs);
             o.put("sr", sr);
             o.put("tn", tn);
+            o.put("zm", zm);
+            o.put("mv", mv);
             o.put("pk", pk);
             o.put("pd", pd);
             o.put("jl", jl);
@@ -181,6 +191,16 @@ final class GlassCfg {
 
     static void setTn(int v) {
         tn = clamp(v, TN_MIN, TN_MAX);
+        touch();
+    }
+
+    static void setZm(int v) {
+        zm = clamp(v, ZM_MIN, ZM_MAX);
+        touch();
+    }
+
+    static void setMv(int v) {
+        mv = clamp(v, MV_MIN, MV_MAX);
         touch();
     }
 
@@ -254,6 +274,8 @@ final class GlassCfg {
         gs = 100;
         sr = 100;
         tn = 100;
+        zm = 12;
+        mv = 60;
         pk = 900;
         pd = 52;
         jl = 10;

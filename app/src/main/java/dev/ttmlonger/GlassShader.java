@@ -15,7 +15,7 @@ final class GlassShader {
     }
 
     /** Имена uniform-переменных (все они объявлены и используются в шейдере). */
-    static final String[] UNIFORMS = {"R", "N", "B", "L", "S", "P", "Q", "W", "Y", "K", "Z", "D", "I", "SAT", "BRT", "BG"};
+    static final String[] UNIFORMS = {"R", "N", "B", "L", "S", "P", "Q", "W", "Y", "K", "Z", "D", "I", "SAT", "BRT", "BG", "ZM", "PS", "GA"};
 
     static final String SRC = ""
             + "uniform shader T;\n"
@@ -35,6 +35,9 @@ final class GlassShader {
             + "uniform float SAT;\n"
             + "uniform float BRT;\n"
             + "uniform float3 BG;\n"
+            + "uniform float ZM;\n"
+            + "uniform float PS;\n"
+            + "uniform float GA;\n"
             + "\n"
             + "float sd(float2 p, float2 h, float r) {\n"
             + "  float2 q = abs(p) - h + float2(r);\n"
@@ -69,9 +72,16 @@ final class GlassShader {
             + "    pd = sd(p - float2(W, R.y * 0.5), B, B.y);\n"
             + "    pm = 1.0 - smoothstep(-1.0, 0.7, pd);\n"
             + "  }\n"
-            // значки перерисовываются только там, где под ними «таблетка» или линза: остальное остаётся родным
-            + "  float keep = max(pm, m);\n"
-            + "  float4 col = float4(T.eval(p)) * keep;\n"
+            // под пальцем линза раздвигает соседние значки: источник сдвинут к линзе, значит значок уезжает от неё
+            + "  float pa = GA * smoothstep(0.0, 0.03, P);\n"
+            + "  float dxl = p.x - L.x;\n"
+            + "  float edgeD = max(abs(dxl) - L.z, 0.0);\n"
+            + "  float sg = dxl >= 0.0 ? 1.0 : -1.0;\n"
+            + "  float push = PS * P * (1.0 - Z) * exp(-edgeD / (N.y * 1.2));\n"
+            + "  float2 sp = p - float2(sg * push, 0.0);\n"
+            // значки перерисовываются там, где под ними «таблетка» или линза, а при касании по всей капсуле
+            + "  float keep = max(max(pm, m), pa);\n"
+            + "  float4 col = float4(T.eval(sp)) * keep;\n"
             // кромка капсулы: блик сверху-слева и слабый снизу-справа
             + "  col += float4(1.0) * (smoothstep(-N.y * 0.07, 0.0, bd) * (0.5 * max(li, 0.0) + 0.16 * max(-li, 0.0)));\n"
             + "  col *= 1.0 - smoothstep(-1.0, 0.5, bd);\n"
@@ -81,9 +91,11 @@ final class GlassShader {
             + "    float pe = K * smoothstep(-1.8, -0.3, pd) * (1.0 - smoothstep(-0.3, 0.9, pd)) * (0.10 + 0.10 * D);\n"
             + "    col += float4(float3(pe), pe) * (1.0 - col.a);\n"
             + "  }\n"
+            // при касании родные значки закрыты подложкой капсулы: вместо них видны смещённые копии
+            + "  col += float4(BG, 1.0) * (pa * (1.0 - smoothstep(-1.0, 0.5, bd)) * (1.0 - col.a));\n"
             + "  if (m > 0.0) {\n"
             + "    float2 n = gr(lp, L.zw, r);\n"
-            + "    float bw = r * 0.55;\n"
+            + "    float bw = r * 0.42;\n"
             + "    float x = clamp(-d / bw, 0.0, 1.0);\n"
             + "    float e = 0.02;\n"
             + "    float x1 = min(x + e, 1.0);\n"
@@ -93,7 +105,8 @@ final class GlassShader {
             + "    float sl = min((hp(x1) - hp(x0)) / (x1 - x0) * H / bw, 3.0);\n"
             + "    float3 nr = normalize(float3(n * sl, 1.0));\n"
             + "    float3 rf = refract(float3(0.0, 0.0, -1.0), nr, 1.0 / 1.5);\n"
-            + "    float2 base = L.xy + lp * (1.0 - (0.04 + 0.07 * P) * S);\n"
+            // под линзой всё крупнее: преломление плюс увеличение ZM, как в видео-образце
+            + "    float2 base = L.xy + lp * (1.0 - (0.04 + 0.07 * P) * S) / (1.0 + ZM * P);\n"
             + "    float2 sc = base + rf.xy / (-rf.z) * H * 1.05;\n"
             // хроматическая аберрация только у кромки: R наружу, B внутрь
             + "    float2 ab = n * pow(1.0 - x, 2.5) * N.y * 0.05 * Y;\n"

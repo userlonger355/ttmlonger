@@ -66,6 +66,12 @@ final class GlassSession implements Choreographer.FrameCallback {
     private boolean framePosted;
     private long lastNanos;
     private boolean track;
+    /** Вкладка (номер в tabs), на которую лёг палец. */
+    private int downTab = -1;
+    /** Идёт наше собственное нажатие на вкладку: оно не должно попадать в onTouch. */
+    private boolean synthetic;
+    /** В снимке значков есть содержимое: только тогда шейдер перерисовывает панель сам. */
+    private boolean texOk;
     private int lastSelected = -1;
     private int seenRev = -1;
     private int bgFailures;
@@ -164,6 +170,11 @@ final class GlassSession implements Choreographer.FrameCallback {
 
     boolean shaderOn() {
         return agsl != null;
+    }
+
+    /** Рисует ли шейдер: он включён, и в снимке значков что-то есть (иначе нечего искажать). */
+    private boolean useAgsl() {
+        return agsl != null && texOk;
     }
 
     // ------------------------------------------------------------ геометрия
@@ -412,16 +423,31 @@ final class GlassSession implements Choreographer.FrameCallback {
             }
             c.restoreToCount(save);
         }
+        texOk = hasContent(tex);
+    }
+
+    /** Есть ли в снимке заметное число непрозрачных точек (проверка по сетке, дёшево). */
+    private static boolean hasContent(Bitmap b) {
+        int hit = 0;
+        int w = b.getWidth();
+        int hh = b.getHeight();
+        for (int y = 2; y < hh; y += 6) {
+            for (int x = 2; x < w; x += 6) {
+                if ((b.getPixel(x, y) >>> 24) > 40 && ++hit >= 12) return true;
+            }
+        }
+        return false;
     }
 
     // ------------------------------------------------------------ касания
 
     /** Касание окна (для TikTok вызывается из хука Activity.dispatchTouchEvent). Только смотрит, ничего не гасит. */
     void onTouch(MotionEvent ev) {
-        if (!attached || !measured || ev == null) return;
+        if (!attached || !measured || ev == null || synthetic) return;
         int a = ev.getActionMasked();
         if (a == MotionEvent.ACTION_DOWN) {
             track = false;
+            downTab = -1;
             if (!bar.isShown()) return;
             int[] loc = new int[2];
             bar.getLocationOnScreen(loc);
@@ -431,6 +457,7 @@ final class GlassSession implements Choreographer.FrameCallback {
             int t = tabAt(x);
             if (t < 0 || t == create) return;
             track = true;
+            downTab = t;
             ph.down(GlassGeo.xToPos(centers, x - capL));
             capDirty = true;
             burstUntil = SystemClock.uptimeMillis() + BURST_MS;
@@ -446,21 +473,71 @@ final class GlassSession implements Choreographer.FrameCallback {
             track = false;
             int[] loc = new int[2];
             bar.getLocationOnScreen(loc);
+            long delay = 450L;
             if (a == MotionEvent.ACTION_UP) {
-                ph.up(GlassGeo.xToPos(centers, ev.getRawX() - loc[0] - capL));
+                float y = ev.getRawY() - loc[1];
+                int n = ph.up(GlassGeo.xToPos(centers, ev.getRawX() - loc[0] - capL));
+                // отпустили над другой вкладкой: сам TikTok нажатия не увидит (палец лёг на одну, поднят над другой),
+                // поэтому нажимаем на вкладку под линзой сами; если палец увели далеко от панели, это отмена
+                boolean near = y >= capT - 48 * dm && y <= capB + 48 * dm;
+                if (near && n >= 0 && n < eligible.length) {
+                    int target = eligible[n];
+                    if (target != downTab) {
+                        chooseLater(target);
+                        delay = 1100L;
+                    }
+                }
             } else {
                 ph.up(ph.tgt);
             }
             burstUntil = SystemClock.uptimeMillis() + BURST_MS;
             capDirty = true;
             kick();
-            // TikTok переключит вкладку по нажатию сам; если не переключил, линза вернётся на выбранную
+            // если вкладка так и не переключилась, линза вернётся на выбранную
             h.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     if (attached) syncBack();
                 }
-            }, 450L);
+            }, delay);
+        }
+    }
+
+    /**
+     * Через мгновение нажимает на вкладку под линзой, если TikTok сам её не выбрал. Задержка нужна, чтобы настоящее
+     * касание успело дойти до TikTok: если он выбрал вкладку сам, второе нажатие не делается (по нажатию на
+     * «Главную» при выбранной «Главной» TikTok обновляет ленту).
+     */
+    private void chooseLater(final int target) {
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!attached || target < 0 || target >= tabs.size()) return;
+                if (readSelected() == target) return;
+                tapTab(target);
+            }
+        }, 140L);
+    }
+
+    /** Нажатие пальцем в центр вкладки: те же события, что у настоящего касания, поэтому работает и с обработчиками на панели. */
+    private void tapTab(int index) {
+        View t = tabs.get(index);
+        if (t.getWidth() <= 0 || bar.getWidth() <= 0) return;
+        float x = (t.getLeft() + t.getRight()) / 2f;
+        float y = (t.getTop() + t.getBottom()) / 2f;
+        long now = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent up = MotionEvent.obtain(now, now + 50L, MotionEvent.ACTION_UP, x, y, 0);
+        synthetic = true;
+        try {
+            bar.dispatchTouchEvent(down);
+            bar.dispatchTouchEvent(up);
+        } catch (Throwable th) {
+            FlagStore.log(th);
+        } finally {
+            synthetic = false;
+            down.recycle();
+            up.recycle();
         }
     }
 
@@ -514,7 +591,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                 float r = (capB - capT) / 2f;
                 rect.set(capL, capT, capR, capB);
                 c.drawRoundRect(rect, r, r, fill);
-                if (agsl == null) {
+                if (!useAgsl()) {
                     pill(c);
                     ring.setStyle(Paint.Style.STROKE);
                     ring.setStrokeWidth(Math.max(1f, dm * 0.6f));
@@ -618,8 +695,8 @@ final class GlassSession implements Choreographer.FrameCallback {
             try {
                 c.translate(b.left, b.top);
                 GlassGeo.Frame f = frame();
-                if (agsl != null) {
-                    if (tex != null && c.isHardwareAccelerated()) agsl.draw(c, tex, f);
+                if (useAgsl()) {
+                    if (c.isHardwareAccelerated()) agsl.draw(c, tex, f);
                 } else {
                     plain(c, f);
                 }
