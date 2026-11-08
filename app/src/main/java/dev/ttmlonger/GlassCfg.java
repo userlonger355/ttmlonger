@@ -36,6 +36,10 @@ final class GlassCfg {
     static volatile int zm = 8;
     /** Смещение соседних значков линзой, %: при касании остальные вкладки слегка раздвигаются. */
     static volatile int mv = 60;
+    /** Размытие фона за капсулой и под линзой, px (в index.html «Размытие», 0–40, по умолчанию 16). */
+    static volatile int bl = 16;
+    /** Фон капсулы берётся из ленты над панелью (true) или остаётся сплошным цветом (false). */
+    static volatile boolean bk = true;
     /** Сжимать панель до значков, пока листают ленту (как в видео-образце). */
     static volatile boolean cp = true;
     /** Жёсткость пружины. */
@@ -57,6 +61,7 @@ final class GlassCfg {
     static final int GS_MIN = 0, GS_MAX = 150;
     static final int SR_MIN = 0, SR_MAX = 200;
     static final int TN_MIN = 0, TN_MAX = 300;
+    static final int BL_MIN = 0, BL_MAX = 40;
     static final int ZM_MIN = 0, ZM_MAX = 60;
     static final int MV_MIN = 0, MV_MAX = 100;
     static final int PK_MIN = 100, PK_MAX = 1400;
@@ -114,6 +119,8 @@ final class GlassCfg {
         jl = clamp(o.optInt("jl", 10), JL_MIN, JL_MAX);
         pz = clamp(o.optInt("pz", 10), PZ_MIN, PZ_MAX);
         ios = o.optBoolean("ios", true);
+        bl = clamp(o.optInt("bl", 16), BL_MIN, BL_MAX);
+        bk = o.optBoolean("bk", true);
         cp = o.optBoolean("cp", true);
     }
 
@@ -134,6 +141,8 @@ final class GlassCfg {
             o.put("jl", jl);
             o.put("pz", pz);
             o.put("ios", ios);
+            o.put("bl", bl);
+            o.put("bk", bk);
             o.put("cp", cp);
         } catch (Throwable t) {
             FlagStore.log(t);
@@ -233,6 +242,16 @@ final class GlassCfg {
         saved();
     }
 
+    static void setBl(int v) {
+        bl = clamp(v, BL_MIN, BL_MAX);
+        touch();
+    }
+
+    static void setBk(boolean v) {
+        bk = v;
+        saved();
+    }
+
     static void setCp(boolean v) {
         cp = v;
         saved();
@@ -290,6 +309,8 @@ final class GlassCfg {
         jl = 10;
         pz = 10;
         ios = true;
+        bl = 16;
+        bk = true;
         cp = true;
         saved();
     }

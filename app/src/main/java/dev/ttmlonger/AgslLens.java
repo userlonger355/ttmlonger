@@ -18,14 +18,30 @@ final class AgslLens {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private BitmapShader texShader;
     private Bitmap texBitmap;
+    private BitmapShader bkShader;
+    private Bitmap bkBitmap;
+    /** Пока снимка ленты нет, вход G всё равно должен быть задан: подставляется одна прозрачная точка. */
+    private Bitmap dummy;
 
     /** Бросает исключение, если шейдер не скомпилировался: вызывающий переходит на запасной рисунок. */
     AgslLens() {
         shader = new RuntimeShader(GlassShader.SRC);
     }
 
-    void draw(Canvas c, Bitmap tex, GlassGeo.Frame f) {
+    /** bk — снимок полосы ленты над панелью (может быть null: тогда f.bk должен быть 0). */
+    void draw(Canvas c, Bitmap tex, Bitmap bk, GlassGeo.Frame f) {
         if (tex == null || tex.isRecycled()) return;
+        Bitmap g = bk != null && !bk.isRecycled() ? bk : null;
+        if (g == null) {
+            if (dummy == null) dummy = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+            g = dummy;
+        }
+        if (bkShader == null || bkBitmap != g) {
+            bkShader = new BitmapShader(g, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            bkShader.setFilterMode(BitmapShader.FILTER_MODE_LINEAR);
+            bkBitmap = g;
+            shader.setInputShader("G", bkShader);
+        }
         if (texShader == null || texBitmap != tex) {
             texShader = new BitmapShader(tex, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
             texShader.setFilterMode(BitmapShader.FILTER_MODE_LINEAR);
@@ -60,6 +76,11 @@ final class AgslLens {
         shader.setFloatUniform("EZ", (float) f.ez);
         shader.setFloatUniform("LA", (float) f.la);
         shader.setFloatUniform("CA", (float) f.ca);
+        shader.setFloatUniform("GS", (float) f.gsx, (float) f.gsy);
+        shader.setFloatUniform("BK", (float) f.bk);
+        shader.setFloatUniform("SB", (float) f.sb);
+        shader.setFloatUniform("BM", (float) f.bm0, (float) f.bm1);
+        shader.setFloatUniform("TN", (float) f.tnR, (float) f.tnG, (float) f.tnB, (float) f.tnA);
         paint.setShader(shader);
         c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, paint);
     }
@@ -67,5 +88,7 @@ final class AgslLens {
     void release() {
         texShader = null;
         texBitmap = null;
+        bkShader = null;
+        bkBitmap = null;
     }
 }

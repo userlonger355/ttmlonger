@@ -1,5 +1,8 @@
 package dev.ttmlonger;
 
+import android.app.Activity;
+import android.content.Context;
+import android.content.ContextWrapper;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -18,6 +21,7 @@ import android.view.Choreographer;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -90,6 +94,13 @@ final class GlassSession implements Choreographer.FrameCallback {
 
     private AgslLens agsl;
     private String shaderNote = "";
+    /** Снимок полосы ленты над панелью для стеклянного фона (Android 8+); null, если недоступен. */
+    private BackdropCopy bcopy;
+    private Window window;
+    private String bkNote = "";
+    private boolean bodyWas;
+    private int bkMisses;
+    private final int[] loc = new int[2];
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stripPaint = new Paint();
     private final Runnable expandRun = new Runnable() {
@@ -117,6 +128,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (attached) return;
         attached = true;
         initShader();
+        initBackdrop();
         Drawable cur = bar.getBackground();
         bg.orig = cur;
         measure();
@@ -131,6 +143,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         capDirty = true;
         burstUntil = SystemClock.uptimeMillis() + BURST_MS;
         h.postDelayed(poll, POLL_MS);
+        h.postDelayed(bkRun, 200L);
         kick();
     }
 
@@ -138,6 +151,11 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (!attached) return;
         attached = false;
         h.removeCallbacks(poll);
+        h.removeCallbacks(bkRun);
+        if (bcopy != null) {
+            bcopy.release();
+            bcopy = null;
+        }
         h.removeCallbacks(expandRun);
         try {
             Choreographer.getInstance().removeFrameCallback(this);
@@ -182,6 +200,101 @@ final class GlassSession implements Choreographer.FrameCallback {
                     + (m.length() > 120 ? m.substring(0, 120) : m) + "), рисуется упрощённая линза";
             FlagStore.log(t);
         }
+    }
+
+    /** Окно, с которого снимается фон: у TikTok окно Activity, у предпросмотра в диалоге — окно диалога. */
+    void setWindow(Window w) {
+        window = w;
+    }
+
+    private Window windowOf() {
+        if (window != null) return window;
+        Context c = bar.getContext();
+        for (int i = 0; i < 8 && c instanceof ContextWrapper; i++) {
+            if (c instanceof Activity) return ((Activity) c).getWindow();
+            c = ((ContextWrapper) c).getBaseContext();
+        }
+        return null;
+    }
+
+    private void initBackdrop() {
+        bcopy = null;
+        if (Build.VERSION.SDK_INT < 26) {
+            bkNote = "фон из ленты недоступен (нужен Android 8)";
+            return;
+        }
+        Window w = windowOf();
+        if (w == null) {
+            bkNote = "фон из ленты недоступен (не нашлось окно панели)";
+            return;
+        }
+        bcopy = new BackdropCopy(w, h);
+        bkNote = "";
+    }
+
+    /** Снимок полосы ленты над панелью: часто, пока картинка меняется, и редко, пока стоит. */
+    private final Runnable bkRun = new Runnable() {
+        @Override
+        public void run() {
+            if (!attached) return;
+            long next = 600L;
+            try {
+                BackdropCopy bc = bcopy;
+                if (bc != null && GlassCfg.bk && GlassCfg.glass() && !CrashGuard.tripped && measured && useAgsl()
+                        && bar.isShown() && !bc.busy()) {
+                    next = bc.lastChanged() || ph.active() ? 120L : 360L;
+                    // со стеклянным фоном родные значки закрыты, поэтому снимок значков обновляется чаще
+                    // (анимации вроде обновления на «Главной» иначе дёргались бы раз в 0,8 с)
+                    if (bodyOn() && SystemClock.uptimeMillis() - lastCap > 240L) {
+                        capDirty = true;
+                        kick();
+                    }
+                    bar.getLocationInWindow(loc);
+                    View dv = windowDecor();
+                    int[] pl = dv == null ? null : GlassBackdrop.plan(loc[0], loc[1], capL, capT, capR, capB, pad,
+                            dv.getWidth(), dv.getHeight(), GlassCfg.bl * (double) dm);
+                    if (pl == null) {
+                        bkMisses++;
+                        bkNote = "полоса над панелью не помещается в окно";
+                        next = 600L;
+                    } else {
+                        bkNote = "";
+                        bc.request(pl, GlassCfg.bl * (double) dm, onBackdrop);
+                    }
+                } else if (bc != null && bc.busy()) {
+                    next = 60L;
+                }
+            } catch (Throwable t) {
+                FlagStore.log(t);
+                next = 1500L;
+            } finally {
+                if (attached) h.postDelayed(this, next);
+            }
+        }
+    };
+
+    private final Runnable onBackdrop = new Runnable() {
+        @Override
+        public void run() {
+            if (!attached) return;
+            boolean on = bodyOn();
+            if (on != bodyWas) {
+                bodyWas = on;
+                bg.invalidateSelf();
+            }
+            lens.invalidateSelf();
+        }
+    };
+
+    private View windowDecor() {
+        Window w = windowOf();
+        return w == null ? null : w.peekDecorView();
+    }
+
+    /** Рисуется ли стеклянный фон: включён, шейдер работает и снимок ленты уже есть. */
+    private boolean bodyOn() {
+        BackdropCopy bc = bcopy;
+        return GlassCfg.bk && GlassCfg.glass() && useAgsl() && bc != null && bc.ready() && !CrashGuard.tripped;
     }
 
     String shaderNote() {
@@ -739,6 +852,10 @@ final class GlassSession implements Choreographer.FrameCallback {
         GlassGeo.Frame f = GlassGeo.frame(ph, centers, tabW, capR - capL, capB - capT, pad, dm, dark);
         int a = GlassGeo.fillAlpha(GlassCfg.tr, GlassCfg.br);
         GlassGeo.backdrop(f, strip, dark ? a : a / 2, dark);
+        BackdropCopy bc = bcopy;
+        if (bodyOn() && bc != null && bc.bitmap() != null) {
+            GlassGeo.glassBody(f, true, bc.bitmap().getWidth(), bc.bitmap().getHeight(), dark, dark ? a : a / 2);
+        }
         double cx = (capR - capL) / 2.0;
         double lastOff = 0;
         for (double c : centers) lastOff = Math.max(lastOff, Math.abs(c - cx));
@@ -762,6 +879,8 @@ final class GlassSession implements Choreographer.FrameCallback {
                     o.draw(c);
                 }
                 if (!measured) return;
+                // со стеклянным фоном капсулу целиком рисует шейдер над значками, здесь только прежний фон панели
+                if (bodyOn()) return;
                 int a = GlassGeo.fillAlpha(GlassCfg.tr, GlassCfg.br);
                 if (!dark) a = a / 2;
                 fill.setStyle(Paint.Style.FILL);
@@ -880,7 +999,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                             stripPaint.setColor(0xFF000000 | strip);
                             c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, stripPaint);
                         }
-                        agsl.draw(c, tex, f);
+                        agsl.draw(c, tex, f.bk > 0.5 && bcopy != null ? bcopy.bitmap() : null, f);
                     }
                 } else {
                     plain(c, f);
@@ -938,6 +1057,12 @@ final class GlassSession implements Choreographer.FrameCallback {
                 ? "цвет фона панели неизвестен" : "панель не измерена") + ")");
         sb.append(", «+» ").append(Math.round(plusHalf * 2)).append(" px, значки ").append(Math.round(iconH))
                 .append(" px");
+        sb.append("\nфон из ленты: ").append(!GlassCfg.bk ? "выключен (сплошной)" : bodyOn() ? "работает"
+                : "ждёт снимка или недоступен");
+        sb.append(", размытие ").append(GlassCfg.bl).append(" dp");
+        if (bcopy != null) sb.append(", ").append(bcopy.status());
+        if (bkNote.length() > 0) sb.append(", ").append(bkNote);
+        if (bkMisses > 0) sb.append(", полоса не помещалась раз: ").append(bkMisses);
         return sb.toString();
     }
 }

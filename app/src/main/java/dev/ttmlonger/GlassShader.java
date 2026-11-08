@@ -10,6 +10,13 @@ package dev.ttmlonger;
  *
  * <p>Текстура T — это снимок значков и подписей панели (без фона), как canvas t2 в index.html.
  *
+ * <p>Стеклянный фон (0.1.0v): текстура G — уже размытый на процессоре снимок полосы ленты над панелью (см.
+ * {@link GlassBackdrop}), положенный под капсулу зеркально. Шейдер читает из него одну точку (билинейно), насыщает,
+ * приглушает или подсвечивает и подкрашивает (SB, BM, TN) — это saturate/brightness и цвет карточки у .nav в
+ * index.html. Под линзой берётся тот же снимок по преломлённым координатам. Пока BK = 0 (снимка нет или он
+ * выключен), всё рисуется как раньше: капсула закрыта сплошным цветом BG.
+ * Обращения T.eval и G.eval стоят только в main: вспомогательные функции чистые.
+ *
  * <p>Поверх index.html добавлено то, что видно на видео-образце настоящей панели: светлая матовая «таблетка» с
  * размытием под ней при движении (V), сжатие панели до значков (SC, CY, YC, LT, CX, EZ, LA, CA: значки уменьшаются
  * к центру, подписи гаснут, «+» остаётся на месте), увеличение под линзой (ZM) и раздвигание соседних значков (PS).
@@ -19,10 +26,11 @@ final class GlassShader {
     }
 
     /** Имена uniform-переменных (все они объявлены и используются в шейдере). */
-    static final String[] UNIFORMS = {"R", "N", "B", "L", "S", "P", "Q", "W", "Y", "K", "Z", "D", "I", "SAT", "BRT", "BG", "ZM", "PS", "GA", "V", "SC", "CY", "YC", "LT", "CX", "EZ", "LA", "CA"};
+    static final String[] UNIFORMS = {"R", "N", "B", "L", "S", "P", "Q", "W", "Y", "K", "Z", "D", "I", "SAT", "BRT", "BG", "ZM", "PS", "GA", "V", "SC", "CY", "YC", "LT", "CX", "EZ", "LA", "CA", "GS", "BK", "SB", "BM", "TN"};
 
     static final String SRC = ""
             + "uniform shader T;\n"
+            + "uniform shader G;\n"
             + "uniform float2 R;\n"
             + "uniform float2 N;\n"
             + "uniform float2 B;\n"
@@ -51,6 +59,11 @@ final class GlassShader {
             + "uniform float EZ;\n"
             + "uniform float LA;\n"
             + "uniform float CA;\n"
+            + "uniform float2 GS;\n"
+            + "uniform float BK;\n"
+            + "uniform float SB;\n"
+            + "uniform float2 BM;\n"
+            + "uniform float4 TN;\n"
             + "\n"
             + "float sd(float2 p, float2 h, float r) {\n"
             + "  float2 q = abs(p) - h + float2(r);\n"
@@ -75,6 +88,14 @@ final class GlassShader {
             + "  float sa = EZ + (ax - EZ) / SC;\n"
             + "  return float2(CX + (dx >= 0.0 ? sa : -sa), YC + (q.y - YC) / SC);\n"
             + "}\n"
+            // цвет стеклянного тела: насыщенность, приглушение или подсветка, подкраска
+            + "float3 gbody(float3 b) {\n"
+            + "  float l = dot(b, float3(0.299, 0.587, 0.114));\n"
+            + "  b = mix(float3(l), b, SB);\n"
+            + "  b = mix(b * BM.x, float3(1.0), BM.y);\n"
+            + "  b = mix(b, TN.rgb, TN.a);\n"
+            + "  return clamp(b, 0.0, 1.0);\n"
+            + "}\n"
             // подписи гаснут при сжатии
             + "float lf(float2 q) {\n"
             + "  if (SC >= 0.999 || abs(q.x - CX) <= EZ) return 1.0;\n"
@@ -89,6 +110,12 @@ final class GlassShader {
             + "  float2 Ld = normalize(float2(-0.55 + clamp((L.x - R.x * 0.5) / R.x, -0.5, 0.5) * 1.1, -0.83));\n"
             + "  float bd = sd(bp, N * 0.5, N.y * 0.5);\n"
             + "  float li = dot(gr(bp, N * 0.5, N.y * 0.5), Ld);\n"
+            + "  float inCap = 1.0 - smoothstep(-1.0, 0.5, bd);\n"
+            // стеклянное тело капсулы: полоса ленты над панелью, отражённая вниз, размытая и подкрашенная
+            + "  float3 gb0 = BG;\n"
+            + "  if (BK > 0.5 && inCap > 0.0) {\n"
+            + "    gb0 = gbody(float3(G.eval(float2(p.x * GS.x, (R.y - p.y) * GS.y)).rgb));\n"
+            + "  }\n"
             + "  float2 lp = p - L.xy;\n"
             + "  float r = L.w;\n"
             + "  float d = sd(lp, L.zw, r);\n"
@@ -117,7 +144,7 @@ final class GlassShader {
             + "    col = mix(col, (col * 2.0 + b1 + b2 + b3 + b4) / 6.0, pm);\n"
             + "  }\n"
             // значки перерисовываются там, где под ними «таблетка» или линза, а при касании и сжатии по всей капсуле
-            + "  float keep = max(max(pm, m), pa);\n"
+            + "  float keep = max(max(pm, m), max(pa, BK));\n"
             + "  col *= keep;\n"
             // кромка капсулы: блик сверху-слева и слабый снизу-справа
             + "  col += float4(1.0) * (smoothstep(-N.y * 0.07, 0.0, bd) * (0.5 * max(li, 0.0) + 0.16 * max(-li, 0.0)));\n"
@@ -129,8 +156,8 @@ final class GlassShader {
             + "    float pe = K * smoothstep(-1.8, -0.3, pd) * (1.0 - smoothstep(-0.3, 0.9, pd)) * (0.10 + 0.10 * D);\n"
             + "    col += float4(float3(D * pe), pe) * (1.0 - col.a);\n"
             + "  }\n"
-            // при касании родные значки закрыты подложкой капсулы: вместо них видны смещённые копии
-            + "  col += float4(BG, 1.0) * (pa * (1.0 - smoothstep(-1.0, 0.5, bd)) * (1.0 - col.a));\n"
+            // подложка капсулы: при касании и сжатии она закрывает родные значки, со стеклянным фоном — всегда
+            + "  col += float4(gb0, 1.0) * (max(pa, BK) * inCap * (1.0 - col.a));\n"
             + "  if (m > 0.0) {\n"
             + "    float2 n = gr(lp, L.zw, r);\n"
             + "    float bw = r * 0.26;\n"
@@ -180,9 +207,15 @@ final class GlassShader {
             + "    g.rgb += float3(hl) * mix(float3(0.9, 0.96, 1.1), float3(1.1, 0.95, 0.88),"
             + " smoothstep(-rw * 1.2, rw * 0.6, d));\n"
             + "    g.a = max(g.a, hl);\n"
-            // под линзой родные значки TikTok не должны просвечивать: подкладываем цвет подложки капсулы
-            + "    float inCap = 1.0 - smoothstep(-1.0, 0.5, bd);\n"
-            + "    g += float4(BG, 1.0) * (inCap * (1.0 - g.a));\n"
+            // под линзой родные значки TikTok не должны просвечивать: подкладываем подложку, а со стеклянным фоном
+            // линза показывает снимок ленты по преломлённым координатам
+            + "    float3 lb = BG;\n"
+            + "    if (BK > 0.5) {\n"
+            + "      lb = gbody(float3(G.eval(float2(sc.x * GS.x, (R.y - sc.y) * GS.y)).rgb));\n"
+            + "      float ll = dot(lb, float3(0.299, 0.587, 0.114));\n"
+            + "      lb = clamp(mix(float3(ll), lb, SAT) * (1.1 * BRT), 0.0, 1.0);\n"
+            + "    }\n"
+            + "    g += float4(lb, 1.0) * (inCap * (1.0 - g.a));\n"
             + "    col = mix(col, g, m);\n"
             + "  }\n"
             // тонкое тёмное кольцо по кромке линзы, как в iOS

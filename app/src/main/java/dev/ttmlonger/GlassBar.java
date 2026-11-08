@@ -130,6 +130,7 @@ final class GlassBar {
         }
         misses = 0;
         GlassSession ns = new GlassSession(f.bar, f.tabs, f.create, false);
+        ns.setWindow(a.getWindow());
         ns.attach();
         live = ns;
         liveAct = new WeakReference<>(a);

@@ -32,6 +32,7 @@ final class GlassBarScreen extends Screen {
     private LinearLayout glassBox;
     private TextView state;
     private LinearLayout compactRow;
+    private LinearLayout backRow;
     private LinearLayout presetRow;
     private LinearLayout physRow;
     private LinearLayout modeRow;
@@ -98,10 +99,10 @@ final class GlassBarScreen extends Screen {
                     GlassCfg.resetLook();
                     applyAll();
                 }));
-        body.addView(ui.note("Размытие того, что лежит за панелью, недоступно: TikTok рисует видео отдельной "
-                + "поверхностью, которую обычный вид снять не может. Непрозрачность, насыщенность и яркость "
-                + "действуют на капсулу и линзу. Шейдер работает на Android 13 и новее; на старых версиях "
-                + "рисуется упрощённая линза без преломления."));
+        body.addView(ui.note("Непрозрачность, насыщенность и яркость действуют на капсулу и линзу. Фон из ленты "
+                + "снимается через PixelCopy: на каких-то экранах TikTok он может не сняться (тогда капсула "
+                + "остаётся сплошной), причину покажет «Скопировать сведения». Шейдер работает на Android 13 и "
+                + "новее; на старых версиях рисуется упрощённая линза без преломления."));
 
         syncChoice();
         syncAll();
@@ -162,6 +163,16 @@ final class GlassBarScreen extends Screen {
                 GlassCfg.ZM_MAX, () -> GlassCfg.zm, v -> GlassCfg.setZm(v), v -> v + "%");
         slider(box, "Смещение значков", "Линза раздвигает соседние вкладки: Главная, Друзья и остальные",
                 GlassCfg.MV_MIN, GlassCfg.MV_MAX, () -> GlassCfg.mv, v -> GlassCfg.setMv(v), v -> v + "%");
+
+        box.addView(ui.header("Фон под капсулой"));
+        backRow = chipRow();
+        box.addView(backRow);
+        slider(box, "Размытие фона", "Как «Размытие» в index.html: 0 — чётко, 40 — сильно (dp)", GlassCfg.BL_MIN,
+                GlassCfg.BL_MAX, () -> GlassCfg.bl, v -> GlassCfg.setBl(v), v -> v + " dp");
+        box.addView(ui.note("«Из ленты»: мод снимает полоску окна над панелью, кладёт её под капсулу зеркально, "
+                + "размывает и подкрашивает, а линза преломляет её по краю. Так получается жидкое стекло, как в "
+                + "index.html. «Сплошной»: капсула просто серая, без снимка. Нужен Android 13 (шейдер) и Android 8 "
+                + "(снимок окна); если снять окно нельзя, панель остаётся сплошной."));
 
         box.addView(ui.header("Физика линзы"));
         physRow = chipRow();
@@ -333,6 +344,15 @@ final class GlassBarScreen extends Screen {
             applyAll();
             demo();
         }));
+        backRow.removeAllViews();
+        backRow.addView(chip("Из ленты", GlassCfg.bk, v -> {
+            GlassCfg.setBk(true);
+            applyAll();
+        }));
+        backRow.addView(chip("Сплошной", !GlassCfg.bk, v -> {
+            GlassCfg.setBk(false);
+            applyAll();
+        }));
         compactRow.removeAllViews();
         compactRow.addView(chip("Сжимать", GlassCfg.cp, v -> {
             GlassCfg.setCp(true);
@@ -440,6 +460,7 @@ final class GlassBarScreen extends Screen {
             ArrayList<View> tabs = new ArrayList<>();
             for (int i = 0; i < previewBar.getChildCount(); i++) tabs.add(previewBar.getChildAt(i));
             previewSession = new GlassSession(previewBar, tabs, 2, true);
+            previewSession.setWindow(dialog.getWindow());
             previewBar.session = previewSession;
             previewSession.attach();
         } else if (!glass) {
