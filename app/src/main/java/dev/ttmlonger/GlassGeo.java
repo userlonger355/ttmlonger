@@ -49,6 +49,96 @@ final class GlassGeo {
          * панель темнее, светлая светлее); цвет и сила подкраски.
          */
         double bk, gsx, gsy, sb, bm0 = 1, bm1, tnR, tnG, tnB, tnA;
+        /** 1 — капсулу целиком рисует шейдер и она непрозрачна (под ней ничего не должно просвечивать). */
+        double op;
+        /**
+         * Кнопка «+»: 0 — как нарисовал TikTok, 1 — перекрашена (тело светлое, знак тёмный), 2 — перекрашена (тело
+         * тёмное, знак светлый); цвет тела и знака; прямоугольник кнопки в снимке значков (left, top, right, bottom).
+         */
+        double pm, pbR, pbG, pbB, ppR, ppG, ppB, pz0, pz1, pz2, pz3;
+    }
+
+    /** Цвет HSV (оттенок 0–360°, насыщенность и яркость 0–100 %) → {r, g, b}, каждый 0…1. */
+    static double[] hsv(int h, int s, int v) {
+        double hh = ((h % 360) + 360) % 360 / 60.0;
+        double ss = clamp(s / 100.0, 0, 1);
+        double vv = clamp(v / 100.0, 0, 1);
+        int i = (int) Math.floor(hh);
+        double fr = hh - i;
+        double p = vv * (1 - ss);
+        double q = vv * (1 - ss * fr);
+        double t = vv * (1 - ss * (1 - fr));
+        switch (i % 6) {
+            case 0:
+                return new double[]{vv, t, p};
+            case 1:
+                return new double[]{q, vv, p};
+            case 2:
+                return new double[]{p, vv, t};
+            case 3:
+                return new double[]{p, q, vv};
+            case 4:
+                return new double[]{t, p, vv};
+            default:
+                return new double[]{vv, p, q};
+        }
+    }
+
+    /**
+     * Голоса за светлое/тёмное тело родной кнопки «+»: считаются непрозрачные (alpha больше 200) и не цветные точки снимка
+     * (цветные — боковые полоски TikTok). Возвращает {светлых, тёмных}; тело кнопки больше знака «+», поэтому оно
+     * перевешивает. Берётся каждая вторая точка по обеим осям.
+     */
+    static int[] plusBodyVotes(int[] px, int w, int h) {
+        int light = 0;
+        int dark = 0;
+        if (px == null || w < 1 || h < 1 || px.length < w * h) return new int[]{0, 0};
+        for (int y = 0; y < h; y += 2) {
+            for (int x = 0; x < w; x += 2) {
+                int c = px[y * w + x];
+                int a = c >>> 24;
+                if (a <= 200) continue;
+                int r = (c >> 16) & 255;
+                int g = (c >> 8) & 255;
+                int b = c & 255;
+                if (Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) > 70) continue;
+                if (0.299 * r + 0.587 * g + 0.114 * b >= 128) light++;
+                else dark++;
+            }
+        }
+        return new int[]{light, dark};
+    }
+
+    /**
+     * Цвета кнопки «+» по настройке: mode 0 — не трогать; 1 — чёрная с белым знаком; 2 — белая с чёрным знаком;
+     * 3 — свой цвет (HSV), знак чёрный на светлом и белый на тёмном. bodyLight — было ли тело родной кнопки светлым
+     * (тогда в снимке светлое — тело, тёмное — знак; иначе наоборот).
+     */
+    static void plusColors(Frame f, int mode, int h, int s, int v, boolean bodyLight) {
+        if (mode <= 0) {
+            f.pm = 0;
+            return;
+        }
+        f.pm = bodyLight ? 1 : 2;
+        double[] b;
+        double[] g;
+        if (mode == 1) {
+            b = new double[]{0, 0, 0};
+            g = new double[]{1, 1, 1};
+        } else if (mode == 2) {
+            b = new double[]{1, 1, 1};
+            g = new double[]{0, 0, 0};
+        } else {
+            b = hsv(h, s, v);
+            double lum = 0.299 * b[0] + 0.587 * b[1] + 0.114 * b[2];
+            g = lum > 0.6 ? new double[]{0.04, 0.04, 0.04} : new double[]{1, 1, 1};
+        }
+        f.pbR = b[0];
+        f.pbG = b[1];
+        f.pbB = b[2];
+        f.ppR = g[0];
+        f.ppG = g[1];
+        f.ppB = g[2];
     }
 
     /**
@@ -96,6 +186,16 @@ final class GlassGeo {
         f.bgR = ((strip >> 16) & 255) / 255.0 * (1 - a) + fill * a;
         f.bgG = ((strip >> 8) & 255) / 255.0 * (1 - a) + fill * a;
         f.bgB = (strip & 255) / 255.0 * (1 - a) + fill * a;
+    }
+
+    /** Сплошной цвет капсулы 0xRRGGBB: заливка с прозрачностью alpha поверх панели strip (то же, что BG шейдера). */
+    static int opaqueFill(int strip, int alpha, boolean dark) {
+        Frame f = new Frame();
+        backdrop(f, strip, alpha, dark);
+        int r = (int) Math.round(clamp(f.bgR, 0, 1) * 255);
+        int g = (int) Math.round(clamp(f.bgG, 0, 1) * 255);
+        int b = (int) Math.round(clamp(f.bgB, 0, 1) * 255);
+        return (r << 16) | (g << 8) | b;
     }
 
     /** Капсула внутри панели: {left, top, right, bottom, pad}; pad — запас холста сверху и снизу. */

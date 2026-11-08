@@ -37,6 +37,9 @@ final class GlassBarScreen extends Screen {
     private LinearLayout presetRow;
     private LinearLayout physRow;
     private LinearLayout modeRow;
+    private LinearLayout plusRow;
+    private LinearLayout plusColors;
+    private View plusSwatch;
     private final ArrayList<Runnable> syncs = new ArrayList<>();
 
     private PreviewBar previewBar;
@@ -66,7 +69,10 @@ final class GlassBarScreen extends Screen {
 
     @Override
     void build(LinearLayout body) {
-        dialog.setOnDismissListener(d -> stopPreview());
+        dialog.setOnDismissListener(d -> {
+            if (state != null) state.removeCallbacks(stateLoop);
+            stopPreview();
+        });
 
         body.addView(ui.header("Вид панели"));
         choiceOriginal = choiceRow("Оригинал", "Панель TikTok без изменений", GlassCfg.ORIGINAL);
@@ -108,7 +114,18 @@ final class GlassBarScreen extends Screen {
         syncChoice();
         syncAll();
         refreshState();
+        state.postDelayed(stateLoop, 1000L);
     }
+
+    /** Строка состояния живая: снимок ленты и шейдер появляются не сразу, а настройки открыты уже. */
+    private final Runnable stateLoop = new Runnable() {
+        @Override
+        public void run() {
+            if (state == null || !dialog.isShowing()) return;
+            refreshState();
+            state.postDelayed(this, 1000L);
+        }
+    };
 
     // ------------------------------------------------------------ выбор Оригинал / Liquid Glass
 
@@ -147,7 +164,7 @@ final class GlassBarScreen extends Screen {
         box.addView(ui.header("Стекло"));
         presetRow = chipRow();
         box.addView(presetRow);
-        slider(box, "Непрозрачность", "Насколько заметна капсула на подложке TikTok", GlassCfg.TR_MIN,
+        slider(box, "Непрозрачность", "Сила подкраски капсулы: сама капсула непрозрачная", GlassCfg.TR_MIN,
                 GlassCfg.TR_MAX, () -> GlassCfg.tr, v -> GlassCfg.setTr(v), v -> v + "%");
         slider(box, "Насыщенность", "Цвета значков внутри линзы", GlassCfg.SA_MIN, GlassCfg.SA_MAX,
                 () -> GlassCfg.sa, v -> GlassCfg.setSa(v), v -> v + "%");
@@ -207,6 +224,42 @@ final class GlassBarScreen extends Screen {
                 + "(«+» остаётся как есть), а когда лента остановилась, разворачивается. Нажатие на панель "
                 + "разворачивает её сразу. Работает на Android 13 и новее и только если мод смог определить цвет "
                 + "фона панели."));
+
+        box.addView(ui.header("Кнопка «+»"));
+        plusRow = chipRow();
+        box.addView(plusRow);
+        plusColors = new LinearLayout(act);
+        plusColors.setOrientation(LinearLayout.VERTICAL);
+        box.addView(plusColors, ui.matchWrap());
+        slider(plusColors, "Оттенок", null, GlassCfg.PLH_MIN, GlassCfg.PLH_MAX, () -> GlassCfg.plH, v -> {
+            GlassCfg.setPlH(v);
+            swatch();
+        }, v -> v + "°");
+        slider(plusColors, "Насыщенность", null, GlassCfg.PLS_MIN, GlassCfg.PLS_MAX, () -> GlassCfg.plS, v -> {
+            GlassCfg.setPlS(v);
+            swatch();
+        }, v -> v + "%");
+        slider(plusColors, "Яркость цвета", null, GlassCfg.PLV_MIN, GlassCfg.PLV_MAX, () -> GlassCfg.plV, v -> {
+            GlassCfg.setPlV(v);
+            swatch();
+        }, v -> v + "%");
+        plusSwatch = new View(act);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(28));
+        sp.setMargins(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
+        plusColors.addView(plusSwatch, sp);
+        box.addView(ui.note("Перекрашивает кнопку загрузки видео в нижней панели: тело кнопки и знак «+» (голубая и "
+                + "красная кромки TikTok становятся цветом тела). Работает, пока капсулу рисует шейдер; «Как в TikTok» "
+                + "оставляет родную кнопку. Если цвет не поменялся, пришлите «Скопировать сведения»: там видно, нашлась "
+                + "ли кнопка."));
+    }
+
+    /** Образец выбранного цвета кнопки «+». */
+    private void swatch() {
+        if (plusSwatch == null) return;
+        double[] c = GlassGeo.hsv(GlassCfg.plH, GlassCfg.plS, GlassCfg.plV);
+        int rgb = 0xFF000000 | ((int) Math.round(c[0] * 255) << 16) | ((int) Math.round(c[1] * 255) << 8)
+                | (int) Math.round(c[2] * 255);
+        plusSwatch.setBackground(ui.round(rgb, 8));
     }
 
     private LinearLayout chipRow() {
@@ -369,6 +422,22 @@ final class GlassBarScreen extends Screen {
             GlassCfg.setBk(false);
             applyAll();
         }));
+        plusRow.removeAllViews();
+        HorizontalScrollView plusScroll = new HorizontalScrollView(act);
+        plusScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout plusInner = new LinearLayout(act);
+        plusInner.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < GlassCfg.PLUS_NAMES.length; i++) {
+            final int idx = i;
+            plusInner.addView(chip(GlassCfg.PLUS_NAMES[i], GlassCfg.plus == i, v -> {
+                GlassCfg.setPlus(idx);
+                applyAll();
+            }));
+        }
+        plusScroll.addView(plusInner);
+        plusRow.addView(plusScroll);
+        plusColors.setVisibility(GlassCfg.plus == 3 ? View.VISIBLE : View.GONE);
+        swatch();
         compactRow.removeAllViews();
         compactRow.addView(chip("Сжимать", GlassCfg.cp, v -> {
             GlassCfg.setCp(true);
@@ -523,7 +592,10 @@ final class GlassBarScreen extends Screen {
 
     private void refreshState() {
         StringBuilder sb = new StringBuilder(GlassBar.status());
-        if (previewSession != null) sb.append("\nпредпросмотр: ").append(previewSession.shaderNote());
+        if (previewSession != null) {
+            sb.append("\nпредпросмотр: ").append(previewSession.shaderNote());
+            sb.append("\nпредпросмотр, ").append(previewSession.bkStatus());
+        }
         state.setText(sb.toString());
     }
 

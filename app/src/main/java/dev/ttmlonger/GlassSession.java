@@ -39,6 +39,8 @@ import java.util.ArrayList;
 final class GlassSession implements Choreographer.FrameCallback {
     private static final long POLL_MS = 500L;
     private static final long BURST_MS = 900L;
+    /** Как часто обновляется снимок значков, пока панель рисует шейдер. */
+    private static final long CAP_MS = 240L;
 
     final ViewGroup bar;
     final ArrayList<View> tabs;
@@ -64,6 +66,13 @@ final class GlassSession implements Choreographer.FrameCallback {
     private double lt;
     private double iconH;
     private double plusHalf;
+    /** Прямоугольник кнопки «+» в снимке значков (left, top, right, bottom) и светлое ли у родной кнопки тело. */
+    private final double[] plusBox = new double[4];
+    private boolean plusBoxOk;
+    private boolean plusLight = true;
+    private long lastPlusScan;
+    /** Холст не аппаратный: шейдер на нём не рисует, значит, капсулу целиком шейдеру отдавать нельзя. */
+    private boolean swCanvas;
 
     // снимок значков
     private Bitmap tex;
@@ -244,37 +253,41 @@ final class GlassSession implements Choreographer.FrameCallback {
         bkNote = "";
     }
 
-    /** Снимок полосы ленты над панелью: часто, пока картинка меняется, и редко, пока стоит. */
+    /**
+     * Раз в четверть секунды обновляет снимок значков (капсулу и значки рисует шейдер, родные значки закрыты) и
+     * снимает полосу ленты над панелью: часто, пока картинка меняется, и редко, пока стоит.
+     */
     private final Runnable bkRun = new Runnable() {
         @Override
         public void run() {
             if (!attached) return;
             long next = 600L;
             try {
-                BackdropCopy bc = bcopy;
-                if (bc != null && GlassCfg.bk && GlassCfg.glass() && !CrashGuard.tripped && measured && useAgsl()
-                        && bar.isShown() && !bc.busy()) {
-                    next = bc.lastChanged() || ph.active() ? 120L : 360L;
-                    // со стеклянным фоном родные значки закрыты, поэтому снимок значков обновляется чаще
-                    // (анимации вроде обновления на «Главной» иначе дёргались бы раз в 0,8 с)
-                    if (bodyOn() && SystemClock.uptimeMillis() - lastCap > 240L) {
+                boolean live = measured && bar.isShown() && shaderOnly();
+                if (live) {
+                    next = CAP_MS;
+                    if (SystemClock.uptimeMillis() - lastCap > CAP_MS) {
                         capDirty = true;
                         kick();
                     }
+                }
+                BackdropCopy bc = bcopy;
+                if (bc != null && GlassCfg.bk && GlassCfg.glass() && !CrashGuard.tripped && measured && useAgsl()
+                        && bar.isShown() && !bc.busy()) {
+                    next = Math.min(next, bc.lastChanged() || ph.active() ? 120L : 360L);
                     bar.getLocationInWindow(loc);
                     View dv = windowDecor();
                     int[] pl = dv == null ? null : GlassBackdrop.plan(loc[0], loc[1], capL, capT, capR, capB, pad,
                             dv.getWidth(), dv.getHeight(), GlassBackdrop.sigmaPx(GlassCfg.bl, dm));
                     if (pl == null) {
                         bkMisses++;
-                        bkNote = "полоса над панелью не помещается в окно";
-                        next = 600L;
+                        bkNote = dv == null ? "у окна нет корневого вида" : "полоса над панелью не помещается в окно";
                     } else {
                         bkNote = "";
                         bc.request(pl, GlassBackdrop.sigmaPx(GlassCfg.bl, dm), onBackdrop);
                     }
                 } else if (bc != null && bc.busy()) {
-                    next = 60L;
+                    next = Math.min(next, 60L);
                 }
             } catch (Throwable t) {
                 FlagStore.log(t);
@@ -309,8 +322,26 @@ final class GlassSession implements Choreographer.FrameCallback {
         return GlassCfg.bk && GlassCfg.glass() && useAgsl() && bc != null && bc.ready() && !CrashGuard.tripped;
     }
 
+    /**
+     * Капсулу целиком рисует шейдер: стекло включено, шейдер работает, снимок значков есть, холст аппаратный. Тогда
+     * Background ничего поверх прежнего фона не рисует, а шейдер закрывает капсулу непрозрачным телом.
+     */
+    private boolean shaderOnly() {
+        return GlassCfg.glass() && useAgsl() && !swCanvas && !CrashGuard.tripped;
+    }
+
     String shaderNote() {
         return shaderNote;
+    }
+
+    /** Одна строка для экрана настроек: работает ли фон из ленты и что говорит снимок. */
+    String bkStatus() {
+        if (!GlassCfg.bk) return "фон из ленты выключен: капсула сплошная";
+        String note = bkNote.length() > 0 ? ", " + bkNote : "";
+        if (!shaderOnly()) return "фон из ленты: шейдер не рисует (" + (agsl == null ? "нет шейдера" : !texOk
+                ? "нет снимка значков" : swCanvas ? "холст не аппаратный" : "выключено") + ")";
+        if (bcopy == null) return "фон из ленты: " + (bkNote.length() > 0 ? bkNote : "снимок недоступен");
+        return "фон из ленты: " + (bodyOn() ? "работает" : "ждёт снимка") + " (" + bcopy.status() + note + ")";
     }
 
     boolean shaderOn() {
@@ -688,6 +719,43 @@ final class GlassSession implements Choreographer.FrameCallback {
         }
         texOk = hasContent(tex);
         plusHalf = texOk && GlassCfg.cp ? scanPlus() : 0;
+        if (texOk && GlassCfg.plus != 0) scanPlusBox(now);
+    }
+
+    /**
+     * Где в снимке кнопка «+» (прямоугольник её вкладки) и светлое ли у неё тело: по непрозрачным и не цветным точкам
+     * (цветные — боковые полоски TikTok), которых больше светлых или тёмных. Тело больше знака, поэтому оно перевешивает.
+     */
+    private void scanPlusBox(long now) {
+        if (create < 0 || create >= tabs.size() || tex == null) {
+            plusBoxOk = false;
+            return;
+        }
+        View t = tabs.get(create);
+        int w = tex.getWidth();
+        int hh = tex.getHeight();
+        int oy = capT - pad;
+        double x0 = Math.max(0, t.getLeft() + t.getTranslationX() - capL);
+        double x1 = Math.min(w, t.getRight() + t.getTranslationX() - capL);
+        double y0 = Math.max(0, t.getTop() + t.getTranslationY() - oy);
+        double y1 = Math.min(hh, t.getBottom() + t.getTranslationY() - oy);
+        if (x1 - x0 < 4 || y1 - y0 < 4) {
+            plusBoxOk = false;
+            return;
+        }
+        plusBox[0] = x0;
+        plusBox[1] = y0;
+        plusBox[2] = x1;
+        plusBox[3] = y1;
+        plusBoxOk = true;
+        if (now - lastPlusScan < 1000L && lastPlusScan != 0) return;
+        lastPlusScan = now;
+        int bw = (int) (x1 - x0);
+        int bh = (int) (y1 - y0);
+        int[] px = new int[bw * bh];
+        tex.getPixels(px, 0, bw, (int) x0, (int) y0, bw, bh);
+        int[] lh = GlassGeo.plusBodyVotes(px, bw, bh);
+        if (lh[0] + lh[1] >= 8) plusLight = lh[0] >= lh[1];
     }
 
     /**
@@ -1022,6 +1090,14 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (bodyOn() && bc != null && bc.bitmap() != null) {
             GlassGeo.glassBody(f, true, bc.bitmap().getWidth(), bc.bitmap().getHeight(), dark, dark ? a : a / 2);
         }
+        f.op = shaderOnly() ? 1 : 0;
+        if (f.op > 0.5 && plusBoxOk && GlassCfg.plus != 0) {
+            GlassGeo.plusColors(f, GlassCfg.plus, GlassCfg.plH, GlassCfg.plS, GlassCfg.plV, plusLight);
+            f.pz0 = plusBox[0];
+            f.pz1 = plusBox[1];
+            f.pz2 = plusBox[2];
+            f.pz3 = plusBox[3];
+        }
         double cx = (capR - capL) / 2.0;
         double lastOff = 0;
         for (double c : centers) lastOff = Math.max(lastOff, Math.abs(c - cx));
@@ -1045,12 +1121,15 @@ final class GlassSession implements Choreographer.FrameCallback {
                     o.draw(c);
                 }
                 if (!measured) return;
-                // со стеклянным фоном капсулу целиком рисует шейдер над значками, здесь только прежний фон панели
-                if (bodyOn()) return;
+                // капсулу целиком рисует шейдер над значками (непрозрачную: ни лента, ни родные значки не просвечивают),
+                // здесь остаётся только прежний фон панели
+                if (shaderOnly()) return;
                 int a = GlassGeo.fillAlpha(GlassCfg.tr, GlassCfg.br);
                 if (!dark) a = a / 2;
                 fill.setStyle(Paint.Style.FILL);
-                fill.setColor((a << 24) | (dark ? 0xFFFFFF : 0x000000));
+                // пока шейдера нет, без чёрной заливки капсула всё равно сплошная, иначе под ней просвечивает лента
+                fill.setColor(tpOn() ? 0xFF000000 | GlassGeo.opaqueFill(strip, a, dark)
+                        : (a << 24) | (dark ? 0xFFFFFF : 0x000000));
                 float r = (capB - capT) / 2f;
                 rect.set(capL, capT, capR, capB);
                 c.drawRoundRect(rect, r, r, fill);
@@ -1158,8 +1237,9 @@ final class GlassSession implements Choreographer.FrameCallback {
             try {
                 c.translate(b.left, b.top);
                 GlassGeo.Frame f = frame();
+                swCanvas = !c.isHardwareAccelerated();
                 if (useAgsl()) {
-                    if (c.isHardwareAccelerated()) {
+                    if (!swCanvas) {
                         if (f.ca > 0.001 && !tpOn()) {
                             // при сжатии прежние значки TikTok закрываются цветом панели, а панель рисует шейдер целиком
                             // (без чёрной заливки значки прячутся прозрачностью вкладок, см. hideTabs)
@@ -1224,11 +1304,18 @@ final class GlassSession implements Choreographer.FrameCallback {
                 ? "цвет фона панели неизвестен" : "панель не измерена") + ")");
         sb.append(", «+» ").append(Math.round(plusHalf * 2)).append(" px, значки ").append(Math.round(iconH))
                 .append(" px");
-        sb.append("\nфон из ленты: ").append(!GlassCfg.bk ? "выключен (сплошной)" : bodyOn() ? "работает"
-                : "ждёт снимка или недоступен");
+        sb.append("\nкапсула: ").append(shaderOnly() ? "рисует шейдер, непрозрачная" : "рисуется без шейдера ("
+                + (agsl == null ? "шейдера нет" : !texOk ? "нет снимка значков" : swCanvas ? "холст не аппаратный"
+                : "стекло выключено") + ")");
+        sb.append("\nкнопка «+»: ").append(GlassCfg.plus < GlassCfg.PLUS_NAMES.length ? GlassCfg.PLUS_NAMES[GlassCfg.plus]
+                : "?");
+        if (GlassCfg.plus != 0) {
+            sb.append(plusBoxOk ? String.format(", область %d×%d px, тело родной кнопки %s",
+                    Math.round(plusBox[2] - plusBox[0]), Math.round(plusBox[3] - plusBox[1]),
+                    plusLight ? "светлое" : "тёмное") : ", область не найдена");
+        }
+        sb.append("\n").append(bkStatus());
         sb.append(", размытие ").append(GlassCfg.bl).append(" dp");
-        if (bcopy != null) sb.append(", ").append(bcopy.status());
-        if (bkNote.length() > 0) sb.append(", ").append(bkNote);
         if (bkMisses > 0) sb.append(", полоса не помещалась раз: ").append(bkMisses);
         sb.append("\nзаливка панели: ").append(tpOn() ? "убрана (у видов-обёрток: " + clearedViews.size() + ")" : "оставлена");
         sb.append(", цепочка фонов:");

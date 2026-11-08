@@ -44,6 +44,10 @@ final class GlassCfg {
     static volatile boolean tp = true;
     /** Сжимать панель до значков, пока листают ленту (как в видео-образце). */
     static volatile boolean cp = true;
+    /** Кнопка «+»: 0 как в TikTok, 1 чёрная, 2 белая, 3 свой цвет (оттенок, насыщенность, яркость ниже). */
+    static volatile int plus = 0;
+    /** Свой цвет кнопки «+»: оттенок 0–360°, насыщенность и яркость 0–100 %. */
+    static volatile int plH = 200, plS = 90, plV = 90;
     /** Жёсткость пружины. */
     static volatile int pk = 900;
     /** Затухание пружины. */
@@ -70,6 +74,11 @@ final class GlassCfg {
     static final int PD_MIN = 6, PD_MAX = 90;
     static final int JL_MIN = 0, JL_MAX = 20;
     static final int PZ_MIN = 0, PZ_MAX = 20;
+    static final int PLUS_MAX = 3;
+    static final int PLH_MIN = 0, PLH_MAX = 360;
+    static final int PLS_MIN = 0, PLS_MAX = 100;
+    static final int PLV_MIN = 0, PLV_MAX = 100;
+    static final String[] PLUS_NAMES = {"Как в TikTok", "Чёрная", "Белая", "Свой цвет"};
 
     /** «Прозрачное» и «Тонированное»: {непрозрачность, насыщенность, яркость}. */
     static final int[][] GLASS_PRESETS = {{18, 200, 112}, {55, 180, 106}};
@@ -125,6 +134,10 @@ final class GlassCfg {
         bk = o.optBoolean("bk", true);
         tp = o.optBoolean("tp", true);
         cp = o.optBoolean("cp", true);
+        plus = clamp(o.optInt("plus", 0), 0, PLUS_MAX);
+        plH = clamp(o.optInt("plH", 200), PLH_MIN, PLH_MAX);
+        plS = clamp(o.optInt("plS", 90), PLS_MIN, PLS_MAX);
+        plV = clamp(o.optInt("plV", 90), PLV_MIN, PLV_MAX);
     }
 
     static JSONObject toJson() {
@@ -148,6 +161,10 @@ final class GlassCfg {
             o.put("bk", bk);
             o.put("tp", tp);
             o.put("cp", cp);
+            o.put("plus", plus);
+            o.put("plH", plH);
+            o.put("plS", plS);
+            o.put("plV", plV);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -266,6 +283,27 @@ final class GlassCfg {
         saved();
     }
 
+    static void setPlus(int v) {
+        plus = clamp(v, 0, PLUS_MAX);
+        saved();
+    }
+
+    /** Цвет кнопки «+» двигают ползунками: файл пишется, когда ползунок отпустили (см. {@link #save}). */
+    static void setPlH(int v) {
+        plH = clamp(v, PLH_MIN, PLH_MAX);
+        touch();
+    }
+
+    static void setPlS(int v) {
+        plS = clamp(v, PLS_MIN, PLS_MAX);
+        touch();
+    }
+
+    static void setPlV(int v) {
+        plV = clamp(v, PLV_MIN, PLV_MAX);
+        touch();
+    }
+
     /** Какой пресет стекла сейчас выбран: 0 «Прозрачное», 1 «Тонированное», -1 — свои значения. */
     static int glassPreset() {
         for (int i = 0; i < GLASS_PRESETS.length; i++) {
@@ -322,6 +360,10 @@ final class GlassCfg {
         bk = true;
         tp = true;
         cp = true;
+        plus = 0;
+        plH = 200;
+        plS = 90;
+        plV = 90;
         saved();
     }
 
