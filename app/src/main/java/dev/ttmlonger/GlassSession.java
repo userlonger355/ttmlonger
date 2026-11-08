@@ -81,6 +81,10 @@ final class GlassSession implements Choreographer.FrameCallback {
     private int downTab = -1;
     /** Идёт наше собственное нажатие на вкладку: оно не должно попадать в onTouch. */
     private boolean synthetic;
+    /** Устройство настоящего касания: синтетическое нажатие подписывается им же, как у пальца. */
+    private int lastDevice;
+    /** Что вышло с переходом на вкладку при протягивании пальца (для сведений). */
+    private String dragNote = "";
     /** Палец лёг вне панели: ждём, поведёт ли он по вертикали (прокрутка ленты). */
     private boolean sTrack;
     private boolean scrolling;
@@ -252,14 +256,14 @@ final class GlassSession implements Choreographer.FrameCallback {
                     bar.getLocationInWindow(loc);
                     View dv = windowDecor();
                     int[] pl = dv == null ? null : GlassBackdrop.plan(loc[0], loc[1], capL, capT, capR, capB, pad,
-                            dv.getWidth(), dv.getHeight(), GlassCfg.bl * (double) dm);
+                            dv.getWidth(), dv.getHeight(), GlassBackdrop.sigmaPx(GlassCfg.bl, dm));
                     if (pl == null) {
                         bkMisses++;
                         bkNote = "полоса над панелью не помещается в окно";
                         next = 600L;
                     } else {
                         bkNote = "";
-                        bc.request(pl, GlassCfg.bl * (double) dm, onBackdrop);
+                        bc.request(pl, GlassBackdrop.sigmaPx(GlassCfg.bl, dm), onBackdrop);
                     }
                 } else if (bc != null && bc.busy()) {
                     next = 60L;
@@ -669,6 +673,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (!attached || !measured || ev == null || synthetic) return;
         int a = ev.getActionMasked();
         if (a == MotionEvent.ACTION_DOWN) {
+            lastDevice = ev.getDeviceId();
             track = false;
             downTab = -1;
             sTrack = false;
@@ -737,7 +742,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                     int target = eligible[n];
                     if (target != downTab) {
                         chooseLater(target);
-                        delay = 1100L;
+                        delay = 1900L;
                     }
                 }
             } else {
@@ -757,41 +762,125 @@ final class GlassSession implements Choreographer.FrameCallback {
     }
 
     /**
-     * Через мгновение нажимает на вкладку под линзой, если TikTok сам её не выбрал. Задержка нужна, чтобы настоящее
-     * касание успело дойти до TikTok: если он выбрал вкладку сам, второе нажатие не делается (по нажатию на
-     * «Главную» при выбранной «Главной» TikTok обновляет ленту).
+     * Через мгновение переводит TikTok на вкладку под линзой, если он сам её не выбрал. Задержка нужна, чтобы
+     * настоящее касание успело дойти до TikTok: если он выбрал вкладку сам, второе нажатие не делается (по нажатию на
+     * «Главную» при выбранной «Главной» TikTok обновляет ленту). Порядок: нажатие пальцем в центр вкладки с настоящими
+     * экранными координатами, проверка через полсекунды, и только если вкладка не выбралась (или TikTok вообще не
+     * принял касание), обычный клик по вкладке: сама вкладка, её дочерние виды, потом родители внутри панели.
      */
     private void chooseLater(final int target) {
         h.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (!attached || target < 0 || target >= tabs.size()) return;
-                if (readSelected() == target) return;
-                tapTab(target);
+                if (readSelected() == target) {
+                    dragNote = "TikTok сам выбрал вкладку " + (target + 1);
+                    return;
+                }
+                final boolean taken = tapTab(target);
+                h.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!attached) return;
+                        int sel = readSelected();
+                        if (sel == target) {
+                            dragNote = "нажатие на вкладку " + (target + 1) + " сработало";
+                            return;
+                        }
+                        if (sel < 0 && taken) {
+                            dragNote = "нажатие на вкладку " + (target + 1) + " принято, выбранную прочитать нельзя";
+                            return;
+                        }
+                        boolean ok = clickDeep(tabs.get(target), bar, 0);
+                        dragNote = "нажатие " + (taken ? "принято, но вкладка не выбралась" : "не принято")
+                                + ", обычный клик по вкладке " + (target + 1) + ": " + (ok ? "выполнен" : "нет обработчика");
+                        kick();
+                    }
+                }, 520L);
             }
         }, 140L);
     }
 
-    /** Нажатие пальцем в центр вкладки: те же события, что у настоящего касания, поэтому работает и с обработчиками на панели. */
-    private void tapTab(int index) {
-        View t = tabs.get(index);
-        if (t.getWidth() <= 0 || bar.getWidth() <= 0) return;
-        float x = (t.getLeft() + t.getRight()) / 2f;
-        float y = (t.getTop() + t.getBottom()) / 2f;
-        long now = SystemClock.uptimeMillis();
-        MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
-        MotionEvent up = MotionEvent.obtain(now, now + 50L, MotionEvent.ACTION_UP, x, y, 0);
+    /** Клик по виду: сам вид, потом дочерние и (на верхнем уровне) родители до панели. true, если обработчик сработал. */
+    private static boolean clickDeep(View v, View stop, int depth) {
+        if (v == null || depth > 4) return false;
+        if (v.hasOnClickListeners() && v.performClick()) return true;
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                if (clickDeep(g.getChildAt(i), stop, depth + 1)) return true;
+            }
+        }
+        if (depth == 0) {
+            for (android.view.ViewParent p = v.getParent(); p instanceof View && p != stop; p = p.getParent()) {
+                View pv = (View) p;
+                if (pv.hasOnClickListeners() && pv.performClick()) return true;
+            }
+        }
+        return false;
+    }
+
+    private MotionEvent touch(long down, long when, int action, float rawX, float rawY, int ox, int oy) {
+        MotionEvent.PointerProperties[] pp = {new MotionEvent.PointerProperties()};
+        pp[0].id = 0;
+        pp[0].toolType = MotionEvent.TOOL_TYPE_FINGER;
+        MotionEvent.PointerCoords[] pc = {new MotionEvent.PointerCoords()};
+        pc[0].x = rawX;
+        pc[0].y = rawY;
+        pc[0].pressure = 1f;
+        pc[0].size = 1f;
+        MotionEvent e = MotionEvent.obtain(down, when, action, 1, pp, pc, 0, 0, 1f, 1f, lastDevice, 0,
+                android.view.InputDevice.SOURCE_TOUCHSCREEN, 0);
+        // как у настоящего касания: экранные координаты в getRawX/getRawY, а локальные уже в системе панели
+        e.offsetLocation(-ox, -oy);
+        return e;
+    }
+
+    /**
+     * Нажатие пальцем в центр вкладки: те же события, что у настоящего касания (палец, сенсорный экран, экранные
+     * координаты), поэтому работает и с обработчиками на панели, и с вкладками, которые сверяют getRawX. DOWN уходит
+     * сразу, UP через 60 мс. Возвращает, принял ли TikTok нажатие.
+     */
+    private boolean tapTab(int index) {
+        final View t = tabs.get(index);
+        if (t.getWidth() <= 0 || bar.getWidth() <= 0) return false;
+        int[] bl = new int[2];
+        int[] tl = new int[2];
+        bar.getLocationOnScreen(bl);
+        t.getLocationOnScreen(tl);
+        final float sx = tl[0] + t.getWidth() / 2f;
+        final float sy = tl[1] + t.getHeight() / 2f;
+        final int ox = bl[0];
+        final int oy = bl[1];
+        final long t0 = SystemClock.uptimeMillis();
+        boolean taken = false;
+        MotionEvent down = touch(t0, t0, MotionEvent.ACTION_DOWN, sx, sy, ox, oy);
         synthetic = true;
         try {
-            bar.dispatchTouchEvent(down);
-            bar.dispatchTouchEvent(up);
+            taken = bar.dispatchTouchEvent(down);
         } catch (Throwable th) {
             FlagStore.log(th);
         } finally {
             synthetic = false;
             down.recycle();
-            up.recycle();
         }
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                long now = SystemClock.uptimeMillis();
+                MotionEvent up = touch(t0, now, MotionEvent.ACTION_UP, sx, sy, ox, oy);
+                synthetic = true;
+                try {
+                    bar.dispatchTouchEvent(up);
+                } catch (Throwable th) {
+                    FlagStore.log(th);
+                } finally {
+                    synthetic = false;
+                    up.recycle();
+                }
+            }
+        }, 60L);
+        return taken;
     }
 
     private void syncBack() {
@@ -1063,6 +1152,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (bcopy != null) sb.append(", ").append(bcopy.status());
         if (bkNote.length() > 0) sb.append(", ").append(bkNote);
         if (bkMisses > 0) sb.append(", полоса не помещалась раз: ").append(bkMisses);
+        if (dragNote.length() > 0) sb.append("\nпереход пальцем на другую вкладку: ").append(dragNote);
         return sb.toString();
     }
 }
