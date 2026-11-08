@@ -33,6 +33,7 @@ final class GlassBarScreen extends Screen {
     private TextView state;
     private LinearLayout compactRow;
     private LinearLayout backRow;
+    private LinearLayout fillRow;
     private LinearLayout presetRow;
     private LinearLayout physRow;
     private LinearLayout modeRow;
@@ -165,10 +166,16 @@ final class GlassBarScreen extends Screen {
                 GlassCfg.MV_MIN, GlassCfg.MV_MAX, () -> GlassCfg.mv, v -> GlassCfg.setMv(v), v -> v + "%");
 
         box.addView(ui.header("Фон под капсулой"));
+        fillRow = chipRow();
+        box.addView(fillRow);
         backRow = chipRow();
         box.addView(backRow);
         slider(box, "Размытие фона", "Как «Размытие» в index.html: 0 — слабое (минимум 2 dp), 40 — сильное (dp)", GlassCfg.BL_MIN,
                 GlassCfg.BL_MAX, () -> GlassCfg.bl, v -> GlassCfg.setBl(v), v -> v + " dp");
+        box.addView(ui.note("«Без чёрной заливки»: мод не рисует сплошной фон панели и снимает такой фон у её "
+                + "обёртки (родителя не выше двух высот панели), капсула лежит прямо на ленте. Если снизу всё "
+                + "равно чёрное, чернит что-то другое: «Скопировать сведения» покажет цепочку фонов. «Как в "
+                + "TikTok» возвращает всё как было."));
         box.addView(ui.note("«Из ленты»: мод снимает полоску окна над панелью и продолжает её свет под капсулу "
                 + "(под панелью TikTok ничего нет), размывает и подкрашивает, а линза преломляет его. Так получается "
                 + "жидкое стекло, как в index.html. «Сплошной»: капсула просто серая, без снимка. Нужен Android 13 (шейдер) и Android 8 "
@@ -343,6 +350,15 @@ final class GlassBarScreen extends Screen {
             GlassCfg.setIos(false);
             applyAll();
             demo();
+        }));
+        fillRow.removeAllViews();
+        fillRow.addView(chip("Без чёрной заливки", GlassCfg.tp, v -> {
+            GlassCfg.setTp(true);
+            applyAll();
+        }));
+        fillRow.addView(chip("Как в TikTok", !GlassCfg.tp, v -> {
+            GlassCfg.setTp(false);
+            applyAll();
         }));
         backRow.removeAllViews();
         backRow.addView(chip("Из ленты", GlassCfg.bk, v -> {

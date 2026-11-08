@@ -107,6 +107,11 @@ final class GlassSession implements Choreographer.FrameCallback {
     private final int[] loc = new int[2];
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stripPaint = new Paint();
+    /** Сплошные фоны обёрток панели, которые мы сняли (и вернём), и прежняя прозрачность вкладок на время сжатия. */
+    private final ArrayList<View> clearedViews = new ArrayList<>();
+    private final ArrayList<Drawable> clearedBgs = new ArrayList<>();
+    private float[] tabAlpha;
+    private boolean tabsHidden;
     private final Runnable expandRun = new Runnable() {
         @Override
         public void run() {
@@ -139,6 +144,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         bar.setBackground(bg);
         // View.setBackground снимает обратный вызов у прежнего фона, поэтому свой ставим уже после
         if (cur != null) cur.setCallback(bg);
+        applyFill();
         bar.getOverlay().add(lens);
         bar.addOnLayoutChangeListener(layout);
         ph.reset(Math.max(0, eligible.length - 1), Math.max(0, posOf(readSelected())));
@@ -175,6 +181,8 @@ final class GlassSession implements Choreographer.FrameCallback {
         }
         if (bar.getBackground() == bg) bar.setBackground(bg.orig);
         if (bg.orig != null && bg.orig.getCallback() == bg) bg.orig.setCallback(null);
+        restoreFill();
+        hideTabs(false);
         if (agsl != null) agsl.release();
         if (tex != null) {
             tex.recycle();
@@ -433,11 +441,78 @@ final class GlassSession implements Choreographer.FrameCallback {
             }
             View v = i == 0 ? bar : parentAt(i);
             if (v == null) break;
-            o = v.getBackground();
+            o = bgOf(v);
         }
         strip = Ui.DARK ? 0x000000 : 0xFFFFFF;
         stripKnown = false;
         return Ui.DARK;
+    }
+
+    /** Убирается ли сплошная заливка панели (и её обёртки): включено в настройках и работает стекло. */
+    private boolean tpOn() {
+        return GlassCfg.tp && (GlassCfg.glass() || preview) && !CrashGuard.tripped;
+    }
+
+    /** Фон вида с учётом снятых нами: прежний цвет нужен, чтобы знать, тёмная ли панель. */
+    private Drawable bgOf(View v) {
+        int i = clearedViews.indexOf(v);
+        return i >= 0 ? clearedBgs.get(i) : v.getBackground();
+    }
+
+    /**
+     * Снимает сплошной фон с обёрток панели (родители не выше двух высот панели); фон самой панели не рисуется в
+     * {@link Background}. Корень окна и большие контейнеры не трогаются. В предпросмотре родителей не касаемся.
+     */
+    private void applyFill() {
+        if (!tpOn()) {
+            restoreFill();
+            hideTabs(false);
+            return;
+        }
+        if (preview) return;
+        View v = bar;
+        for (int i = 0; i < 6 && v != null; i++) {
+            Object par = v.getParent();
+            if (!(par instanceof View)) break;
+            if (v != bar && clearedViews.indexOf(v) < 0 && GlassGeo.isWrapper(v.getHeight(), v.getWidth(), bar.getHeight(),
+                    bar.getWidth())) {
+                Drawable d = v.getBackground();
+                if (d instanceof ColorDrawable && Color.alpha(((ColorDrawable) d).getColor()) > 0) {
+                    clearedViews.add(v);
+                    clearedBgs.add(d);
+                    v.setBackground(null);
+                }
+            }
+            v = (View) par;
+        }
+    }
+
+    private void restoreFill() {
+        for (int i = 0; i < clearedViews.size(); i++) {
+            View v = clearedViews.get(i);
+            if (v.getBackground() == null) v.setBackground(clearedBgs.get(i));
+        }
+        clearedViews.clear();
+        clearedBgs.clear();
+    }
+
+    /** Прячет родные вкладки прозрачностью (касания проходят), пока панель сжата: значки рисует шейдер. */
+    private void hideTabs(boolean hide) {
+        if (hide == tabsHidden) return;
+        if (hide) {
+            tabAlpha = new float[tabs.size()];
+            for (int i = 0; i < tabAlpha.length; i++) {
+                tabAlpha[i] = tabs.get(i).getAlpha();
+                tabs.get(i).setAlpha(0f);
+            }
+            tabsHidden = true;
+        } else {
+            if (tabAlpha != null) {
+                for (int i = 0; i < tabAlpha.length && i < tabs.size(); i++) tabs.get(i).setAlpha(tabAlpha[i]);
+            }
+            tabAlpha = null;
+            tabsHidden = false;
+        }
     }
 
     private View parentAt(int up) {
@@ -520,6 +595,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                     ph.cmT = 0;
                     kick();
                 }
+                applyFill();
                 if (seenRev != GlassCfg.rev) {
                     seenRev = GlassCfg.rev;
                     capDirty = true;
@@ -567,6 +643,7 @@ final class GlassSession implements Choreographer.FrameCallback {
             long now = SystemClock.uptimeMillis();
             if (!measured) measure();
             if (measured && (capDirty || (now < burstUntil && now - lastCap > 110L))) capture(now);
+            hideTabs(tpOn() && useAgsl() && (ph.cmp > 0.002 || ph.cmT > 0.5));
             lens.invalidateSelf();
             if (ph.active() || now < burstUntil || (capDirty && measured)) {
                 framePosted = true;
@@ -905,7 +982,7 @@ final class GlassSession implements Choreographer.FrameCallback {
 
     /** Можно ли сжимать панель: включено в настройках, шейдер работает и цвет панели под значками известен. */
     private boolean compactOk() {
-        return GlassCfg.cp && GlassCfg.glass() && measured && useAgsl() && stripKnown && !CrashGuard.tripped;
+        return GlassCfg.cp && GlassCfg.glass() && measured && useAgsl() && (stripKnown || tpOn()) && !CrashGuard.tripped;
     }
 
     /** Сжимает панель до значков (on) или разворачивает обратно; сжатая панель сама развернётся через 4 с. */
@@ -963,7 +1040,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         public void draw(Canvas c) {
             try {
                 Drawable o = orig;
-                if (o != null) {
+                if (o != null && !tpOn()) {
                     o.setBounds(getBounds());
                     o.draw(c);
                 }
@@ -1083,8 +1160,9 @@ final class GlassSession implements Choreographer.FrameCallback {
                 GlassGeo.Frame f = frame();
                 if (useAgsl()) {
                     if (c.isHardwareAccelerated()) {
-                        if (f.ca > 0.001) {
+                        if (f.ca > 0.001 && !tpOn()) {
                             // при сжатии прежние значки TikTok закрываются цветом панели, а панель рисует шейдер целиком
+                            // (без чёрной заливки значки прячутся прозрачностью вкладок, см. hideTabs)
                             stripPaint.setColor(0xFF000000 | strip);
                             c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, stripPaint);
                         }
@@ -1152,6 +1230,18 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (bcopy != null) sb.append(", ").append(bcopy.status());
         if (bkNote.length() > 0) sb.append(", ").append(bkNote);
         if (bkMisses > 0) sb.append(", полоса не помещалась раз: ").append(bkMisses);
+        sb.append("\nзаливка панели: ").append(tpOn() ? "убрана (у видов-обёрток: " + clearedViews.size() + ")" : "оставлена");
+        sb.append(", цепочка фонов:");
+        View cv = bar;
+        for (int i = 0; i < 6 && cv != null; i++) {
+            Drawable d = bgOf(cv);
+            String name = d == null ? "нет" : d instanceof ColorDrawable
+                    ? String.format("#%08X", ((ColorDrawable) d).getColor()) : d.getClass().getSimpleName();
+            sb.append("\n  ").append(cv.getClass().getSimpleName()).append(' ').append(cv.getWidth()).append('×')
+                    .append(cv.getHeight()).append(": ").append(name).append(clearedViews.contains(cv) ? " (снят)" : "");
+            Object par = cv.getParent();
+            cv = par instanceof View ? (View) par : null;
+        }
         if (dragNote.length() > 0) sb.append("\nпереход пальцем на другую вкладку: ").append(dragNote);
         return sb.toString();
     }

@@ -40,6 +40,8 @@ final class GlassCfg {
     static volatile int bl = 16;
     /** Фон капсулы берётся из ленты над панелью (true) или остаётся сплошным цветом (false). */
     static volatile boolean bk = true;
+    /** Убирать сплошную (чёрную) заливку панели TikTok, чтобы капсула лежала прямо на ленте. */
+    static volatile boolean tp = true;
     /** Сжимать панель до значков, пока листают ленту (как в видео-образце). */
     static volatile boolean cp = true;
     /** Жёсткость пружины. */
@@ -121,6 +123,7 @@ final class GlassCfg {
         ios = o.optBoolean("ios", true);
         bl = clamp(o.optInt("bl", 16), BL_MIN, BL_MAX);
         bk = o.optBoolean("bk", true);
+        tp = o.optBoolean("tp", true);
         cp = o.optBoolean("cp", true);
     }
 
@@ -143,6 +146,7 @@ final class GlassCfg {
             o.put("ios", ios);
             o.put("bl", bl);
             o.put("bk", bk);
+            o.put("tp", tp);
             o.put("cp", cp);
         } catch (Throwable t) {
             FlagStore.log(t);
@@ -247,6 +251,11 @@ final class GlassCfg {
         touch();
     }
 
+    static void setTp(boolean v) {
+        tp = v;
+        saved();
+    }
+
     static void setBk(boolean v) {
         bk = v;
         saved();
@@ -311,6 +320,7 @@ final class GlassCfg {
         ios = true;
         bl = 16;
         bk = true;
+        tp = true;
         cp = true;
         saved();
     }
