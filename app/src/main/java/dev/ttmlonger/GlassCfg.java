@@ -44,6 +44,13 @@ final class GlassCfg {
     static volatile boolean tp = true;
     /** Сжимать панель до значков, пока листают ленту (как в видео-образце). */
     static volatile boolean cp = true;
+    /**
+     * Настоящий фон под стеклом (0.1.0z): панель показывает то, что лежит под ней, и преломляет это у краёв, как в
+     * образце. Выключено — прежний фон из размытой полосы ленты над панелью.
+     */
+    static volatile boolean lv = true;
+    /** Размытие настоящего фона, dp (0 — картинка чёткая, как в образце). */
+    static volatile int lb = 3;
     /** Кнопка «+»: 0 как в TikTok, 1 чёрная, 2 белая, 3 свой цвет (оттенок, насыщенность, яркость ниже). */
     static volatile int plus = 0;
     /** Свой цвет кнопки «+»: оттенок 0–360°, насыщенность и яркость 0–100 %. */
@@ -75,6 +82,7 @@ final class GlassCfg {
     static final int JL_MIN = 0, JL_MAX = 20;
     static final int PZ_MIN = 0, PZ_MAX = 20;
     static final int PLUS_MAX = 3;
+    static final int LB_MIN = 0, LB_MAX = 40;
     static final int PLH_MIN = 0, PLH_MAX = 360;
     static final int PLS_MIN = 0, PLS_MAX = 100;
     static final int PLV_MIN = 0, PLV_MAX = 100;
@@ -134,6 +142,8 @@ final class GlassCfg {
         bk = o.optBoolean("bk", true);
         tp = o.optBoolean("tp", true);
         cp = o.optBoolean("cp", true);
+        lv = o.optBoolean("lv", true);
+        lb = clamp(o.optInt("lb", 3), LB_MIN, LB_MAX);
         plus = clamp(o.optInt("plus", 0), 0, PLUS_MAX);
         plH = clamp(o.optInt("plH", 200), PLH_MIN, PLH_MAX);
         plS = clamp(o.optInt("plS", 90), PLS_MIN, PLS_MAX);
@@ -161,6 +171,8 @@ final class GlassCfg {
             o.put("bk", bk);
             o.put("tp", tp);
             o.put("cp", cp);
+            o.put("lv", lv);
+            o.put("lb", lb);
             o.put("plus", plus);
             o.put("plH", plH);
             o.put("plS", plS);
@@ -283,6 +295,17 @@ final class GlassCfg {
         saved();
     }
 
+    static void setLv(boolean v) {
+        lv = v;
+        saved();
+    }
+
+    /** Размытие настоящего фона двигают ползунком: файл пишется, когда его отпустили. */
+    static void setLb(int v) {
+        lb = clamp(v, LB_MIN, LB_MAX);
+        touch();
+    }
+
     static void setPlus(int v) {
         plus = clamp(v, 0, PLUS_MAX);
         saved();
@@ -360,6 +383,8 @@ final class GlassCfg {
         bk = true;
         tp = true;
         cp = true;
+        lv = true;
+        lb = 3;
         plus = 0;
         plH = 200;
         plS = 90;

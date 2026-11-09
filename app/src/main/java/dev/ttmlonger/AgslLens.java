@@ -5,6 +5,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.RenderEffect;
+import android.graphics.RenderNode;
 import android.graphics.RuntimeShader;
 import android.graphics.Shader;
 
@@ -30,7 +32,35 @@ final class AgslLens {
 
     /** bk — снимок полосы ленты над панелью (может быть null: тогда f.bk должен быть 0). */
     void draw(Canvas c, Bitmap tex, Bitmap bk, GlassGeo.Frame f) {
-        if (tex == null || tex.isRecycled()) return;
+        if (!bind(tex, bk, f)) return;
+        paint.setShader(shader);
+        c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, paint);
+    }
+
+    /**
+     * Настоящий фон: вход G шейдера — запись того, что лежит под панелью (node), а не снимок. Шейдер вешается на узел
+     * как эффект (RenderEffect), так что видеокарта сама подставляет в G картинку узла; blurPx > 0 размывает её до
+     * шейдера. Узел рисуется туда же, где рисовался бы прямоугольник шейдера (холст уже сдвинут на начало холста
+     * капсулы).
+     */
+    boolean drawLive(Canvas c, Bitmap tex, RenderNode node, double blurPx, GlassGeo.Frame f) {
+        if (node == null || !node.hasDisplayList() || !c.isHardwareAccelerated()) return false;
+        if (!bind(tex, null, f)) return false;
+        shader.setFloatUniform("LV", 1f);
+        RenderEffect e = RenderEffect.createRuntimeShaderEffect(shader, "G");
+        if (blurPx > 0.4) {
+            float r = (float) Math.min(blurPx, 100.0);
+            e = RenderEffect.createChainEffect(e, RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP));
+        }
+        node.setPosition(0, 0, (int) Math.round(f.rw), (int) Math.round(f.rh));
+        node.setRenderEffect(e);
+        c.drawRenderNode(node);
+        return true;
+    }
+
+    /** Задаёт входы и uniform-переменные шейдера по кадру. */
+    private boolean bind(Bitmap tex, Bitmap bk, GlassGeo.Frame f) {
+        if (tex == null || tex.isRecycled()) return false;
         Bitmap g = bk != null && !bk.isRecycled() ? bk : null;
         if (g == null) {
             if (dummy == null) dummy = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
@@ -86,8 +116,8 @@ final class AgslLens {
         shader.setFloatUniform("PB", (float) f.pbR, (float) f.pbG, (float) f.pbB);
         shader.setFloatUniform("PP", (float) f.ppR, (float) f.ppG, (float) f.ppB);
         shader.setFloatUniform("PZ", (float) f.pz0, (float) f.pz1, (float) f.pz2, (float) f.pz3);
-        paint.setShader(shader);
-        c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, paint);
+        shader.setFloatUniform("LV", 0f);
+        return true;
     }
 
     void release() {

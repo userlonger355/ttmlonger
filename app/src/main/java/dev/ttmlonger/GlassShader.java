@@ -32,7 +32,7 @@ final class GlassShader {
     }
 
     /** Имена uniform-переменных (все они объявлены и используются в шейдере). */
-    static final String[] UNIFORMS = {"R", "N", "B", "L", "S", "P", "Q", "W", "Y", "K", "Z", "D", "I", "SAT", "BRT", "BG", "ZM", "PS", "GA", "V", "SC", "CY", "YC", "LT", "CX", "EZ", "LA", "CA", "GS", "BK", "SB", "BM", "TN", "OP", "PM", "PB", "PP", "PZ"};
+    static final String[] UNIFORMS = {"R", "N", "B", "L", "S", "P", "Q", "W", "Y", "K", "Z", "D", "I", "SAT", "BRT", "BG", "ZM", "PS", "GA", "V", "SC", "CY", "YC", "LT", "CX", "EZ", "LA", "CA", "GS", "BK", "SB", "BM", "TN", "OP", "PM", "PB", "PP", "PZ", "LV"};
 
     static final String SRC = ""
             + "uniform shader T;\n"
@@ -75,6 +75,7 @@ final class GlassShader {
             + "uniform float3 PB;\n"
             + "uniform float3 PP;\n"
             + "uniform float4 PZ;\n"
+            + "uniform float LV;\n"
             + "\n"
             + "float sd(float2 p, float2 h, float r) {\n"
             + "  float2 q = abs(p) - h + float2(r);\n"
@@ -117,6 +118,10 @@ final class GlassShader {
             + "  if (PM > 1.5) t = 1.0 - t;\n"
             + "  return float4(mix(PP, PB, max(t, ch)) * c.a, c.a);\n"
             + "}\n"
+            // цвет записи окна под панелью: у пустого места (нет картинки) подставляется подложка BG
+            + "float3 gun(float4 c) {\n"
+            + "  return mix(BG, c.rgb / max(c.a, 0.004), clamp(c.a, 0.0, 1.0));\n"
+            + "}\n"
             // подписи гаснут при сжатии
             + "float lf(float2 q) {\n"
             + "  if (SC >= 0.999 || abs(q.x - CX) <= EZ) return 1.0;\n"
@@ -138,7 +143,16 @@ final class GlassShader {
             + "  float BO = max(BK, OP);\n"
             + "  float3 gb0 = BG;\n"
             + "  if (BO > 0.5 && inCap > 0.0) {\n"
-            + "    if (BK > 0.5) gb0 = gbody(float3(G.eval(float2(p.x * GS.x, R.y * GS.y - 0.5)).rgb));\n"
+            // настоящий фон (LV): у кромки капсулы картинка преломляется, как в выпуклом стекле: берётся точка дальше от
+            // центра, поэтому у края видно сжатое продолжение того, что лежит за капсулой
+            + "    if (BK > 0.5) {\n"
+            + "      float2 gq = float2(p.x * GS.x, R.y * GS.y - 0.5);\n"
+            + "      if (LV > 0.5) {\n"
+            + "        float rr = exp(-max(-bd, 0.0) / (N.y * 0.14));\n"
+            + "        gq = clamp(p + gr(bp, N * 0.5, N.y * 0.5) * (N.y * 0.30 * rr), float2(0.5), R - 0.5);\n"
+            + "      }\n"
+            + "      gb0 = gbody(gun(float4(G.eval(gq))));\n"
+            + "    }\n"
             + "    float rin = exp(-max(-bd, 0.0) / (N.y * 0.16));\n"
             + "    gb0 = clamp(gb0 * (1.06 - 0.12 * clamp(bp.y / N.y + 0.5, 0.0, 1.0)) + float3(0.05 * rin), 0.0, 1.0);\n"
             + "  }\n"
@@ -240,7 +254,9 @@ final class GlassShader {
             // линза показывает снимок ленты по преломлённым координатам
             + "    float3 lb = BG;\n"
             + "    if (BK > 0.5) {\n"
-            + "      lb = gbody(float3(G.eval(float2(sc.x * GS.x, R.y * GS.y - 0.5)).rgb));\n"
+            + "      float2 gl = float2(sc.x * GS.x, R.y * GS.y - 0.5);\n"
+            + "      if (LV > 0.5) gl = clamp(sc, float2(0.5), R - 0.5);\n"
+            + "      lb = gbody(gun(float4(G.eval(gl))));\n"
             + "      float ll = dot(lb, float3(0.299, 0.587, 0.114));\n"
             + "      lb = clamp(mix(float3(ll), lb, SAT) * (1.1 * BRT), 0.0, 1.0);\n"
             + "    }\n"

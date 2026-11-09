@@ -21,6 +21,7 @@ import android.view.Choreographer;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -109,6 +110,10 @@ final class GlassSession implements Choreographer.FrameCallback {
     private String shaderNote = "";
     /** Снимок полосы ленты над панелью для стеклянного фона (Android 8+); null, если недоступен. */
     private BackdropCopy bcopy;
+    /** Настоящий фон: запись того, что лежит под панелью (Android 13+); null, если недоступна. */
+    private LiveBackdrop live;
+    private boolean liveFailed;
+    private ViewTreeObserver preVto;
     private Window window;
     private String bkNote = "";
     private boolean bodyWas;
@@ -147,6 +152,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         attached = true;
         initShader();
         initBackdrop();
+        initLive();
         Drawable cur = bar.getBackground();
         bg.orig = cur;
         measure();
@@ -163,6 +169,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         burstUntil = SystemClock.uptimeMillis() + BURST_MS;
         h.postDelayed(poll, POLL_MS);
         h.postDelayed(bkRun, 200L);
+        hookPre();
         kick();
     }
 
@@ -171,6 +178,11 @@ final class GlassSession implements Choreographer.FrameCallback {
         attached = false;
         h.removeCallbacks(poll);
         h.removeCallbacks(bkRun);
+        unhookPre();
+        if (live != null) {
+            live.release();
+            live = null;
+        }
         if (bcopy != null) {
             bcopy.release();
             bcopy = null;
@@ -253,6 +265,72 @@ final class GlassSession implements Choreographer.FrameCallback {
         bkNote = "";
     }
 
+    private void initLive() {
+        live = null;
+        liveFailed = false;
+        if (Build.VERSION.SDK_INT < 33) return;
+        try {
+            live = new LiveBackdrop();
+        } catch (Throwable t) {
+            live = null;
+            FlagStore.log(t);
+        }
+    }
+
+    /** Запись фона перекладывается перед каждым кадром окна, поэтому слушатель вешается на дерево окна панели. */
+    private void hookPre() {
+        ViewTreeObserver vto = bar.getViewTreeObserver();
+        if (vto == preVto) return;
+        unhookPre();
+        if (vto != null && vto.isAlive()) {
+            vto.addOnPreDrawListener(pre);
+            preVto = vto;
+        }
+    }
+
+    private void unhookPre() {
+        if (preVto != null && preVto.isAlive()) preVto.removeOnPreDrawListener(pre);
+        preVto = null;
+    }
+
+    private final ViewTreeObserver.OnPreDrawListener pre = new ViewTreeObserver.OnPreDrawListener() {
+        @Override
+        public boolean onPreDraw() {
+            livePre();
+            return true;
+        }
+    };
+
+    /** Нужен ли настоящий фон прямо сейчас: включён, панель видна, шейдер рисует панель целиком. */
+    private boolean liveWanted() {
+        return GlassCfg.lv && GlassCfg.bk && live != null && !liveFailed && attached && measured && bar.isShown()
+                && shaderOnly();
+    }
+
+    /** Настоящий фон записан и показывается (иначе работает запасной фон из полосы ленты). */
+    private boolean liveOn() {
+        return liveWanted() && live.ready();
+    }
+
+    private void livePre() {
+        if (!liveWanted()) return;
+        LiveBackdrop lb = live;
+        boolean was = lb.ready();
+        try {
+            if (lb.record(bar, capL, capT - pad, capR - capL, capB - capT + 2 * pad)) {
+                lb.ok();
+                if (!was) lens.invalidateSelf();
+            }
+        } catch (Throwable t) {
+            lb.failed(t);
+            if (lb.fails() >= 3) {
+                liveFailed = true;
+                lens.invalidateSelf();
+                bg.invalidateSelf();
+            }
+        }
+    }
+
     /**
      * Раз в четверть секунды обновляет снимок значков (капсулу и значки рисует шейдер, родные значки закрыты) и
      * снимает полосу ленты над панелью: часто, пока картинка меняется, и редко, пока стоит.
@@ -263,8 +341,9 @@ final class GlassSession implements Choreographer.FrameCallback {
             if (!attached) return;
             long next = 600L;
             try {
-                boolean live = measured && bar.isShown() && shaderOnly();
-                if (live) {
+                hookPre();
+                boolean tick = measured && bar.isShown() && shaderOnly();
+                if (tick) {
                     next = CAP_MS;
                     if (SystemClock.uptimeMillis() - lastCap > CAP_MS) {
                         capDirty = true;
@@ -273,7 +352,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                 }
                 BackdropCopy bc = bcopy;
                 if (bc != null && GlassCfg.bk && GlassCfg.glass() && !CrashGuard.tripped && measured && useAgsl()
-                        && bar.isShown() && !bc.busy()) {
+                        && bar.isShown() && !bc.busy() && !liveOn()) {
                     next = Math.min(next, bc.lastChanged() || ph.active() ? 120L : 360L);
                     bar.getLocationInWindow(loc);
                     View dv = windowDecor();
@@ -340,8 +419,12 @@ final class GlassSession implements Choreographer.FrameCallback {
         String note = bkNote.length() > 0 ? ", " + bkNote : "";
         if (!shaderOnly()) return "фон из ленты: шейдер не рисует (" + (agsl == null ? "нет шейдера" : !texOk
                 ? "нет снимка значков" : swCanvas ? "холст не аппаратный" : "выключено") + ")";
-        if (bcopy == null) return "фон из ленты: " + (bkNote.length() > 0 ? bkNote : "снимок недоступен");
-        return "фон из ленты: " + (bodyOn() ? "работает" : "ждёт снимка") + " (" + bcopy.status() + note + ")";
+        String lv = !GlassCfg.lv ? "настоящий фон выключен" : live == null ? "настоящий фон недоступен (нужен Android 13)"
+                : liveFailed ? "настоящий фон отключён после сбоев (" + live.status() + ")"
+                : "настоящий фон: " + (liveOn() ? "работает" : "ждёт первой записи") + " (" + live.status() + ")";
+        if (liveOn()) return lv;
+        if (bcopy == null) return lv + "\nфон из ленты: " + (bkNote.length() > 0 ? bkNote : "снимок недоступен");
+        return lv + "\nфон из ленты: " + (bodyOn() ? "работает" : "ждёт снимка") + " (" + bcopy.status() + note + ")";
     }
 
     boolean shaderOn() {
@@ -646,6 +729,11 @@ final class GlassSession implements Choreographer.FrameCallback {
     void refresh() {
         capDirty = true;
         seenRev = GlassCfg.rev;
+        // после смены настроек настоящему фону даётся ещё попытка (сбои считаются заново)
+        if (liveFailed && live != null) {
+            liveFailed = false;
+            live.ok();
+        }
         if (!measured) measure();
         bg.invalidateSelf();
         lens.invalidateSelf();
@@ -1087,7 +1175,9 @@ final class GlassSession implements Choreographer.FrameCallback {
         int a = GlassGeo.fillAlpha(GlassCfg.tr, GlassCfg.br);
         GlassGeo.backdrop(f, strip, dark ? a : a / 2, dark);
         BackdropCopy bc = bcopy;
-        if (bodyOn() && bc != null && bc.bitmap() != null) {
+        if (liveOn()) {
+            GlassGeo.glassBodyLive(f, true, dark, dark ? a : a / 2);
+        } else if (bodyOn() && bc != null && bc.bitmap() != null) {
             GlassGeo.glassBody(f, true, bc.bitmap().getWidth(), bc.bitmap().getHeight(), dark, dark ? a : a / 2);
         }
         f.op = shaderOnly() ? 1 : 0;
@@ -1246,7 +1336,25 @@ final class GlassSession implements Choreographer.FrameCallback {
                             stripPaint.setColor(0xFF000000 | strip);
                             c.drawRect(0f, 0f, (float) f.rw, (float) f.rh, stripPaint);
                         }
-                        agsl.draw(c, tex, f.bk > 0.5 && bcopy != null ? bcopy.bitmap() : null, f);
+                        boolean done = false;
+                        if (f.lv > 0.5 && live != null) {
+                            try {
+                                done = agsl.drawLive(c, tex, live.node(), GlassCfg.lb * dm, f);
+                            } catch (Throwable t) {
+                                FlagStore.log(t);
+                                liveFailed = true;
+                                live.failed(t);
+                            }
+                            if (!done) {
+                                // запись не нарисовалась: этот кадр без стеклянного фона, дальше сессия уйдёт на запасной
+                                f.lv = 0;
+                                f.bk = 0;
+                            }
+                        }
+                        if (!done) {
+                            Bitmap sb = f.bk > 0.5 && bcopy != null ? bcopy.bitmap() : null;
+                            agsl.draw(c, tex, sb, f);
+                        }
                     }
                 } else {
                     plain(c, f);
@@ -1315,7 +1423,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                     plusLight ? "светлое" : "тёмное") : ", область не найдена");
         }
         sb.append("\n").append(bkStatus());
-        sb.append(", размытие ").append(GlassCfg.bl).append(" dp");
+        sb.append(", размытие ").append(GlassCfg.lv ? GlassCfg.lb : GlassCfg.bl).append(" dp");
         if (bkMisses > 0) sb.append(", полоса не помещалась раз: ").append(bkMisses);
         sb.append("\nзаливка панели: ").append(tpOn() ? "убрана (у видов-обёрток: " + clearedViews.size() + ")" : "оставлена");
         sb.append(", цепочка фонов:");

@@ -33,6 +33,7 @@ final class GlassBarScreen extends Screen {
     private TextView state;
     private LinearLayout compactRow;
     private LinearLayout backRow;
+    private LinearLayout liveRow;
     private LinearLayout fillRow;
     private LinearLayout presetRow;
     private LinearLayout physRow;
@@ -187,8 +188,20 @@ final class GlassBarScreen extends Screen {
         box.addView(fillRow);
         backRow = chipRow();
         box.addView(backRow);
-        slider(box, "Размытие фона", "Как «Размытие» в index.html: 0 — слабое (минимум 2 dp), 40 — сильное (dp)", GlassCfg.BL_MIN,
-                GlassCfg.BL_MAX, () -> GlassCfg.bl, v -> GlassCfg.setBl(v), v -> v + " dp");
+        liveRow = chipRow();
+        box.addView(liveRow);
+        slider(box, "Размытие фона", "«Настоящий»: 0 — картинка чёткая, как в видео-образце; «Полоса ленты»: минимум 2 dp (dp)",
+                GlassCfg.BL_MIN, GlassCfg.BL_MAX, () -> GlassCfg.lv ? GlassCfg.lb : GlassCfg.bl,
+                v -> {
+                    if (GlassCfg.lv) GlassCfg.setLb(v);
+                    else GlassCfg.setBl(v);
+                }, v -> v + " dp");
+        box.addView(ui.note("«Настоящий» фон (Android 13+): стекло показывает то, что на самом деле лежит под панелью "
+                + "(страница, превью, видео), и преломляет это у краёв капсулы и под линзой, как в видео-образце. "
+                + "Мод перед каждым кадром записывает всё, что рисуется под панелью, а шейдер преломляет запись на "
+                + "видеокарте, поэтому отставания нет. Видео, которое рисуется отдельным слоем (SurfaceView), в запись "
+                + "не попадает: под панелью оно будет тёмным. «Полоса ленты» — прежний запасной режим: размытое "
+                + "продолжение нижнего края ленты. Если запись ломается, мод сам переходит на него."));
         box.addView(ui.note("«Без чёрной заливки»: мод не рисует сплошной фон панели и снимает такой фон у её "
                 + "обёртки (родителя не выше двух высот панели), капсула лежит прямо на ленте. Если снизу всё "
                 + "равно чёрное, чернит что-то другое: «Скопировать сведения» покажет цепочку фонов. «Как в "
@@ -422,6 +435,15 @@ final class GlassBarScreen extends Screen {
             GlassCfg.setBk(false);
             applyAll();
         }));
+        liveRow.removeAllViews();
+        liveRow.addView(chip("Настоящий", GlassCfg.lv, v -> {
+            GlassCfg.setLv(true);
+            applyAll();
+        }));
+        liveRow.addView(chip("Полоса ленты", !GlassCfg.lv, v -> {
+            GlassCfg.setLv(false);
+            applyAll();
+        }));
         plusRow.removeAllViews();
         HorizontalScrollView plusScroll = new HorizontalScrollView(act);
         plusScroll.setHorizontalScrollBarEnabled(false);
@@ -478,6 +500,26 @@ final class GlassBarScreen extends Screen {
         hint.setPadding(ui.dp(12), ui.dp(10), ui.dp(12), 0);
         host.addView(hint, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+
+        // под панелью лежит «страница»: цветные кружки и подпись; сквозь стекло они видны и преломляются у краёв
+        LinearLayout dots = new LinearLayout(act);
+        dots.setOrientation(LinearLayout.HORIZONTAL);
+        dots.setGravity(Gravity.CENTER);
+        int[] dotColors = {0xFF3D8BFF, 0xFFFF3B30, 0xFFFFB020, 0xFFFFE600, 0xFF34D058, 0xFF00E5FF, 0xFFC44CFF};
+        for (int c : dotColors) {
+            View dot = new View(act);
+            GradientDrawable gd = new GradientDrawable();
+            gd.setShape(GradientDrawable.OVAL);
+            gd.setColor(c);
+            dot.setBackground(gd);
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ui.dp(34), ui.dp(34));
+            dl.setMargins(ui.dp(5), 0, ui.dp(5), 0);
+            dots.addView(dot, dl);
+        }
+        FrameLayout.LayoutParams dotsLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(70),
+                Gravity.BOTTOM);
+        dotsLp.bottomMargin = ui.dp(10);
+        host.addView(dots, dotsLp);
 
         previewBar = new PreviewBar(act);
         previewBar.setOrientation(LinearLayout.HORIZONTAL);
