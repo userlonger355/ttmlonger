@@ -42,7 +42,6 @@ final class DexHooks {
 
     static void note(String s) {
         if (log.size() < 80) log.add(s);
-        FlagStore.log(s);
     }
 
     /** Запускает всё в фоне: разбор может занять несколько секунд, и ждать его запуск TikTok не должен. */

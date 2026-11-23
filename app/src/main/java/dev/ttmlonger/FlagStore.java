@@ -613,11 +613,4 @@ final class FlagStore {
         }
     }
 
-    static void log(String s) {
-        try {
-            XposedBridge.log("[TTMLonger] " + s);
-        } catch (Throwable ignored) {
-            // см. выше
-        }
-    }
 }

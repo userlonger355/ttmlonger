@@ -2,12 +2,7 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.DialogInterface;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -17,7 +12,8 @@ import android.widget.TextView;
  * огонёк гаснет. Включение требует перезапуска TikTok: хуки на службу огоньков ставятся при запуске.
  */
 final class StreakScreen extends Screen {
-    private TextView report;
+    private TextView summary;
+    private View forgetRow;
     private LinearLayout stickerRow;
     private LinearLayout peopleRow;
     private LinearLayout sendRow;
@@ -28,10 +24,7 @@ final class StreakScreen extends Screen {
     }
 
     static void show(Activity act) {
-        new StreakScreen(act).open("Огонёк",
-                "Мод сам отправляет стикер в чат, где серия дней вот-вот оборвётся: не больше одного стикера "
-                        + "в сутки на чат. Работает, пока TikTok запущен, в том числе в фоне. "
-                        + "Функция экспериментальная.");
+        new StreakScreen(act).open("Огонёк", "Один стикер в день на чат, пока TikTok запущен.");
     }
 
     static String menuSummary() {
@@ -40,7 +33,13 @@ final class StreakScreen extends Screen {
 
     @Override
     void build(LinearLayout body) {
-        body.addView(ui.header("Автопродление"));
+        summary = ui.text("", 17f, Ui.INK, true);
+        summary.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14));
+        summary.setBackground(ui.round(Ui.DARK ? 0xFF392A23 : 0xFFFFEBDD, 16));
+        summary.setTextColor(Ui.DARK ? 0xFFFFD7B8 : 0xFF693312);
+        LinearLayout.LayoutParams card = ui.matchWrap();
+        card.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8));
+        body.addView(summary, card);
         body.addView(toggleRow(Icons.FLAME, "Продлевать огонёк",
                 "Нужен перезапуск TikTok. Пока не выбран стикер, ничего не отправляется",
                 Prefs.streakAuto, new ModSwitch.Listener() {
@@ -52,6 +51,7 @@ final class StreakScreen extends Screen {
                     }
                 }));
 
+        body.addView(ui.header("Расписание"));
         body.addView(toggleRow(Icons.CLOCK, "Каждый день",
                 "Раз в сутки отправлять стикер во все чаты с огоньком в выбранное время. "
                         + "Выключено: только когда огонёк уже серый",
@@ -60,10 +60,11 @@ final class StreakScreen extends Screen {
                     public void onChanged(boolean on) {
                         Prefs.setStreakDaily(on);
                         StreakRunner.reschedule();
+                        refresh();
                     }
                 }));
 
-        timeRow = ui.menuRow(-1, "Время отправки", "Действует в режиме «Каждый день»",
+        timeRow = ui.menuRow(-1, "Время отправки", "По местному времени телефона",
                 StreakLogic.formatMinute(Prefs.streakMinute), new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -71,7 +72,7 @@ final class StreakScreen extends Screen {
                     }
                 });
         body.addView(timeRow);
-        body.addView(ui.note("Время считается по часам телефона: " + Zones.note() + "."));
+
 
         body.addView(ui.header("Стикер"));
         stickerRow = ui.menuRow(Icons.STICKER, "Стикер для огоньков", stickerSummary(), null,
@@ -88,14 +89,15 @@ final class StreakScreen extends Screen {
                 });
         body.addView(stickerRow);
 
-        body.addView(ui.row(Icons.TRASH, "Забыть стикер", null, null, false, new View.OnClickListener() {
+        forgetRow = ui.row(Icons.TRASH, "Забыть стикер", null, null, false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 StreakSticker.forget();
                 Toasts.show(act, "Стикер забыт");
                 refresh();
             }
-        }));
+        });
+        body.addView(forgetRow);
 
         body.addView(ui.header("Люди"));
         peopleRow = ui.menuRow(Icons.FLAME, "Кому продлевать",
@@ -121,38 +123,15 @@ final class StreakScreen extends Screen {
             }
         });
         body.addView(sendRow);
-
-        body.addView(ui.header("Состояние"));
-        report = ui.text("", 14f, Ui.INK, false);
-        report.setLineSpacing(0f, 1.15f);
-        report.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
-        body.addView(report, ui.matchWrap());
-
-        body.addView(ui.row(Icons.REFRESH, "Проверить огоньки", "Только прочитать, ничего не отправляется", null,
-                false, new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        if (!Prefs.streakAuto) {
-                            Toasts.show(act, "Сначала включите автопродление и перезапустите TikTok");
-                            return;
-                        }
-                        Toasts.show(act, "Проверяю…");
-                        StreakRunner.check(new Runnable() {
-                            @Override
-                            public void run() {
-                                refresh();
-                            }
-                        });
+        body.addView(ui.row(Icons.REFRESH, "Проверить огоньки", "Посмотреть, кому пора продлить серию", null,
+                false, v -> {
+                    if (!Prefs.streakAuto) {
+                        Toasts.show(act, "Включите автопродление и перезапустите TikTok");
+                        return;
                     }
+                    StreakRunner.check(() -> Toasts.show(act, StreakRunner.checkSummary()));
                 }));
 
-        body.addView(ui.row(Icons.COPY, "Скопировать сведения", "Что нашёл мод: если огонёк не работает, "
-                + "пришлите это разработчику", null, false, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                copyDetails();
-            }
-        }));
         refresh();
     }
 
@@ -218,33 +197,6 @@ final class StreakScreen extends Screen {
         Ui.style(d);
     }
 
-    private void copyDetails() {
-        StreakRunner.async(new Runnable() {
-            @Override
-            public void run() {
-                String text;
-                try {
-                    text = StreakRunner.details();
-                } catch (Throwable t) {
-                    text = "сведения не собрались: " + t;
-                }
-                final String copy = text;
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
-                            cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", copy));
-                            Toasts.show(act, "Скопировано. Вставьте в сообщение разработчику");
-                        } catch (Throwable t) {
-                            Toasts.show(act, "Не удалось скопировать");
-                        }
-                    }
-                });
-            }
-        });
-    }
-
     private static String stickerSummary() {
         String s = StreakSticker.summary();
         return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
@@ -261,9 +213,7 @@ final class StreakScreen extends Screen {
                 StreakRunner.reschedule();
                 TextView val = Ui.valueOf(timeRow);
                 if (val != null) val.setText(StreakLogic.formatMinute(Prefs.streakMinute));
-                if (!Prefs.streakDaily) {
-                    Toasts.show(act, "Время сохранено. Оно действует в режиме «Каждый день»");
-                }
+                refresh();
             }
         }, m / 60, m % 60, true);
         markOwn(d);
@@ -289,6 +239,11 @@ final class StreakScreen extends Screen {
         if (st != null) st.setText(sendTitle());
         TextView sn = Ui.subtitleOf(sendRow);
         if (sn != null) sn.setText(sendNote());
-        report.setText(StreakRunner.status());
+        boolean chosen = StreakSticker.has() || !StreakSticker.chosenId().isEmpty();
+        summary.setText(!Prefs.streakAuto ? "Огонёк  ·  выключен" : !chosen ? "Выберите стикер для продления"
+                : Prefs.streakDaily ? "Каждый день в " + StreakLogic.formatMinute(Prefs.streakMinute)
+                : "Когда огонёк станет серым");
+        timeRow.setVisibility(Prefs.streakDaily ? View.VISIBLE : View.GONE);
+        forgetRow.setVisibility(chosen || StreakSticker.armed() ? View.VISIBLE : View.GONE);
     }
 }

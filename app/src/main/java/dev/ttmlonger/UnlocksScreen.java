@@ -44,6 +44,19 @@ final class UnlocksScreen extends Screen {
 
         body.addView(ui.header("Чаты"));
         body.addView(groupRow("voice_dm"));
+        if (act.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            body.addView(ui.menuRow(Icons.MIC, "Доступ к микрофону", "Для записи разрешите микрофон в настройках TikTok",
+                    null, v -> {
+                        android.content.Intent settings = new android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.fromParts("package", act.getPackageName(), null));
+                        if (settings.resolveActivity(act.getPackageManager()) != null) act.startActivity(settings);
+                        else Toasts.show(act, "Откройте настройки телефона → TikTok → Разрешения");
+                    }));
+        }
+        body.addView(groupRow("chat_bubble"));
+        body.addView(groupRow("chat_wallpaper"));
         body.addView(groupRow("read_all"));
 
         body.addView(ui.header("Публикации и комментарии"));
@@ -121,6 +134,7 @@ final class UnlocksScreen extends Screen {
             @Override
             public void onChanged(boolean on) {
                 Prefs.setUnlock(id, on);
+                Restart.offer(act);
             }
         });
     }

@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Rect;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -336,13 +335,10 @@ final class VideoInfo {
     static final class Meta {
         final long created;
         final String region;
-        /** Откуда взят регион: «видео», «автор» или пусто. */
-        final String regionFrom;
 
-        Meta(long created, String region, String regionFrom) {
+        Meta(long created, String region) {
             this.created = created;
             this.region = region;
-            this.regionFrom = regionFrom;
         }
     }
 
@@ -392,7 +388,7 @@ final class VideoInfo {
         Meta have = e.meta;
         if (have != null) return have;
         Object aw = e.aweme;
-        if (aw == null) return new Meta(0, null, "");
+        if (aw == null) return new Meta(0, null);
         long created = 0;
         Object c = get(aw, "getCreateTime", "createTime", "create_time", "mCreateTime");
         if (c instanceof Number) {
@@ -405,15 +401,13 @@ final class VideoInfo {
             }
         }
         String region = normRegion(str(get(aw, "getRegion", "region")));
-        String from = region == null ? "" : "видео";
         if (region == null) {
             Object author = get(aw, "getAuthor", "author");
             region = normRegion(str(get(author, "getRegion", "region")));
-            if (region != null) from = "автор";
         }
-        Meta m = new Meta(created, region, from);
+        Meta m = new Meta(created, region);
         // Пустое не запоминаем: модель могла быть ещё не заполнена.
-        if (created > 0 || region != null) e.meta = m;
+        if (created > 0 && region != null) e.meta = m;
         return m;
     }
 
@@ -459,12 +453,10 @@ final class VideoInfo {
     private static final class Hit {
         final VideoTracker.Entry entry;
         final TextView view;
-        final boolean byName;
 
-        Hit(VideoTracker.Entry entry, TextView view, boolean byName) {
+        Hit(VideoTracker.Entry entry, TextView view) {
             this.entry = entry;
             this.view = view;
-            this.byName = byName;
         }
     }
 
@@ -475,7 +467,7 @@ final class VideoInfo {
         final Rect r = new Rect();
         final TextView[] nameView;
         final TextView[] descView;
-        int texts;
+
         int visited;
 
         Walk(List<Cand> cands, int w, int h) {
@@ -494,7 +486,7 @@ final class VideoInfo {
             // Подпись должна быть видна почти целиком, в нижней части и не у правого края (там кнопки).
             if (r.height() * 10 < t.getHeight() * 8) return;
             if (r.centerY() < h * 0.30f || r.centerX() > w * 0.85f) return;
-            texts++;
+
             String s = norm(cs.toString());
             for (int i = 0; i < cands.size(); i++) {
                 Keys k = cands.get(i).keys;
@@ -519,11 +511,6 @@ final class VideoInfo {
         }
     }
 
-    private static volatile String diag = "ещё не запускалось";
-    private static volatile String chain = "";
-    private static volatile String lastOk = "";
-    private static volatile long lastOkAt;
-
     /** Какое из недавно виденных видео сейчас на экране; null, если не нашли. */
     private static Hit locate(Activity a) {
         List<Cand> cands = new ArrayList<>();
@@ -534,7 +521,6 @@ final class VideoInfo {
             cands.add(new Cand(e, k));
         }
         if (cands.isEmpty()) {
-            diag = "Пока не вижу ни одного видео: пролистайте ленту в TikTok";
             return null;
         }
         DisplayMetrics dm = a.getResources().getDisplayMetrics();
@@ -550,27 +536,10 @@ final class VideoInfo {
             }
         }
         if (best < 0) {
-            diag = "Видео известно (" + cands.size() + "), но подпись автора на экране не нашлась "
-                    + "(подходящих текстов: " + w.texts + ")";
             return null;
         }
         boolean byName = w.nameView[best] != null;
-        return new Hit(cands.get(best).entry, byName ? w.nameView[best] : w.descView[best], byName);
-    }
-
-    private static String chainOf(View v) {
-        StringBuilder sb = new StringBuilder();
-        View x = v;
-        for (int i = 0; i < 4 && x != null; i++) {
-            if (sb.length() > 0) sb.append(" < ");
-            sb.append(x.getClass().getSimpleName());
-            if (x instanceof LinearLayout) {
-                sb.append(((LinearLayout) x).getOrientation() == LinearLayout.VERTICAL ? "(v)" : "(h)");
-            }
-            Object p = x.getParent();
-            x = p instanceof View ? (View) p : null;
-        }
-        return sb.toString();
+        return new Hit(cands.get(best).entry, byName ? w.nameView[best] : w.descView[best]);
     }
 
     // ---------------------------------------------------------------- плашки в окне
@@ -620,7 +589,6 @@ final class VideoInfo {
         }
     }
 
-    private static volatile String slotNote = "-";
 
     /** Два плашки в ряд: время и регион. Один и тот же вид в ленте и в предпросмотре настроек. */
     static final class Pills {
@@ -637,11 +605,11 @@ final class VideoInfo {
             box = new LinearLayout(ctx);
             box.setOrientation(LinearLayout.HORIZONTAL);
             box.setTag(Ui.OWN_TAG);
-            timeView = pill(true);
-            regionView = pill(false);
+            timeView = pill();
+            regionView = pill();
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(dp(5));
+
             box.addView(timeView, lp);
             box.addView(regionView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -651,7 +619,7 @@ final class VideoInfo {
             return Math.round(v * d);
         }
 
-        private TextView pill(boolean clock) {
+        private TextView pill() {
             TextView t = new TextView(ctx);
             t.setTag(Ui.OWN_TAG);
             t.setTextSize(12f);
@@ -659,8 +627,8 @@ final class VideoInfo {
             t.setSingleLine(true);
             t.setIncludeFontPadding(false);
             t.setGravity(Gravity.CENTER_VERTICAL);
-            t.setPadding(dp(8), dp(4), dp(9), dp(4));
-            if (clock) t.setCompoundDrawablePadding(dp(5));
+            t.setPadding(dp(6), dp(2), dp(6), dp(2));
+
             t.setClickable(true);
             return t;
         }
@@ -672,18 +640,12 @@ final class VideoInfo {
             if (key == appliedKey) return;
             appliedKey = key;
             int[] c = colorsFor(style, night);
-            boolean darkPill = (c[0] & 0xFFFFFF) < 0x808080;
-            for (TextView t : new TextView[]{timeView, regionView}) {
-                GradientDrawable g = new GradientDrawable();
-                g.setColor(c[0]);
-                g.setCornerRadius(dp(20));
-                g.setStroke(Math.max(1, dp(0.5f)), darkPill ? 0x2EFFFFFF : 0x1F000000);
-                t.setBackground(g);
-                t.setTextColor(c[1]);
-            }
-            Drawable ic = Icons.of(Icons.CLOCK, c[1]);
-            ic.setBounds(0, 0, dp(13), dp(13));
-            timeView.setCompoundDrawables(ic, null, null, null);
+            GradientDrawable background = new GradientDrawable();
+            background.setColor(c[0]);
+            background.setCornerRadius(dp(12));
+            box.setBackground(background);
+            timeView.setTextColor(c[1]);
+            regionView.setTextColor(c[1]);
             box.setAlpha(op / 100f);
         }
 
@@ -765,7 +727,7 @@ final class VideoInfo {
 
         /** Показывает плашки рядом с подписью anchor. */
         void show(TextView anchor, Meta m, boolean wantTime, boolean wantRegion) {
-            if (this.anchor != anchor) slotReady = false;
+            if (this.anchor != anchor || created != m.created) slotReady = false;
             this.anchor = anchor;
             this.anchorText = anchor.getText() == null ? "" : anchor.getText().toString();
             created = m.created;
@@ -783,7 +745,6 @@ final class VideoInfo {
                 attached = true;
             }
             pills.measure();
-            slotReady = false;
             if (!listening) {
                 decor.getViewTreeObserver().addOnPreDrawListener(this);
                 listening = true;
@@ -869,9 +830,6 @@ final class VideoInfo {
             slotKey = a.getWidth() * 7919 + a.getHeight() * 31 + Prefs.vtPos * 3 + pw * 13 + ph;
             slotAt = SystemClock.uptimeMillis();
             slotReady = true;
-            slotNote = (r[2] == 0 ? "справа от имени" : r[2] == 1 ? "над именем" : r[2] == 2 ? "под именем"
-                    : "запасное (над именем)") + ", занятых мест рядом " + occ.length
-                    + (r[3] > 0 ? ", наложение " + Math.round(r[3] / (d * d)) + " dp²" : ", без наложения");
         }
 
         /** Ставит плашки рядом с подписью; вызывается при каждой перерисовке, пока плашки видны. */
@@ -890,7 +848,8 @@ final class VideoInfo {
                 return;
             }
             if (!a.getGlobalVisibleRect(rect) || rect.height() * 10 < a.getHeight() * 8) {
-                box.setVisibility(View.INVISIBLE);
+                hide();
+                soon();
                 return;
             }
             a.getLocationOnScreen(loc);
@@ -937,7 +896,18 @@ final class VideoInfo {
             tick();
         }
     };
-    private static boolean loop;
+    private static final java.util.concurrent.atomic.AtomicBoolean pending =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    private static int retries;
+    private static final Runnable UPDATE = new Runnable() {
+        @Override
+        public void run() {
+            pending.set(false);
+            retries = 2;
+            main().removeCallbacks(TICK);
+            tick();
+        }
+    };
     private static Overlay overlay;
     private static WeakReference<Activity> overlayAct;
 
@@ -947,30 +917,15 @@ final class VideoInfo {
 
     /** Запустить (или сразу повторить) поиск на экране: при показе экрана и при смене настроек. Главный поток. */
     static void kick() {
-        if (!enabled()) return;
-        main().removeCallbacks(TICK);
-        loop = true;
-        main().postDelayed(TICK, 250L);
+        soon();
     }
 
     private static void soon() {
-        if (!loop) return;
-        main().removeCallbacks(TICK);
-        main().postDelayed(TICK, 20L);
+        if (pending.compareAndSet(false, true)) main().postDelayed(UPDATE, 16L);
     }
 
-    /** Экран прочитал новый пост: сразу искать его подпись, не дожидаясь очередной проверки. Любой поток. */
     static void nudge() {
-        if (!enabled()) return;
-        main().post(new Runnable() {
-            @Override
-            public void run() {
-                if (!enabled()) return;
-                main().removeCallbacks(TICK);
-                loop = true;
-                main().postDelayed(TICK, 20L);
-            }
-        });
+        if (enabled()) soon();
     }
 
     private static void drop() {
@@ -981,13 +936,11 @@ final class VideoInfo {
     }
 
     private static void tick() {
-        loop = false;
         long delay = 400L;
         boolean again = false;
         try {
             if (!enabled()) {
                 drop();
-                diag = "Выключено";
                 return;
             }
             again = true;
@@ -1009,18 +962,15 @@ final class VideoInfo {
             Hit hit = locate(a);
             if (hit == null) {
                 if (overlay != null) overlay.hide();
-                chain = "";
+                if (retries > 0) {
+                    retries--;
+                    delay = 80L;
+                }
                 return;
             }
             Meta m = metaOf(hit.entry);
             boolean wantTime = Prefs.vtTime && m.created > 0;
             boolean wantRegion = Prefs.vtRegion && m.region != null;
-            chain = chainOf(hit.view);
-            diag = "Нашёл видео на экране (по " + (hit.byName ? "имени автора" : "описанию") + ") · время: "
-                    + (m.created > 0 ? "есть" : "в данных нет") + " · регион: "
-                    + (m.region != null ? m.region + " (" + m.regionFrom + ")" : "в данных нет");
-            lastOk = diag;
-            lastOkAt = System.currentTimeMillis();
             if (!wantTime && !wantRegion) {
                 if (overlay != null) overlay.hide();
                 return;
@@ -1030,62 +980,17 @@ final class VideoInfo {
                 overlayAct = new WeakReference<>(a);
             }
             overlay.show(hit.view, m, wantTime, wantRegion);
-            diag = diag + " · место: " + slotNote;
-            lastOk = diag;
+
             delay = 1200L;
         } catch (Throwable t) {
             FlagStore.log(t);
-            diag = "Сбой: " + t.getClass().getSimpleName();
             delay = 2500L;
             drop();
         } finally {
             if (again) {
-                loop = true;
                 main().postDelayed(TICK, delay);
             }
         }
     }
 
-    // ---------------------------------------------------------------- для экрана настроек
-
-    static String status() {
-        if (!enabled()) return "Выключено";
-        String now = diag;
-        String ok = lastOk;
-        if (ok.isEmpty() || ok.equals(now)) return now;
-        long ago = Math.max(0, (System.currentTimeMillis() - lastOkAt) / 1000L);
-        return "Сейчас: " + now + "\nПоследний раз находил " + ageText(ago) + ": " + ok;
-    }
-
-    /** Сведения для разработчика: что нашлось. Имён авторов и текстов описаний в них нет. */
-    static String details() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("TTMLonger ").append(Targets.VERSION).append(" · Android ").append(android.os.Build.VERSION.SDK_INT)
-                .append('\n');
-        sb.append("время: ").append(Prefs.vtTime ? "вкл" : "выкл").append(" (").append(formatLabel(Prefs.vtFormat))
-                .append("), секунды: ").append(Prefs.vtSeconds ? "да" : "нет")
-                .append(", регион: ").append(Prefs.vtRegion ? "вкл" : "выкл").append(" (").append(modeLabel(Prefs.vtRegionMode))
-                .append(")\n");
-        sb.append("видео в трекере: ").append(VideoTracker.size()).append(", всего видено ").append(VideoTracker.total())
-                .append('\n');
-        int withTime = 0;
-        int withRegion = 0;
-        int withKeys = 0;
-        for (VideoTracker.Entry e : VideoTracker.candidates()) {
-            if (e.aweme == null) continue;
-            Meta m = metaOf(e);
-            if (m.created > 0) withTime++;
-            if (m.region != null) withRegion++;
-            Keys k = keysOf(e);
-            if (k.names.length > 0 || !k.desc.isEmpty()) withKeys++;
-        }
-        sb.append("у недавних: время ").append(withTime).append(", регион ").append(withRegion)
-                .append(", есть чем искать на экране ").append(withKeys).append('\n');
-        sb.append("состояние: ").append(status()).append('\n');
-        sb.append("вид: ").append(styleLabel(Prefs.vtStyle)).append(", место: ").append(posLabel(Prefs.vtPos))
-                .append(", непрозрачность ").append(Prefs.vtOpacity).append("%\n");
-        sb.append("выбранное место: ").append(slotNote).append('\n');
-        sb.append("подпись: ").append(chain.isEmpty() ? "не найдена" : chain);
-        return sb.toString();
-    }
 }

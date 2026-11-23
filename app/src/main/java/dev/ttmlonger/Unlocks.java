@@ -36,6 +36,10 @@ final class Unlocks {
     static final Group[] ALL = {
             new Group("voice_dm", Icons.MIC, "Голосовые в ЛС", "Микрофон в чатах",
                     new String[][]{{"im_voice_message", "int", "1"}}),
+            new Group("chat_bubble", Icons.IMAGE, "Пузырь чата", "Оформление сообщений",
+                    new String[][]{{"dm_customize_message_bubble", "int", "1"}}),
+            new Group("chat_wallpaper", Icons.IMAGE, "Обои чата", "Фон переписки",
+                    new String[][]{{"im_chat_wallpaper_chatroom", "int", "2"}}),
             new Group("long_repost", Icons.SEND, "Длинные репосты", "Лимит текста репоста 99 999 символов",
                     new String[][]{{"repost_text_max_length", "int", "99999"}}),
             new Group("hashtags", Icons.FLAG, "Хештеги без лимита", "Лимит хештегов при публикации снят",

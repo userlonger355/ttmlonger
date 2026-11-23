@@ -58,7 +58,6 @@ final class FlagHooks {
                 if (c != null && countMatches(c) >= Targets.SCAN_MIN_GETTERS) hookClass(c);
             }
         }
-        FlagStore.log(status());
     }
 
     /** Классы могут появиться позже (динамическая загрузка) — пробуем ещё несколько раз. */

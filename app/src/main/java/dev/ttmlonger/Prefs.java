@@ -156,6 +156,9 @@ final class Prefs {
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
             unlockOff = o.optString("unlockOff", "");
+            if (!o.optBoolean("chatAppearanceGroups", false) && !refSet) {
+                unlockOff = Unlocks.with(Unlocks.with(unlockOff, "chat_bubble", true), "chat_wallpaper", true);
+            }
             int pb = o.optInt("pageBg", 0);
             pageBg = pb == 0 ? 0 : (0xFF000000 | pb);
         } catch (Throwable t) {
@@ -406,6 +409,7 @@ final class Prefs {
             o.put("hideAds", hideAds);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);
+            o.put("chatAppearanceGroups", true);
             o.put("unlockOff", unlockOff);
             o.put("pageBg", pageBg);
             FlagStore.writeAtomic(file, o.toString());

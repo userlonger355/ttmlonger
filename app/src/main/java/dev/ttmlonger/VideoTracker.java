@@ -128,6 +128,7 @@ final class VideoTracker {
             if (video != null) e.video = video;
             last = e;
         }
+        VideoInfo.nudge();
     }
 
     /** Плеер взял адрес воспроизведения у этого видео: оно, скорее всего, играет прямо сейчас. */

@@ -415,18 +415,8 @@ final class StreakRunner {
                 + StreakStore.sentToday(System.currentTimeMillis(), tz);
     }
 
-    /** Короткое состояние для экрана: по шагам, без технических подробностей. */
-    static String status() {
-        if (!Prefs.streakAuto) return "Автопродление выключено";
-        boolean seen = StreakHooks.service() != null;
-        boolean stk = StreakSticker.has() || !StreakSticker.chosenId().isEmpty();
-        StringBuilder sb = new StringBuilder();
-        sb.append(seen ? "✓ Огоньки видны" : "✗ Огоньки не видны: мод ищет службу сам, можно открыть в TikTok список чатов").append('\n');
-        sb.append(stk ? "✓ Стикер выбран" : "✗ Стикер не выбран: без него ничего не отправится").append('\n');
-        sb.append("Чатов известно: ").append(StreakStore.count()).append(" · отправлено сегодня: ")
-                .append(StreakStore.sentToday(System.currentTimeMillis(), Zones.current()));
-        if (!hint.isEmpty()) sb.append('\n').append(hint);
-        return sb.toString();
+    static String checkSummary() {
+        return hint.isEmpty() ? "Проверка завершена" : hint;
     }
 
     // ---------------------------------------------------------------- отправить всем сразу
