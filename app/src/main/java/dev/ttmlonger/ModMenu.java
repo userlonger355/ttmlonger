@@ -33,6 +33,8 @@ final class ModMenu extends Screen {
             }
         });
         body.addView(regionRow);
+        body.addView(ui.menuRow(Icons.SLIDERS, "Интерфейс и конфиденциальность",
+                "Ссылки, вкладки и подтверждение действий", null, v -> InterfaceScreen.show(act)));
 
         body.addView(ui.menuRow(Icons.PALETTE, "Внешний вид", "Акцент, Amoled-тема, шрифт, значок приложения", null,
                 new View.OnClickListener() {

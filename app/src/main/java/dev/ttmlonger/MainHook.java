@@ -122,6 +122,13 @@ public final class MainHook implements IXposedHookLoadPackage {
         if (ctx == null || !booted.compareAndSet(false, true)) return;
         try {
             FlagStore.init(ctx);      // внутри читаются и Prefs
+            try {
+                InterfaceHooks.install(ctx);
+                FeedButtons.install(cl);
+                ProfileFacts.install(cl);
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
             AccentHooks.installIfNeeded(); // глубокая подмена акцента: только если акцент выбран
             try {
                 BadgeHooks.install(cl); // бейджики после имён: только если включены

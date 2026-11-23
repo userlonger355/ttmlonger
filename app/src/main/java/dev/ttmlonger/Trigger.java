@@ -33,7 +33,10 @@ final class Trigger {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         try {
-                            onTouch((Activity) param.thisObject, (MotionEvent) param.args[0]);
+                            Activity a = (Activity) param.thisObject;
+                            MotionEvent event = (MotionEvent) param.args[0];
+                            onTouch(a, event);
+                            if (FeedGestures.touch(a, event)) param.setResult(true);
                         } catch (Throwable ignored) {
                             // Жест не должен мешать приложению.
                         }

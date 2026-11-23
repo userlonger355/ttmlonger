@@ -411,6 +411,34 @@ final class VideoInfo {
         return m;
     }
 
+    private static void addDetail(List<String> rows, String name, Object value) {
+        if (value instanceof String && !((String) value).trim().isEmpty()) rows.add(name + " · " + ((String) value).trim());
+    }
+
+    private static void showPostDetails(Activity act, VideoTracker.Entry entry) {
+        List<String> rows = new ArrayList<>();
+        Object post = entry.aweme;
+        Object author = get(post, "getAuthor", "author");
+        addDetail(rows, "Регион публикации", get(post, "getRegion", "region"));
+        addDetail(rows, "Регион аккаунта", get(author, "getRegion", "region"));
+        addDetail(rows, "Язык аккаунта", get(author, "getLanguage", "language"));
+        addDetail(rows, "Язык подписи", get(post, "getDescLanguage", "descLanguage", "desc_language"));
+        Object poi = get(post, "getPoiData", "poiData", "poi_data");
+        addDetail(rows, "Отмеченное место", get(poi, "getPoiName", "poiName", "poi_name"));
+        if (rows.isEmpty()) return;
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(act, Ui.dialogTheme())
+                .setTitle("Сведения о публикации").setItems(rows.toArray(new String[0]), (dlg, i) -> {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                            act.getSystemService(Context.CLIPBOARD_SERVICE);
+                    String row = rows.get(i);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("TikTok", row.substring(row.indexOf(" · ") + 3)));
+                    Toasts.show(act, "Скопировано");
+                }).setNegativeButton("Закрыть", null).create();
+        Screen.markOwn(dialog);
+        dialog.show();
+        Ui.style(dialog);
+    }
+
     static Keys keysOf(VideoTracker.Entry e) {
         Keys have = e.keys;
         if (have != null) return have;
@@ -687,6 +715,7 @@ final class VideoInfo {
         boolean attached;
         long created;
         String iso;
+        VideoTracker.Entry entry;
         // выбранное место относительно левого верхнего угла подписи
         boolean slotReady;
         int slotDx;
@@ -715,8 +744,8 @@ final class VideoInfo {
                 @Override
                 public void onClick(View v) {
                     if (iso == null) return;
-                    String name = Regions.nameOf(iso);
-                    Toasts.show(act, "Регион видео: " + (name == null ? iso : name) + " (" + iso + ")");
+                    if (InterfaceHooks.on("details") && entry != null) showPostDetails(act, entry);
+                    else Toasts.show(act, Regions.nameOf(iso) == null ? iso : Regions.nameOf(iso));
                 }
             });
         }
@@ -726,8 +755,9 @@ final class VideoInfo {
         }
 
         /** Показывает плашки рядом с подписью anchor. */
-        void show(TextView anchor, Meta m, boolean wantTime, boolean wantRegion) {
+        void show(TextView anchor, VideoTracker.Entry entry, Meta m, boolean wantTime, boolean wantRegion) {
             if (this.anchor != anchor || created != m.created) slotReady = false;
+            this.entry = entry;
             this.anchor = anchor;
             this.anchorText = anchor.getText() == null ? "" : anchor.getText().toString();
             created = m.created;
@@ -979,7 +1009,7 @@ final class VideoInfo {
                 overlay = new Overlay(a);
                 overlayAct = new WeakReference<>(a);
             }
-            overlay.show(hit.view, m, wantTime, wantRegion);
+            overlay.show(hit.view, hit.entry, m, wantTime, wantRegion);
 
             delay = 1200L;
         } catch (Throwable t) {

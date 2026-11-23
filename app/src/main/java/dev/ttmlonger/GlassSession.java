@@ -470,7 +470,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         double minW = Double.MAX_VALUE;
         for (int i = 0; i < eligible.length; i++) {
             View t = tabs.get(eligible[i]);
-            centers[i] = (t.getLeft() + t.getRight()) / 2.0 - capL;
+            centers[i] = (t.getLeft() + t.getRight()) / 2.0 + t.getTranslationX() - capL;
             minW = Math.min(minW, t.getWidth());
         }
         tabW = minW == Double.MAX_VALUE ? 0 : Math.min(minW, 96.0 * dm);
@@ -853,7 +853,7 @@ final class GlassSession implements Choreographer.FrameCallback {
     private double scanPlus() {
         if (create < 0 || create >= tabs.size() || tex == null) return 0;
         View t = tabs.get(create);
-        double pc = (t.getLeft() + t.getRight()) / 2.0 - capL;
+        double pc = (t.getLeft() + t.getRight()) / 2.0 + t.getTranslationX() - capL;
         double cx = (capR - capL) / 2.0;
         if (Math.abs(pc - cx) > Math.max(8.0 * dm, tabW * 0.3)) return 0;
         int w = tex.getWidth();
@@ -1129,7 +1129,7 @@ final class GlassSession implements Choreographer.FrameCallback {
     private int tabAt(float x) {
         for (int i = 0; i < tabs.size(); i++) {
             View t = tabs.get(i);
-            if (x >= t.getLeft() && x <= t.getRight()) return i;
+            if (x >= t.getX() && x <= t.getX() + t.getWidth()) return i;
         }
         return -1;
     }
