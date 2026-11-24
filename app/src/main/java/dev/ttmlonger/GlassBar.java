@@ -107,9 +107,11 @@ final class GlassBar {
         GlassSession s = live;
         if (s != null) {
             boolean same = a == liveAct.get();
-            if (same && s.isAttached() && s.bar.isAttachedToWindow() && s.bar.getRootView() == a.getWindow().peekDecorView()) {
+            if (same && s.isAttached() && s.bar.isAttachedToWindow() && s.bar.isShown()
+                    && s.bar.getWidth() > 0 && s.bar.getHeight() > 0
+                    && s.bar.getRootView() == a.getWindow().peekDecorView()) {
                 diag = "Панель найдена: " + found;
-                return 2500L;
+                return 750L;
             }
             release("Панель ушла с экрана, ищу снова");
         }
@@ -136,7 +138,7 @@ final class GlassBar {
         liveAct = new WeakReference<>(a);
         found = f.how;
         diag = "Панель найдена: " + found;
-        return 2500L;
+        return 750L;
     }
 
     private static void release(String why) {
