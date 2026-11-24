@@ -108,6 +108,10 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            result("inbox_badge_count",InboxBadge.count("99+")==100&&InboxBadge.count("Входящие")==0&&InboxBadge.count("12")==12);
+            result("inbox_badge_new_notification",InboxBadge.next(12,10)==10&&InboxBadge.next(10,11)==0);
+            result("inbox_badge_labels",InboxBadge.label("Сообщения")&&InboxBadge.label("Inbox")&&!InboxBadge.label("Profile"));
+            result("sponsor_segment_bounds",SponsorSegments.valid(1000,2000,5000)&&!SponsorSegments.valid(1000,6000,5000)&&!SponsorSegments.valid(-1,2000,5000));
             extraFeatureChecks();
             adChecks();
             glassGestureLogic();

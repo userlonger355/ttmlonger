@@ -130,6 +130,7 @@ public final class MainHook implements IXposedHookLoadPackage {
             try { AvatarContours.install(cl,ctx); } catch(Throwable t) { FlagStore.log(t); }
             try { BrightnessLock.install(ctx); } catch(Throwable t) { FlagStore.log(t); }
             try { OfflineLimit.install(ctx,cl); } catch(Throwable t) { FlagStore.log(t); }
+            try { SponsorSegments.install(ctx,cl); } catch(Throwable t) { FlagStore.log(t); }
             try {
                 InterfaceHooks.install(ctx);
             } catch (Throwable t) {

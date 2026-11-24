@@ -69,8 +69,7 @@ final class VideoScreen extends Screen {
 
     static void show(Activity act) {
         new VideoScreen(act).open("Видео и истории",
-                "То, что TikTok показывал последним. Откройте видео или историю, вызовите меню двумя "
-                        + "пальцами и зайдите сюда");
+                "То, что TikTok показывал последним. Откройте видео или историю, удерживайте вкладку «Главная» и зайдите сюда");
     }
 
     @Override

@@ -15,16 +15,10 @@ import java.lang.ref.WeakReference;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
-/**
- * Открывает «Настройки мода», если двумя пальцами подержать экран около 1,2 секунды.
- * Запасной вход на случай, когда блок «Мод» на странице настроек TikTok не появился.
- */
+/** Long press Home opens settings; long press Inbox opens unread-badge confirmation. */
 final class Trigger {
-    private static final long HOLD_MS = 1_200L;
 
     private static final Handler HANDLER = new Handler(Looper.getMainLooper());
-    private static final float[] start = new float[4];
-    private static Runnable pending;
     private static boolean installed;
     private static Runnable homeHold;
     private static WeakReference<Activity> homeOwner = new WeakReference<>(null);
@@ -117,7 +111,7 @@ final class Trigger {
         if (f == null || !f.bar.isShown()) return null;
         for (int i = 0; i < f.tabs.size(); i++) {
             View v = f.tabs.get(i);
-            if (i == f.create || !v.isShown() || !homeLabel(v, 0)) continue;
+            if (i == f.create || !v.isShown() || !(homeLabel(v, 0) || InboxBadge.isInbox(v) && InboxBadge.number(v)!=null)) continue;
             v.getLocationOnScreen(xy);
             if (rawX >= xy[0] && rawX < xy[0] + v.getWidth()
                     && rawY >= xy[1] && rawY < xy[1] + v.getHeight()) return v;
@@ -143,7 +137,7 @@ final class Trigger {
                 homeHold = null;
                 if (homeOwner.get() != a || CrashGuard.tripped || a.isFinishing() || a.isDestroyed()
                         || !a.hasWindowFocus() || !home.isShown() || !home.isAttachedToWindow()
-                        || !homeLabel(home, 0) || home.getRootView() != a.getWindow().peekDecorView()) return;
+                        || !(homeLabel(home, 0) || InboxBadge.isInbox(home)&&InboxBadge.number(home)!=null) || home.getRootView() != a.getWindow().peekDecorView()) return;
                 MotionEvent cancelEvent = MotionEvent.obtain(down, SystemClock.uptimeMillis(),
                         MotionEvent.ACTION_CANCEL, homeX, homeY, 0);
                 cancellingHome = true;
@@ -153,9 +147,8 @@ final class Trigger {
                     cancellingHome = false;
                     cancelEvent.recycle();
                 }
-                cancel();
                 homeConsumed = true;
-                open(a);
+                if(homeLabel(home,0))open(a);else InboxBadge.ask(a,home);
             };
             HANDLER.postDelayed(homeHold, Math.max(150L, ViewConfiguration.getLongPressTimeout() - 40L));
         } else if (homeOwner.get() != a) {
@@ -177,64 +170,9 @@ final class Trigger {
         return false;
     }
 
-    private static void onTouch(final Activity activity, MotionEvent e) {
-        switch (e.getActionMasked()) {
-            case MotionEvent.ACTION_POINTER_DOWN:
-                if (e.getPointerCount() == 2) {
-                    arm(activity, e);
-                } else {
-                    cancel();
-                }
-                break;
-            case MotionEvent.ACTION_MOVE:
-                if (pending != null && moved(activity, e)) cancel();
-                break;
-            case MotionEvent.ACTION_UP:
-                cancel();
-                // Лист стикера открывается сразу после касания: смотрим, не появился ли он.
-                StickerSaver.touched();
-                break;
-            case MotionEvent.ACTION_POINTER_UP:
-            case MotionEvent.ACTION_CANCEL:
-                cancel();
-                break;
-            default:
-                break;
-        }
-    }
-
-    private static void arm(final Activity activity, MotionEvent e) {
-        cancel();
-        for (int i = 0; i < 2; i++) {
-            start[i * 2] = e.getX(i);
-            start[i * 2 + 1] = e.getY(i);
-        }
-        pending = new Runnable() {
-            @Override
-            public void run() {
-                pending = null;
-                open(activity);
-            }
-        };
-        HANDLER.postDelayed(pending, HOLD_MS);
-    }
-
-    private static void cancel() {
-        if (pending != null) {
-            HANDLER.removeCallbacks(pending);
-            pending = null;
-        }
-    }
-
-    private static boolean moved(Activity activity, MotionEvent e) {
-        if (e.getPointerCount() < 2) return true;
-        float slop = ViewConfiguration.get(activity).getScaledTouchSlop() * 2f;
-        for (int i = 0; i < 2; i++) {
-            float dx = e.getX(i) - start[i * 2];
-            float dy = e.getY(i) - start[i * 2 + 1];
-            if (dx * dx + dy * dy > slop * slop) return true;
-        }
-        return false;
+    // Keep sticker sheet detection, but never arm a multi-finger settings gesture.
+    private static void onTouch(Activity activity, MotionEvent e) {
+        if(e.getActionMasked()==MotionEvent.ACTION_UP)StickerSaver.touched();
     }
 
     private static void open(Activity activity) {

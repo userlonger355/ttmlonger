@@ -171,6 +171,7 @@ final class ScreenWatcher {
             }
             View decor = act.getWindow().getDecorView();
             InterfaceHooks.labels(act);
+            InboxBadge.attach(act);
             DisplayInfo di = new DisplayInfo(act);
             Scan s = new Scan();
             scan(decor, s, 0, di);

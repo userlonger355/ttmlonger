@@ -43,6 +43,11 @@ final class AdsScreen extends Screen {
                     }
                 }));
 
+        body.addView(ui.header("Авторская реклама в видео"));
+        body.addView(toggleRow(Icons.VIDEO,"Пропускать размеченные отрезки",
+                "Сервис MargyT получает только ID текущего видео. Не отправляет учётные данные; звук не скачивается. Выключено по умолчанию.",
+                SponsorSegments.enabled(act),on->SponsorSegments.set(act,on)));
+        body.addView(ui.note("Если сервис знает рекламный отрезок, мод перематывает его и предлагает вернуть пропущенное. Без разметки воспроизведение не меняется."));
         body.addView(ui.header("LIVE"));
         body.addView(toggleRow(Icons.EYE_OFF, "Скрыть кнопку LIVE",
                 "Кнопка в левом верхнем углу главной прячется, остальная шапка не сдвигается",
