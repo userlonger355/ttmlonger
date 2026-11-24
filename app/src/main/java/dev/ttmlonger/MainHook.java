@@ -23,6 +23,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         // называются «пакет:имя»; главный может прийти и под другим именем (зависит от загрузчика).
         if (lp.processName != null && lp.processName.indexOf(':') >= 0) return;
 
+        android.util.Log.i("TTMLonger", "TTMLONGER_HOOK_ENTRY " + Targets.VERSION);
         final ClassLoader cl = lp.classLoader;
 
         // Каждая часть ставится отдельно: если одна не взлетела, остальные продолжают работать.
@@ -167,6 +168,7 @@ public final class MainHook implements IXposedHookLoadPackage {
             RegionHooks.installLocale();
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);
             DexHooks.start(ctx, cl);  // второй читатель флагов и нажатия на стикеры: поиск в dex, в фоне
+            android.util.Log.i("TTMLonger", "TTMLONGER_BOOT_READY " + Targets.VERSION + " flagHooks=" + FlagHooks.count());
         } catch (Throwable t) {
             FlagStore.log(t);
         }
