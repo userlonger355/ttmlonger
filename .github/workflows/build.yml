@@ -3,7 +3,7 @@ name: Build TTMLonger
 # Работает в двух вариантах:
 #  1) в репозитории лежат файлы проекта как есть;
 #  2) в корне репозитория лежит один файл ttmlonger.zip — он распакуется сам.
-# Готовый APK появится на вкладке Releases (справа на главной странице репозитория).
+# Тестовый APK доступен в Actions → Artifacts. Публикация релиза выполняется отдельно.
 on:
   workflow_dispatch:
   push:
@@ -12,7 +12,7 @@ on:
       - badges.json
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -49,15 +49,20 @@ jobs:
           name: TTMLonger
           path: ${{ env.PROJECT }}/TTMLonger.apk
 
-      - name: Опубликовать в Releases
-        uses: softprops/action-gh-release@v2
+      - name: Record build provenance
+        working-directory: ${{ env.PROJECT }}
+        run: |
+          sha256sum TTMLonger.apk > TTMLonger.apk.sha256
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > build-info.txt
+          echo "### Test build only — runtime acceptance is separate" >> "$GITHUB_STEP_SUMMARY"
+          cat TTMLonger.apk.sha256 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: build-${{ github.run_number }}
-          name: TTMLonger, сборка ${{ github.run_number }}
-          body: |
-            Модуль TTMLonger для LSPatch. Скачайте TTMLonger.apk и установите.
-            Как пропатчить TikTok — в README проекта.
-          files: ${{ env.PROJECT }}/TTMLonger.apk
+          name: TTMLonger-build-info
+          path: |
+            ${{ env.PROJECT }}/TTMLonger.apk.sha256
+            ${{ env.PROJECT }}/build-info.txt
+          if-no-files-found: error
 
   ui-preview:
     name: Проверить меню и снять экраны Android
@@ -88,7 +93,11 @@ jobs:
           arch: x86_64
           target: default
           script: bash tools/ui-preview/capture.sh
-      - name: Добавить снимки экранов к сборке
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "build-${{ github.run_number }}" screenshots/menu.png screenshots/streaks.png --clobber
+      - name: Upload preview screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: TTMLonger-preview
+          path: |
+            screenshots/menu.png
+            screenshots/streaks.png
+          if-no-files-found: error
