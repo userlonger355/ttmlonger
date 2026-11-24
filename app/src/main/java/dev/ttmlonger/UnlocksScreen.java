@@ -57,6 +57,23 @@ final class UnlocksScreen extends Screen {
         }
         body.addView(groupRow("chat_bubble"));
         body.addView(groupRow("chat_wallpaper"));
+        body.addView(ui.row(Icons.COPY, "Диагностика чатов",
+                "Откройте чат, попробуйте голосовые, обои и пузырь, затем скопируйте отчёт",
+                null, false, v -> {
+                    try {
+                        ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+                        String report = "TTMLonger " + Targets.VERSION + " · Android "
+                                + android.os.Build.VERSION.SDK_INT + "\n"
+                                + "Микрофон: " + (act.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                                == android.content.pm.PackageManager.PERMISSION_GRANTED ? "разрешён" : "не разрешён")
+                                + "\n" + FlagTap.chatSummary() + "\n" + FlagHooks.status()
+                                + "\n" + FlagHooks.readerStatus();
+                        cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", report));
+                        Toasts.show(act, "Диагностика скопирована");
+                    } catch (Throwable t) {
+                        Toasts.show(act, "Не удалось скопировать");
+                    }
+                }));
         body.addView(groupRow("read_all"));
 
         body.addView(ui.header("Публикации и комментарии"));
