@@ -208,6 +208,7 @@ final class VideoTracker {
     private static final int BOUND_MAX = 24;
     private static final List<Entry> BOUND = new ArrayList<>();
     private static volatile Entry lastBound;
+    private static volatile String lastBoundAid;
 
     /**
      * Экран читает у поста имя автора или описание: значит, пост уже показан (или вот-вот будет), а плеер
@@ -219,6 +220,7 @@ final class VideoTracker {
         Entry l = lastBound;
         if (l != null && l.aweme == aweme) {
             l.seen = now();
+            String id=l.aid();if(!java.util.Objects.equals(id,lastBoundAid)){lastBoundAid=id;l.refreshIdentity();VideoInfo.nudge();}
             return;
         }
         boolean fresh = false;
@@ -244,8 +246,9 @@ final class VideoTracker {
             }
             e.seen = now();
             lastBound = e;
+            lastBoundAid=e.aid();
         }
-        if (fresh) VideoInfo.nudge();
+        VideoInfo.nudge();
     }
 
     /**

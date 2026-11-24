@@ -68,18 +68,35 @@ public final class MtpRuntime {
                     try{return super.loadClass(n,resolve);}catch(ClassNotFoundException e){return host.loadClass(n);}
                 }
             };
-            dalvik.system.InMemoryDexClassLoader loader=new dalvik.system.InMemoryDexClassLoader(java.nio.ByteBuffer.wrap(s.pkg.dex).asReadOnlyBuffer(),parent);
+            File folder=new File(dir(),s.id+"-"+s.pkg.digest.substring(0,16));if(!folder.exists()&&!folder.mkdirs())throw new IOException("folder");
+            // Match the original MargyT loader: materialize the approved DEX and make it
+            // read-only BEFORE writing, as required by Android 14+ dynamic code loading.
+            File dex=new File(folder,"classes.dex");
+            writeDex(dex,s.pkg.dex);
+            dalvik.system.DexClassLoader loader=new dalvik.system.DexClassLoader(
+                dex.getAbsolutePath(),app.getCodeCacheDir().getAbsolutePath(),null,parent);
             Class<?> entry=Class.forName(s.pkg.manifest.getString("entry"),false,loader);
             if(entry.getClassLoader()!=loader||!MargyPlugin.class.isAssignableFrom(entry))throw new IllegalArgumentException("entry");
-            File folder=new File(dir(),s.id+"-"+s.pkg.digest.substring(0,16));if(!folder.exists()&&!folder.mkdirs())throw new IOException("folder");
-            // Keep the validated manifest in the plugin folder; dex is loaded directly from memory.
             FlagStore.writeAtomic(new File(folder,"manifest.json"),s.pkg.manifest.toString());
             if(s.pkg.icon!=null)try(FileOutputStream out=new FileOutputStream(new File(folder,"icon.png"))){out.write(s.pkg.icon);}
             MargyPlugin plugin=(MargyPlugin)entry.getConstructor().newInstance();
             plugin.attach(new PluginContext(app,s.id,folder,line->android.util.Log.i("TTMPlugin",s.id+": "+String.valueOf(line))));
             s.plugin=plugin;s.enabled=true;publish();
-            plugin.onStart(app);s.status="Запущен";
+            plugin.onStart(app);
+            Activity visible=activity();if(visible!=null){plugin.onActivityResumed(visible);plugin.onScreen(visible,visible.getClass().getName());}
+            s.status="Запущен";
         }catch(Throwable e){fault(s,e);}
+    }
+    private static void writeDex(File dex,byte[] data)throws IOException{
+        File temporary=File.createTempFile("approved-", ".dex",dex.getParentFile());
+        try{
+            try(FileOutputStream out=new FileOutputStream(temporary)){
+                if(!temporary.setReadOnly())throw new IOException("DEX read-only permission");
+                out.write(data);
+                out.getFD().sync();
+            }
+            if(!temporary.renameTo(dex))throw new IOException("DEX replacement");
+        }finally{temporary.delete();}
     }
     static void stop(Slot s){
         MargyPlugin p=s.plugin;s.enabled=false;s.plugin=null;publish();
@@ -87,7 +104,7 @@ public final class MtpRuntime {
         if(p!=null)try{p.onStop();}catch(Throwable ignored){}
         clearViews(s);s.rows.clear();s.status="Выключен";
     }
-    private static void fault(Slot s,Throwable e){s.enabled=false;s.plugin=null;publish();s.status="Ошибка: "+e.getClass().getSimpleName();prefs().edit().putBoolean("on:"+s.id,false).apply();MAIN.post(()->clearViews(s));}
+    private static void fault(Slot s,Throwable e){android.util.Log.e("TTMPlugin","Plugin "+s.id+" failed",e);s.enabled=false;s.plugin=null;publish();s.status="Ошибка: "+e.getClass().getSimpleName();prefs().edit().putBoolean("on:"+s.id,false).apply();MAIN.post(()->clearViews(s));}
     private interface Call{void run(MargyPlugin p);}
     private static void events(Call cb){if(!running())return;for(Slot s:active){MargyPlugin p=s.plugin;if(p!=null)try{cb.run(p);}catch(Throwable e){fault(s,e);}}}
     static void created(Activity a){events(p->p.onActivityCreated(a));}

@@ -403,7 +403,8 @@ final class VideoInfo {
                 // не число
             }
         }
-        String region = normRegion(str(get(aw, "getRegion", "region")));
+        String region = normRegion(str(DownloadHooks.call(aw,"getRegion")));
+        if(region==null)region=normRegion(str(fieldOf(aw,"region")));
         // The author account region is not the publication region.
         Meta m = new Meta(created, region);
         // Пустое не запоминаем: модель могла быть ещё не заполнена.
@@ -1130,6 +1131,7 @@ final class VideoInfo {
             Hit hit = locate(a);
             if (hit == null) {
                 if (overlay != null) overlay.hide();
+                delay = FeedButtons.inFeed(a) ? 140L : 400L;
                 if (retries > 0) {
                     retries--;
                     delay = 80L;
@@ -1142,6 +1144,7 @@ final class VideoInfo {
             boolean wantRegion = Prefs.vtRegion && m.region != null;
             if (!wantTime && !wantRegion && !wantRepost) {
                 if (overlay != null) overlay.hide();
+                delay=120L;
                 return;
             }
             if (overlay == null) {
@@ -1150,7 +1153,8 @@ final class VideoInfo {
             }
             overlay.show(hit.view, hit.entry, m, wantTime, wantRegion);
 
-            delay = 1200L;
+            // Keep polling incomplete native metadata quickly; never substitute the account region.
+            delay = (Prefs.vtRegion && m.region==null || Prefs.vtTime && m.created<=0) ? 120L : 300L;
         } catch (Throwable t) {
             FlagStore.log(t);
             delay = 2500L;

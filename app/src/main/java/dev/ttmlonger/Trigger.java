@@ -172,7 +172,7 @@ final class Trigger {
 
     // Keep sticker sheet detection, but never arm a multi-finger settings gesture.
     private static void onTouch(Activity activity, MotionEvent e) {
-        if(e.getActionMasked()==MotionEvent.ACTION_UP)StickerSaver.touched();
+        if(e.getActionMasked()==MotionEvent.ACTION_UP){StickerSaver.touched();VideoInfo.nudge();if(FeedButtons.inFeed(activity))HANDLER.postDelayed(VideoInfo::nudge,120L);}
     }
 
     private static void open(Activity activity) {

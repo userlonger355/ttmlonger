@@ -111,6 +111,7 @@ final class RuntimeUiChecks {
             result("top_tabs_independent", "top_hide_community".equals(TopTabs.setting("community"))&&"top_hide_friends".equals(TopTabs.setting("friends"))&&"top_hide_recommend".equals(TopTabs.setting("recommend"))&&TopTabs.setting("following")==null);
             result("top_tabs_scoped_row",TopTabs.navigation(new java.util.HashSet<>(java.util.Arrays.asList("community","friends","recommend")),false)&&!TopTabs.navigation(new java.util.HashSet<>(java.util.Arrays.asList("friends","community","following")),true));
             result("comment_copy_preserves_mentions","Спасибо @friend! https://example.org".equals(CommentSelect.body(new CopyCommentFixture()))&&CommentSelect.body(new Object())==null);
+            mtpDexChecks();
             result("mtp_api_version",cat.narezany.margyt.plugin.MargyPlugin.API==5);
             result("mtp_safe_id",MtpArchive.validId("margyt.hello")&&!MtpArchive.validId("../bad")&&!MtpArchive.validId("a/b"));
             try{
@@ -258,6 +259,29 @@ final class RuntimeUiChecks {
             result("backup_allowlist",backup.size()==2&&backup.containsKey("vtTime")&&backup.containsKey("avatar_contour"));
         }catch(Throwable e){result("backup_allowlist",false);}
     }
+    private static void mtpDexChecks(){
+        MtpRuntime.Slot slot=null;
+        try{
+            byte[] dex=android.util.Base64.decode(RuntimeMtpFixtureData.DEX,android.util.Base64.DEFAULT);
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+            try(java.util.zip.ZipOutputStream z=new java.util.zip.ZipOutputStream(out)){
+                z.putNextEntry(new java.util.zip.ZipEntry("manifest.json"));
+                z.write("{\"id\":\"ci.loader.fixture\",\"name\":\"Loader fixture\",\"author\":\"CI\",\"version\":\"1\",\"entry\":\"fixture.mtp.Probe\",\"min_api\":5}".getBytes(java.nio.charset.StandardCharsets.UTF_8));z.closeEntry();
+                z.putNextEntry(new java.util.zip.ZipEntry("classes.dex"));z.write(dex);z.closeEntry();
+            }
+            MtpArchive p=MtpArchive.read(new java.io.ByteArrayInputStream(out.toByteArray()));
+            MtpRuntime.add(p);
+            for(MtpRuntime.Slot s:MtpRuntime.all())if(s.id.equals(p.id))slot=s;
+            if(slot==null)throw new IllegalStateException("missing fixture slot");
+            MtpRuntime.approve(slot);
+            result("mtp_real_dex_start",slot.enabled&&slot.plugin!=null&&"fixture.mtp.Probe".equals(slot.plugin.getClass().getName()));
+            result("mtp_real_dex_context",slot.enabled&&slot.rows.size()==1&&"CI fixture".equals(slot.rows.get(0).title));
+            result("mtp_real_dex_readonly",slot.enabled&&slot.plugin.margyt().folder().isDirectory()
+                &&(android.system.Os.stat(new java.io.File(slot.plugin.margyt().folder(),"classes.dex").getAbsolutePath()).st_mode&0222)==0);
+            MtpRuntime.stop(slot);
+            result("mtp_real_dex_stop",!slot.enabled&&slot.plugin==null);
+        }catch(Throwable e){fail("mtp_real_dex",e);}finally{if(slot!=null)MtpRuntime.remove(slot);}
+    }
     private static void metadataChecks() {
         try {
             FakePost f=new FakePost();
@@ -275,6 +299,9 @@ final class RuntimeUiChecks {
             result("repost_conflicting_times",VideoInfo.repostTimeOf(f)==0);
             f.repostTimestamp=0; f.upvoteInfo=null;
             result("metadata_first_bind",VideoInfo.metaOf(e).created==1700000000L);
+            FakePost late=new FakePost();late.region="";VideoTracker.Entry lateEntry=new VideoTracker.Entry(late);
+            result("metadata_missing_region_not_cached",VideoInfo.metaOf(lateEntry).region==null);
+            late.region="RU";result("metadata_late_region_refresh","RU".equals(VideoInfo.metaOf(lateEntry).region));
             f.aid="two"; f.createTime=1700000300L; f.region="US";
             result("metadata_reused_model",VideoInfo.metaOf(e).created==1700000300L && "US".equals(VideoInfo.metaOf(e).region));
             FakePost other=new FakePost();

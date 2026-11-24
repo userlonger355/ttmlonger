@@ -35,6 +35,22 @@ jobs:
           gradle-version: "8.9"
       - name: Build isolated UI test module
         run: |
+          gradle --no-daemon :app:compileDebugJavaWithJavac
+          sdk_class="$(find app/build -type f -path '*/cat/narezany/margyt/plugin/MargyPlugin.class' -print -quit)"
+          test -n "$sdk_class"
+          sdk_classes="${sdk_class%/cat/narezany/margyt/plugin/MargyPlugin.class}"
+          android_jar="$ANDROID_HOME/platforms/android-34/android.jar"
+          d8="$(find "$ANDROID_HOME/build-tools" -type f -name d8 | sort -V | tail -1)"
+          mkdir -p "$RUNNER_TEMP/mtp-fixture/classes" "$RUNNER_TEMP/mtp-fixture/dex"
+          javac --release 8 -cp "$sdk_classes:$android_jar" -d "$RUNNER_TEMP/mtp-fixture/classes" tools/runtime-ui/mtp-fixture/Probe.java
+          "$d8" --min-api 26 --lib "$android_jar" --classpath "$sdk_classes" --output "$RUNNER_TEMP/mtp-fixture/dex" "$RUNNER_TEMP/mtp-fixture/classes/fixture/mtp/Probe.class"
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          dex=Path(os.environ["RUNNER_TEMP"])/"mtp-fixture/dex/classes.dex"
+          data=base64.b64encode(dex.read_bytes()).decode()
+          Path("app/src/main/java/dev/ttmlonger/RuntimeMtpFixtureData.java").write_text('package dev.ttmlonger; final class RuntimeMtpFixtureData { static final String DEX="'+data+'"; }')
+          PY
           cp tools/runtime-ui/RuntimeUiChecks.java app/src/main/java/dev/ttmlonger/
           python3 - <<'PY'
           from pathlib import Path

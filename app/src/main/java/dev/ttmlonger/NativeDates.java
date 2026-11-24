@@ -18,11 +18,21 @@ final class NativeDates {
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final WeakHashMap<View,VideoTracker.Entry> CELLS=new WeakHashMap<>();
     private static Class<?> aweme;
+    private static Method itemReader;
     static void install(ClassLoader cl) {
         try {
             aweme=XposedHelpers.findClassIfExists(DownloadHooks.AWEME,cl);
             Class<?> owner=XposedHelpers.findClassIfExists("com.ss.android.ugc.aweme.feed.assem.videoauthorinfo.VideoAuthorInfoRelationAssem",cl);
             if(aweme==null || owner==null)return;
+            try{
+                Class<?> reused=XposedHelpers.findClassIfExists("com.bytedance.assem.arch.reused.ReusedAssem",cl);
+                Class<?> reader=XposedHelpers.findClassIfExists("X.0cP2",cl);
+                if(reused!=null&&reader!=null&&reused.isAssignableFrom(owner)){
+                    itemReader=reader.getDeclaredMethod("LIZ",reused);
+                    if(!java.lang.reflect.Modifier.isStatic(itemReader.getModifiers()))itemReader=null;
+                    else itemReader.setAccessible(true);
+                }
+            }catch(Throwable ignored){}
             int count=0;
             for(Method method:owner.getDeclaredMethods()) {
                 Class<?>[] p=method.getParameterTypes();
@@ -55,6 +65,7 @@ final class NativeDates {
         View cell=(View)content;
         Object found=post(arg);
         if(found==null)found=post(field(field(holder,"LLJJJJLIIL"),"LL"));
+        if(found==null&&itemReader!=null)try{found=post(itemReader.invoke(null,holder));}catch(Throwable ignored){}
         final Object model=found;
         Runnable apply=()->{
             CELLS.remove(cell);
@@ -67,6 +78,8 @@ final class NativeDates {
                 }
             }
             VideoInfo.nudge();
+            // If the cell has not completed layout, retry on its next frame instead of waiting for the polling loop.
+            cell.postOnAnimation(VideoInfo::nudge);
         };
         if(Looper.myLooper()==Looper.getMainLooper())apply.run();else MAIN.post(apply);
     }
