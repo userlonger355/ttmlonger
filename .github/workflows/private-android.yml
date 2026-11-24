@@ -1,0 +1,192 @@
+name: Private Android login test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/navigation-metadata-20261124
+    paths:
+      - .github/workflows/private-android.yml
+      - tools/private-android-screen.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-android-test
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          PW: ${{ secrets.TTM_REMOTE_PASSWORD }}
+        run: |
+          if [[ -n "$KEY" && ${#PW} -ge 20 ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Configure TAILSCALE_AUTH_KEY and TTM_REMOTE_PASSWORD first; then re-run all jobs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+  build:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - run: gradle --no-daemon :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-test-module
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 1
+  session:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: private-test-module
+          path: ${{ runner.temp }}/module
+      - name: Install native host verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apksigner
+      - name: Set up Java 21 for LSPatch
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Retrieve verified test input and embed module
+        id: patch
+        env:
+          TIKTOK_APK_URL: ${{ secrets.TIKTOK_APK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TIKTOK_APK_URL" ]]; then
+            echo "::error::Missing TIKTOK_APK_URL"
+            exit 1
+          fi
+          [[ "$TIKTOK_APK_URL" == https://www.dropbox.com/* ]]
+          work="$RUNNER_TEMP/ttmlonger-runtime"
+          mkdir -p "$work/output"
+          chmod 700 "$work"
+          curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 180 --max-filesize 1073741824 --output "$work/TikTok.apk" "$TIKTOK_APK_URL"
+          echo "7321ae3537572004956e2308c7eb5b1d82e6eb536c2c2fac432f3d8a1801ff70  $work/TikTok.apk" | sha256sum -c
+          curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 120 --output "$work/lspatch.jar" "https://github.com/JingMatrix/LSPatch/releases/download/v1.2/lspatch-v1.2-487-release.jar"
+          echo "d238fdc414d121b7fa454d8b4ccf420df3a8c97d563761861ff92bd9c5da2165  $work/lspatch.jar" | sha256sum -c
+          java -jar "$work/lspatch.jar" --help
+          # Embed the built module; leave signature bypass disabled.
+          java -jar "$work/lspatch.jar" -o "$work/output" -m "$RUNNER_TEMP/module/app-debug.apk" "$work/TikTok.apk"
+          mapfile -t outputs < <(find "$work/output" -maxdepth 1 -type f -name '*.apk')
+          [[ "${#outputs[@]}" == 1 ]]
+          apksigner verify "${outputs[0]}"
+          echo "apk=${outputs[0]}" >> "$GITHUB_OUTPUT"
+          echo "### Test APK patched and signature verified" >> "$GITHUB_STEP_SUMMARY"
+      - name: Check native ARM64 Binder support
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          [[ "$(uname -m)" == aarch64 ]]
+          if ! grep -qw binder /proc/filesystems && ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            if apt-cache show "linux-modules-extra-$(uname -r)" >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+              sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+            fi
+          fi
+          if ! grep -qw binder /proc/filesystems && [[ ! -c /dev/binder ]]; then
+            echo "::error::No usable Android Binder driver; container cannot boot"
+            exit 1
+          fi
+          echo "Binder support detected"
+      - name: Install ADB and start isolated native Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y adb
+          docker pull redroid/redroid:14.0.0-latest
+          docker image inspect redroid/redroid:14.0.0-latest --format '{{.Architecture}} {{.Id}}'
+          [[ "$(docker image inspect redroid/redroid:14.0.0-latest --format '{{.Architecture}}')" == arm64 ]]
+          docker run -d --name native-android --privileged -p 127.0.0.1:5555:5555 redroid/redroid:14.0.0-latest androidboot.redroid_gpu_mode=guest androidboot.use_memfd=true
+          adb connect 127.0.0.1:5555
+          for attempt in $(seq 1 60); do
+            adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+            if [[ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
+              adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi
+              [[ "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" == arm64-v8a ]]
+              echo "### Native ARM64 Android booted" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Android did not finish booting"
+          docker logs --tail 80 native-android
+          exit 1
+      - name: Install test app without recording login
+        env:
+          PATCHED_APK: ${{ steps.patch.outputs.apk }}
+        run: |
+          set -euo pipefail
+          adb -s 127.0.0.1:5555 install --no-streaming "$PATCHED_APK"
+          adb -s 127.0.0.1:5555 shell monkey -p com.zhiliaoapp.musically -c android.intent.category.LAUNCHER 1 >/dev/null
+      - name: Install private network client
+        run: curl -fsSL https://tailscale.com/install.sh | sh
+      - name: Connect isolated ephemeral tailnet node
+        env:
+          TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          f="$(mktemp)"
+          trap 'rm -f "$f"' EXIT
+          printf '%s' "$TS_KEY" > "$f"
+          sudo tailscale up --auth-key="file:$f" --hostname="ttm-test-$GITHUB_RUN_ID" --accept-routes=false --accept-dns=false --ssh=false
+      - name: Serve private test screen for 15 minutes
+        env:
+          TTM_REMOTE_PASSWORD: ${{ secrets.TTM_REMOTE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python3 tools/private-android-screen.py >/dev/null 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; sudo tailscale serve reset || true' EXIT
+          for i in $(seq 1 10); do
+            if [[ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:6080/)" == 401 ]]; then break; fi
+            sleep 1
+          done
+          [[ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:6080/)" == 401 ]]
+          sudo tailscale serve --bg 6080
+          host="$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
+          [[ "$host" == *.ts.net ]]
+          printf '### Private test screen\n\nhttps://%s/\n\nUsername: ttm. Use your session password. Available for up to 15 minutes. No screen capture artifacts.\n' "$host" >> "$GITHUB_STEP_SUMMARY"
+          for i in $(seq 1 90); do
+            kill -0 "$pid"
+            sleep 10
+          done
+      - name: Destroy session and disconnect
+        if: always()
+        run: |
+          sudo tailscale serve reset 2>/dev/null || true
+          sudo tailscale logout 2>/dev/null || true
+          docker rm -f native-android || true
+          rm -rf "$RUNNER_TEMP/ttmlonger-runtime" "$RUNNER_TEMP/module"
