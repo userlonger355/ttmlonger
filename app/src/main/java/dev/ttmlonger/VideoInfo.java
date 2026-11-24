@@ -722,6 +722,9 @@ final class VideoInfo {
         int slotDy;
         int slotKey;
         long slotAt;
+        boolean positioned;
+        float smoothDx, smoothDy;
+        long lastFollow;
 
         Overlay(Activity act) {
             this.act = act;
@@ -756,7 +759,11 @@ final class VideoInfo {
 
         /** Показывает плашки рядом с подписью anchor. */
         void show(TextView anchor, VideoTracker.Entry entry, Meta m, boolean wantTime, boolean wantRegion) {
-            if (this.anchor != anchor || created != m.created) slotReady = false;
+            if (this.anchor != anchor || this.entry != entry || created != m.created) {
+                slotReady = false;
+                positioned = false;
+                lastFollow = 0L;
+            }
             this.entry = entry;
             this.anchor = anchor;
             this.anchorText = anchor.getText() == null ? "" : anchor.getText().toString();
@@ -785,6 +792,9 @@ final class VideoInfo {
         void hide() {
             anchor = null;
             slotReady = false;
+            positioned = false;
+            lastFollow = 0L;
+            box.animate().cancel();
             if (attached) box.setVisibility(View.GONE);
             stopListening();
         }
@@ -887,13 +897,36 @@ final class VideoInfo {
             int key = a.getWidth() * 7919 + a.getHeight() * 31 + Prefs.vtPos * 3 + box.getMeasuredWidth() * 13
                     + box.getMeasuredHeight();
             if (!slotReady || key != slotKey || SystemClock.uptimeMillis() - slotAt > 700L) chooseSlot(a);
-            float x = loc[0] - dloc[0] + slotDx;
-            float y = loc[1] - dloc[1] + slotDy;
+            long now = SystemClock.uptimeMillis();
+            // Следуем за подписью сразу, но плавно меняем относительное место плашки.
+            boolean animate = android.os.Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled();
+            if (!positioned || !animate) {
+                smoothDx = slotDx;
+                smoothDy = slotDy;
+                positioned = true;
+            } else {
+                long dt = Math.max(1L, Math.min(100L, now - lastFollow));
+                float k = (float) (1.0 - Math.exp(-dt / 65.0));
+                smoothDx += (slotDx - smoothDx) * k;
+                smoothDy += (slotDy - smoothDy) * k;
+                if (Math.abs(slotDx - smoothDx) < 0.5f) smoothDx = slotDx;
+                if (Math.abs(slotDy - smoothDy) < 0.5f) smoothDy = slotDy;
+                if (smoothDx != slotDx || smoothDy != slotDy) box.postInvalidateOnAnimation();
+            }
+            lastFollow = now;
+            float x = loc[0] - dloc[0] + smoothDx;
+            float y = loc[1] - dloc[1] + smoothDy;
             if (y < 0 || x < 0) {
                 box.setVisibility(View.INVISIBLE);
                 return;
             }
-            if (box.getVisibility() != View.VISIBLE) box.setVisibility(View.VISIBLE);
+            if (box.getVisibility() != View.VISIBLE) {
+                box.setVisibility(View.VISIBLE);
+                float opacity = clampOpacity(Prefs.vtOpacity) / 100f;
+                box.animate().cancel();
+                box.setAlpha(animate ? 0f : opacity);
+                if (animate) box.animate().alpha(opacity).setDuration(180L).start();
+            }
             if (box.getTranslationX() != x) box.setTranslationX(x);
             if (box.getTranslationY() != y) box.setTranslationY(y);
         }
