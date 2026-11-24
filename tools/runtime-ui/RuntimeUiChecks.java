@@ -108,6 +108,7 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            adChecks();
             main.postDelayed(() -> row(0), 1800);
         } catch(Throwable e) { fail("menu_exception",e); finish(); }
     }
@@ -137,6 +138,29 @@ final class RuntimeUiChecks {
                 }, 1600);
             }, 400);
         } catch(Throwable e) { fail("screen_"+id,e); main.postDelayed(() -> row(i+1),250); }
+    }
+    public static final class FakeFeedPost {
+        final boolean ad;
+        final int type;
+        FakeFeedPost(boolean ad,int type){this.ad=ad;this.type=type;}
+        public boolean isAd(){return ad;}
+        public int getAwemeType(){return type;}
+    }
+    private static void adChecks() {
+        try {
+            FakeFeedPost regular=new FakeFeedPost(false,0), ad=new FakeFeedPost(true,0), live=new FakeFeedPost(false,101);
+            java.util.List<Object> feed=java.util.Arrays.asList(regular,ad,live);
+            result("ad_filter_disabled",AdHooks.process(feed,false,false)==feed);
+            result("ad_filter_ads_only",AdHooks.process(feed,true,false).equals(java.util.Arrays.asList(regular,live)));
+            result("ad_filter_live_only",AdHooks.process(feed,false,true).equals(java.util.Arrays.asList(regular,ad)));
+            result("ad_filter_both",AdHooks.process(feed,true,true).equals(java.util.Arrays.asList(regular)));
+            result("ad_filter_toggle_back",AdHooks.process(feed,false,false)==feed && feed.size()==3);
+            result("ad_native_client",BrowserLinks.nativeAdPage("com.tiktok.commercialize.AdWebView","https://example.org"));
+            result("ad_native_destination",BrowserLinks.nativeAdPage("Client","https://ads.tiktok.com/landing_page"));
+            result("ad_native_domain_boundary",!BrowserLinks.nativeAdPage("Client","https://tiktok.com.example.org/ad/"));
+            result("ad_normal_external_link",!BrowserLinks.nativeAdPage("Client","https://example.org/article"));
+            result("ad_internal_host",BrowserLinks.internalHost("WWW.TIKTOK.COM.") && !BrowserLinks.internalHost("tiktok.com.example.org"));
+        } catch(Throwable e){fail("ad_checks",e);}
     }
     public static final class FakePost {
         public String aid="one";

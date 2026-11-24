@@ -44,13 +44,23 @@ final class BrowserLinks {
             if (host == null || path == null) return false;
             host = host.toLowerCase(Locale.ROOT);
             path = path.toLowerCase(Locale.ROOT);
-            boolean internal = host.equals("tiktok.com") || host.endsWith(".tiktok.com")
-                    || host.equals("tiktokv.com") || host.endsWith(".tiktokv.com");
+            boolean internal = internalHost(host);
             return internal && (path.startsWith("/ad/") || path.startsWith("/ads/")
-                    || path.contains("/landing_page/") || path.contains("/ad_landing/"));
+                    || path.equals("/ad") || path.equals("/ads") || path.endsWith("/landing_page")
+                    || path.endsWith("/ad_landing") || path.contains("/landing_page/") || path.contains("/ad_landing/"));
         } catch (RuntimeException ignored) {
             return false;
         }
+    }
+
+    static boolean internalHost(String host) {
+        if (host == null) return false;
+        host = host.toLowerCase(Locale.ROOT);
+        if (host.endsWith(".")) host=host.substring(0,host.length()-1);
+        for (String domain : new String[]{"tiktok.com","tiktokv.com","bytedance.com","tiktokshop.com"}) {
+            if (host.equals(domain) || host.endsWith("."+domain)) return true;
+        }
+        return false;
     }
 
     private static final XC_MethodHook OPEN = new XC_MethodHook() {
@@ -63,18 +73,17 @@ final class BrowserLinks {
             WebView web = (WebView) p.args[0];
             // Рекламные посадочные страницы оставляем штатному обработчику TikTok.
             // Иначе режим чтения или внешний браузер могут прервать переход и возврат.
-            if (nativeAdPage(p.thisObject.getClass().getName(), web.getUrl())) return;
+            String client = p.thisObject.getClass().getName();
+            if (nativeAdPage(client, web.getUrl())) return;
             WebResourceRequest request = (WebResourceRequest) p.args[1];
             if (request == null || !request.isForMainFrame() || !request.hasGesture()
                     || !"GET".equalsIgnoreCase(request.getMethod())) return;
             Uri url = request.getUrl();
+            if (url == null || nativeAdPage(client,url.toString())) return;
             String scheme = url.getScheme();
             String host = url.getHost();
             if (host == null || (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme))) return;
-            host = host.toLowerCase(Locale.ROOT);
-            for (String internal : new String[]{"tiktok.com", "tiktokv.com", "bytedance.com", "tiktokshop.com"}) {
-                if (host.equals(internal) || host.endsWith("." + internal)) return;
-            }
+            if (internalHost(host)) return;
             if (!external && reader && ReaderWindow.open(url)) {
                 p.setResult(true);
                 return;
