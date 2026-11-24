@@ -10,7 +10,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -343,8 +342,10 @@ final class StoryShare {
         View old=buttons.get(root);
         if(old!=null && old.isAttachedToWindow() && pinned!=null) {
             if(!pinned.isStory() && !Prefs.dlPill) remove(root);
+            else if(pinned.isStory() && (!s.send || s.mute==null || s.save!=null))remove(root);
             return;
         }
+        if(old!=null)remove(root);
         if(e==null || (!e.isStory() && !Prefs.dlPill) || (e.isStory() && s.save!=null)) return;
         if(!e.isStory() && s.mute!=null && s.notInterested==null && s.save==null) return;
         if(!e.isStory()){compactInSheet(root,s,e);return;}
@@ -357,72 +358,49 @@ final class StoryShare {
         if(step<dp(root.getContext(),45))return;
         int size=Math.min(dp(root.getContext(),56),Math.round(step*.72f));
         View mine=tile(root.getContext(),first,size,e,false);
-        if(row instanceof LinearLayout) {
+        // Never attach to window decor or position a tile using screen coordinates.
+        // The action has to participate in the same measurement and translation as the sheet.
+        if(row instanceof LinearLayout && row!=root) {
             View template=childOf(second,row);
-            int w=template==null?step:template.getWidth();
-            if(w<=0)w=step;
+            if(template==null)return;
+            int w=template.getWidth()>0?template.getWidth():step;
             int occupied=0;
-            for(int i=0;i<row.getChildCount();i++) {
-                View child=row.getChildAt(i);
-                if(child.getVisibility()!=View.GONE) occupied+=child.getWidth();
+            for(int i=0;i<row.getChildCount();i++){
+                View child=row.getChildAt(i);if(child.getVisibility()!=View.GONE)occupied+=child.getWidth();
             }
-            if(!e.isStory() && occupied+w*2>row.getWidth()) {
-                // A full native action row stays unchanged; append an additional in-sheet row.
-                if(!(row.getParent() instanceof LinearLayout))return;
-                LinearLayout parent=(LinearLayout)row.getParent();
-                if(parent.getOrientation()!=LinearLayout.VERTICAL)return;
-                LinearLayout extra=new LinearLayout(root.getContext());
-                extra.setTag(ACTION,Boolean.TRUE);extra.setOrientation(LinearLayout.HORIZONTAL);
-                extra.setPadding(row.getPaddingLeft(),dp(root.getContext(),8),row.getPaddingRight(),0);
-                extra.addView(mine,new LinearLayout.LayoutParams(Math.max(w*2,dp(root.getContext(),168)),-2));
-                parent.addView(extra,parent.indexOfChild(row)+1,new LinearLayout.LayoutParams(-1,-2));
-                buttons.put(root,extra);bound.put(root,e);videoActions++;return;
-            }
-            if(row.getWidth()<w*3)return;
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,-2);
-            if(template!=null && template.getLayoutParams() instanceof LinearLayout.LayoutParams) {
-                LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();
-                lp=new LinearLayout.LayoutParams(src); lp.height=-2;
-            }
-            if(!e.isStory()) {lp.width=w*2;lp.weight=0;}
-            row.addView(mine,row.indexOfChild(template)+1,lp);
-        } else if(row instanceof GridLayout && ((GridLayout)row).getColumnCount()>=3) {
-            GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=e.isStory()?step:step*2;lp.height=-2;
-            if(!e.isStory()) lp.columnSpec=GridLayout.spec(GridLayout.UNDEFINED,2);
-            row.addView(mine,lp);
-        } else {
-            // Recycler/obfuscated row: attach a normal clickable child to the sheet window's
-            // frame only if the third slot is visibly empty. No separate Dialog or timeout.
-            if(!(root instanceof FrameLayout))return;
-            Rect rr=rect(root);
-            if(!e.isStory()) {
-                // Obfuscated/recycler rows: insert below the actions only in a vertical
-                // container that owns both native action labels, not into the video decor.
-                for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()) {
-                    if(!(q instanceof LinearLayout))continue;
-                    LinearLayout host=(LinearLayout)q;
-                    if(host.getOrientation()!=LinearLayout.VERTICAL || host==root)continue;
-                    View aChild=childOf(first,host), bChild=childOf(second,host);
-                    if(aChild==null || aChild!=bChild || host.getWidth()<step*2)continue;
-                    if(aChild.getWidth()<host.getWidth()*.65f)continue;
-                    LinearLayout extra=new LinearLayout(root.getContext());
-                    extra.setTag(ACTION,Boolean.TRUE);
-                    extra.setOrientation(LinearLayout.HORIZONTAL);
-                    extra.setPadding(dp(root.getContext(),8),dp(root.getContext(),8),0,0);
-                    extra.addView(mine,new LinearLayout.LayoutParams(Math.max(step*2,dp(root.getContext(),168)),-2));
-                    host.addView(extra,host.indexOfChild(aChild)+1,new LinearLayout.LayoutParams(-1,-2));
-                    buttons.put(root,extra);bound.put(root,e);videoActions++;return;
+            if(row.getWidth()>=occupied+w-dp(root.getContext(),2)){
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,-2);
+                if(template.getLayoutParams() instanceof LinearLayout.LayoutParams){
+                    LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();
+                    lp.topMargin=src.topMargin;lp.bottomMargin=src.bottomMargin;lp.gravity=src.gravity;
                 }
-                return;
+                row.addView(mine,row.indexOfChild(template)+1,lp);
+                buttons.put(root,mine);bound.put(root,e);return;
             }
-            int center=b.centerX()+(b.centerX()>a.centerX()?step:-step);
-            int left=center-step/2-rr.left;
-            int top=Math.min(a.top,b.top)-size-dp(root.getContext(),8)-rr.top;
-            if(left<0||left+step>rr.width()||top<0||top+size+dp(root.getContext(),36)>rr.height())return;
-            FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(step,-2,Gravity.TOP|Gravity.LEFT);
-            lp.leftMargin=left;lp.topMargin=top;
-            ((FrameLayout)root).addView(mine,lp);
+        }else if(row instanceof GridLayout&&row!=root){
+            GridLayout grid=(GridLayout)row;
+            if(grid.getColumnCount()>=3&&grid.getChildCount()<grid.getColumnCount()){
+                GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=step;lp.height=-2;
+                grid.addView(mine,lp);buttons.put(root,mine);bound.put(root,e);return;
+            }
         }
-        buttons.put(root,mine);bound.put(root,e);if(!e.isStory())videoActions++;
+        // An obfuscated or full actions row can be followed by a regular measured row,
+        // but only inside the actual vertical sheet containing both report and mute.
+        // If no safe layout exists, leave the native UI untouched.
+        for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()){
+            if(q==root)break;
+            if(!(q instanceof LinearLayout))continue;
+            LinearLayout host=(LinearLayout)q;
+            if(host.getOrientation()!=LinearLayout.VERTICAL)continue;
+            View one=childOf(first,host),two=childOf(second,host);
+            if(one==null||one!=two||one.getWidth()<step*2||one.getWidth()<host.getWidth()*.65f)continue;
+            if(one.getHeight()>dp(root.getContext(),180))continue;
+            LinearLayout extra=new LinearLayout(root.getContext());extra.setTag(ACTION,Boolean.TRUE);
+            extra.setOrientation(LinearLayout.HORIZONTAL);extra.setGravity(Gravity.START);
+            extra.setPadding(one.getPaddingLeft(),dp(root.getContext(),4),one.getPaddingRight(),dp(root.getContext(),4));
+            extra.addView(mine,new LinearLayout.LayoutParams(step,-2));
+            host.addView(extra,host.indexOfChild(one)+1,new LinearLayout.LayoutParams(-1,-2));
+            buttons.put(root,extra);bound.put(root,e);return;
+        }
     }
 }
