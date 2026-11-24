@@ -54,6 +54,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
         try {
             DownloadHooks.install(cl);
+            NativeDates.install(cl);
         } catch (Throwable t) {
             FlagStore.log(t);
         }

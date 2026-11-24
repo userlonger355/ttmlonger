@@ -152,6 +152,7 @@ final class VideoInfo {
     }
 
     /** Двухбуквенный код страны в верхнем регистре или null. */
+    private static final java.util.Set<String> ISO_COUNTRIES=new java.util.HashSet<>(java.util.Arrays.asList(Locale.getISOCountries()));
     static String normRegion(String raw) {
         if (raw == null) return null;
         String s = raw.trim();
@@ -160,7 +161,8 @@ final class VideoInfo {
             char ch = s.charAt(i);
             if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) return null;
         }
-        return s.toUpperCase(Locale.ROOT);
+        String code=s.toUpperCase(Locale.ROOT);
+        return ISO_COUNTRIES.contains(code)?code:null;
     }
 
     /** Текст региональной плашки: флаг и/или код; null, если кода нет. */
@@ -402,10 +404,7 @@ final class VideoInfo {
             }
         }
         String region = normRegion(str(get(aw, "getRegion", "region")));
-        if (region == null) {
-            Object author = get(aw, "getAuthor", "author");
-            region = normRegion(str(get(author, "getRegion", "region")));
-        }
+        // The author account region is not the publication region.
         Meta m = new Meta(created, region);
         // Пустое не запоминаем: модель могла быть ещё не заполнена.
         if (created > 0 && region != null) e.meta = m;
@@ -443,6 +442,12 @@ final class VideoInfo {
         List<String> rows = new ArrayList<>();
         Object post = entry.aweme;
         Object author = get(post, "getAuthor", "author");
+        long published=metaOf(entry).created;
+        if(published>0) {
+            addDetail(rows,"Опубликовано",fullTime(published,Zones.current()));
+            addDetail(rows,"В UTC",fullTime(published,TimeZone.getTimeZone("UTC")));
+            addDetail(rows,"Давность",ageText(System.currentTimeMillis()/1000L-published));
+        }
         long repost = repostTimeOf(post);
         if (repost > 0) addDetail(rows, "Время репоста", fullTime(repost, Zones.current()));
         addDetail(rows, "Регион публикации", get(post, "getRegion", "region"));
@@ -574,6 +579,8 @@ final class VideoInfo {
     }
 
     private static Hit locate(Activity a) {
+        NativeDates.Binding direct=NativeDates.visible(a.getWindow().getDecorView());
+        if(direct!=null) return new Hit(direct.entry,direct.anchor);
         List<Cand> cands = new ArrayList<>();
         for (VideoTracker.Entry e : VideoTracker.candidates()) {
             if (e.aweme == null) continue;
@@ -677,8 +684,8 @@ final class VideoInfo {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
 
-            box.addView(timeView, lp);
-            box.addView(regionView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+            box.addView(regionView, lp);
+            box.addView(timeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
@@ -689,12 +696,12 @@ final class VideoInfo {
         private TextView pill() {
             TextView t = new TextView(ctx);
             t.setTag(Ui.OWN_TAG);
-            t.setTextSize(12f);
-            t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            t.setTextSize(11.5f);
+            t.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
             t.setSingleLine(true);
             t.setIncludeFontPadding(false);
             t.setGravity(Gravity.CENTER_VERTICAL);
-            t.setPadding(dp(6), dp(2), dp(6), dp(2));
+            t.setPadding(dp(2), dp(1), dp(2), dp(1));
 
             t.setClickable(true);
             return t;
@@ -710,9 +717,12 @@ final class VideoInfo {
             GradientDrawable background = new GradientDrawable();
             background.setColor(c[0]);
             background.setCornerRadius(dp(12));
-            box.setBackground(background);
-            timeView.setTextColor(c[1]);
-            regionView.setTextColor(c[1]);
+            box.setBackground(null);
+            int ink=style==STYLE_LIGHT?0xff25252b:0xffeeeeee;
+            timeView.setTextColor(ink);
+            regionView.setTextColor(ink);
+            timeView.setShadowLayer(dp(1.5f),0,dp(1),style==STYLE_LIGHT?0x88ffffff:0x99000000);
+            regionView.setShadowLayer(dp(1.5f),0,dp(1),style==STYLE_LIGHT?0x88ffffff:0x99000000);
             box.setAlpha(op / 100f);
         }
 
@@ -785,7 +795,7 @@ final class VideoInfo {
                     }
                     if (created <= 0) return;
                     long age = System.currentTimeMillis() / 1000L - created;
-                    Toasts.show(act, "Опубликовано " + fullTime(created, tz) + " · " + ageText(age));
+                    if(entry!=null) showPostDetails(act,entry);
                 }
             });
             regionView.setOnClickListener(new View.OnClickListener() {
@@ -1040,7 +1050,7 @@ final class VideoInfo {
     }
 
     private static void soon() {
-        if (pending.compareAndSet(false, true)) main().postDelayed(UPDATE, 16L);
+        if (pending.compareAndSet(false, true)) main().post(UPDATE);
     }
 
     static void nudge() {

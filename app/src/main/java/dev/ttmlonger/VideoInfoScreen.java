@@ -28,8 +28,8 @@ final class VideoInfoScreen extends Screen {
 
     static void show(Activity act) {
         new VideoInfoScreen(act).open("Время и регион видео",
-                "Рядом с именем автора в ленте появляются плашки: когда выложено видео («3 дн. назад», у старых — "
-                        + "дата, или точное время) и из какой оно страны. Нажмите на плашку, чтобы увидеть подробности.");
+                "Рядом с именем автора в ленте появляется строка: когда выложено видео («3 дн. назад», у старых — "
+                        + "дата, или точное время) и из какой оно страны. Нажмите на дату, чтобы увидеть подробности.");
     }
 
     static String menuSummary() {
@@ -72,8 +72,7 @@ final class VideoInfoScreen extends Screen {
 
         body.addView(ui.header("Регион"));
         body.addView(toggleRow(Icons.GLOBE, "Регион видео",
-                "Флаг и код страны, из которой видео. Берётся тот регион, который TikTok указал у видео "
-                        + "или, если его нет, у автора",
+                "Флаг и код региона публикации, если он указан в модели видео",
                 Prefs.vtRegion, new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
@@ -100,7 +99,7 @@ final class VideoInfoScreen extends Screen {
         LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(ViewGroupLP.MATCH, ViewGroupLP.WRAP);
         pl.setMargins(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(10));
         body.addView(previewHost, pl);
-        styleRow = ui.menuRow(-1, "Оформление", "«По теме» — тёмные плашки в тёмной теме TikTok и светлые в светлой",
+        styleRow = ui.menuRow(-1, "Оформление", "Контраст текста даты и флага",
                 VideoInfo.styleLabel(Prefs.vtStyle), new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {

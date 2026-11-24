@@ -1,0 +1,5 @@
+# Date / recalled messages reference (MargyT)
+
+User-provided archive: Dates.java, DateOverlay.java, DateInfo.java, NativeRead.java and dexpatch.py, GPL-3.0 with additional terms. Native renderer reference targets TikTok 47.2.41. TTMLonger independently adapts the author-holder binding, with exact model identity, ISO country validation and compact flag/date text. Resource ID 0x7f0a93a5 is not assumed to be stable across versions; existing overlay remains the fallback. No timing benchmark on Android 17 yet.
+
+Recalled.java and dexpatch.py redirect an interface invocation in X.0RdK to skip the original recall update for other people's messages. The interface X.0RiV and method LLJJIJI are version-specific, and abstract methods cannot be Xposed-hooked directly. Do not claim anti-recall support before resolving the concrete implementation in 47.9.3. A future opt-in local view should preserve normal native recall and be scoped to previously received text on the current device/account, with a clear action. No deleted message recovery from servers.
