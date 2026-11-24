@@ -31,7 +31,7 @@ final class StreakPeopleScreen extends Screen {
     }
 
     static void show(Activity act, Runnable onChanged) {
-        new StreakPeopleScreen(act, onChanged).open("Люди",
+        new StreakPeopleScreen(act, onChanged).open("Кому продлевать",
                 "Отметьте тех, кому продлевать огонёк. Имена берутся из списка друзей TikTok.");
     }
 
@@ -105,8 +105,8 @@ final class StreakPeopleScreen extends Screen {
                 loading = false;
                 if (dialog == null || !dialog.isShowing()) return;
                 shown.clear();
-                shown.addAll(p.list);
-                fill(p);
+                for(StreakRunner.Person person:p.list)if(StreakLogic.worthSending(person.status))shown.add(person);
+                fill(new StreakRunner.People(new ArrayList<>(shown),p.known,p.unreadable,p.problem));
             }
         });
     }
@@ -141,9 +141,12 @@ final class StreakPeopleScreen extends Screen {
         card.setClickable(true);
         card.setBackground(ui.ripple());
 
+        String uid=StreakLogic.friendUid(person.conv,StreakHooks.knownOwnUid());
+        View avatar=StreakPreviewData.avatarView(act,uid,person.name,44);
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(ui.dp(44),ui.dp(44));ap.setMarginEnd(ui.dp(12));card.addView(avatar,ap);
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(ui.medium(person.name, 16f, Ui.INK));
+        TextView name=ui.medium(person.name,16f,Ui.INK);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);col.addView(name);
         TextView sub = ui.text(subtitle(person), 13.5f, Ui.MUTED, false);
         sub.setPadding(0, ui.dp(2), 0, 0);
         col.addView(sub);

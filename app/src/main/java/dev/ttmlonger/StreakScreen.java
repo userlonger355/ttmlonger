@@ -66,34 +66,31 @@ final class StreakScreen extends Screen {
         caption = ui.text("", 14, ink, false);
         hero.addView(caption);
 
-        body.addView(ui.header("Как это выглядит в чате"));
-        chatPreview=new StreakChatPreview(act);
-        LinearLayout.LayoutParams previewParams=ui.matchWrap();
-        previewParams.setMargins(ui.dp(16),0,ui.dp(16),ui.dp(6));
-        body.addView(chatPreview,previewParams);
-        body.addView(ui.note("Это пример переписки. Стикер здесь не отправляется."));
         body.addView(ui.header("Правила продления"));
         LinearLayout rules = ui.panel(body);
-        timeRow = ui.menuRow(Icons.CLOCK, "Время отправки", "", null, v -> pickTime());
+        timeRow = ui.row(Icons.CLOCK, "Время отправки", "", null, true, v -> pickTime());
         rules.addView(timeRow);
         rules.addView(ui.divider());
-        stickerRow = ui.menuRow(Icons.STICKER, "Стикер для отправки", "", null, v -> StickerPickScreen.show(act, this::refresh));
+        stickerRow = ui.row(Icons.STICKER, "Стикер для отправки", "", null, true, v -> StickerPickScreen.show(act, this::refresh));
         rules.addView(stickerRow);
-        forgetRow = ui.row(Icons.CLOSE, "Снять выбор стикера", null, null, false, v -> {
+        forgetRow = ui.row(Icons.CLOSE, "Снять выбор стикера", "Вернуть выбор по умолчанию", null, false, v -> {
             StreakSticker.forget();
             refresh();
         });
         rules.addView(forgetRow);
         rules.addView(ui.divider());
-        peopleRow = ui.menuRow(Icons.FLAME, "Кому продлевать", "", null, v -> StreakPeopleScreen.show(act, this::refresh));
+        peopleRow = ui.row(Icons.FLAME, "Кому продлевать", "", null, true, v -> StreakPeopleScreen.show(act, this::refresh));
         rules.addView(peopleRow);
 
+        body.addView(ui.header("Предпросмотр отправки"));
+        chatPreview=new StreakChatPreview(act);
+        LinearLayout.LayoutParams previewParams=ui.matchWrap();previewParams.setMargins(ui.dp(14),ui.dp(4),ui.dp(14),ui.dp(6));body.addView(chatPreview,previewParams);
         body.addView(ui.header("Действия с чатами"));
         LinearLayout actions = ui.panel(body);
         checkRow = ui.row(Icons.REFRESH, "Проверить огоньки", "Посмотреть, кому пора отправить стикер", null, false, v -> check());
         actions.addView(checkRow);
         actions.addView(ui.divider());
-        actions.addView(ui.menuRow(Icons.SEND, "Отправить сейчас", "Проверить получателей и подтвердить", null, v -> sendAll()));
+        actions.addView(ui.row(Icons.SEND, "Отправить сейчас", "Проверить получателей и подтвердить", null, true, v -> sendAll()));
         result = ui.note("");
         result.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         body.addView(result);
@@ -113,7 +110,7 @@ final class StreakScreen extends Screen {
                 : minute >= 0 ? "Действующим сериям с третьего дня, по времени телефона."
                 : "Стикер уйдёт, когда серия с третьего дня ждёт продления.");
         Ui.subtitleOf(timeRow).setText(minute >= 0 ? "Каждый день в " + StreakLogic.formatMinute(minute) : "Когда огонёк станет серым");
-        Ui.subtitleOf(stickerRow).setText(StreakSticker.summary());
+        Ui.subtitleOf(stickerRow).setText(chosen?"Стикер выбран":StreakSticker.armed()?"Ожидание стикера из чата":"Не выбран");
         Ui.subtitleOf(peopleRow).setText(Prefs.streakOnlyPicked
                 ? "Только отмеченные · " + StreakStore.pickedCount() : "Все чаты с действующей серией");
         forgetRow.setVisibility(chosen || StreakSticker.armed() ? View.VISIBLE : View.GONE);

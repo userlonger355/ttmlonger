@@ -603,6 +603,7 @@ final class StreakHooks {
             } else {
                 uids.add(uid);
                 StreakStore.noteName(StreakLogic.stripZeros(uid), nameOf(u));
+                StreakPreviewData.friend(u);
             }
         }
         StreakStore.flush();

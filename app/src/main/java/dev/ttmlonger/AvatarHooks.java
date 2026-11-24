@@ -17,7 +17,7 @@ import java.util.List;
  */
 final class AvatarHooks {
     static final String USER = "com.ss.android.ugc.aweme.profile.model.User";
-    private static final String[] GETTERS = {"getAvatarLarger", "getAvatar300", "getAvatarMedium"};
+    private static final String[] GETTERS = {"getAvatarLarger", "getAvatar300", "getAvatarMedium", "getAvatarThumb"};
 
     /** Три размера аватара последнего прочитанного аккаунта. */
     private static final class Seen {
@@ -47,7 +47,7 @@ final class AvatarHooks {
                     protected void afterHookedMethod(MethodHookParam param) {
                         try {
                             Object r = param.getResult();
-                            if (r != null && !CrashGuard.tripped) remember(param.thisObject, g, r);
+                            if (r != null && !CrashGuard.tripped) { remember(param.thisObject, g, r); StreakPreviewData.avatar(param.thisObject,r); }
                         } catch (Throwable ignored) {
                             // запоминание не должно ронять TikTok
                         }
@@ -67,7 +67,7 @@ final class AvatarHooks {
         }
         if ("getAvatarLarger".equals(getter)) seen.larger = model;
         else if ("getAvatar300".equals(getter)) seen.a300 = model;
-        else seen.medium = model;
+        else if ("getAvatarMedium".equals(getter) || seen.medium == null) seen.medium = model;
     }
 
     static int hookedCount() {

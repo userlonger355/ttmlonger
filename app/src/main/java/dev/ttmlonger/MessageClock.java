@@ -41,6 +41,7 @@ final class MessageClock {
         return r instanceof ViewGroup?(ViewGroup)r:null;
     }
     static void install(ClassLoader cl){
+        StreakPreviewData.install(cl);
         int count=0;
         for(String name:new String[]{"IMSkeletonLayoutReusedUISlotAssem","SkeletonLayoutReusedUISlotAssem"}){
             Class<?> type=XposedHelpers.findClassIfExists(PREFIX+name,cl);if(type==null)continue;
@@ -50,7 +51,7 @@ final class MessageClock {
                 if(!(name.startsWith("IM")?method.getName().equals("Bq")&&p[0].getName().equals("X.0Qfl"):method.getName().equals("s4")&&p[0]==Object.class))continue;
                 try{XposedBridge.hookMethod(method,new XC_MethodHook(){
                     @Override protected void beforeHookedMethod(MethodHookParam p){try{if(android.os.Looper.myLooper()!=android.os.Looper.getMainLooper())return;ViewGroup v=root(p.thisObject);if(v!=null)remove(v);}catch(Throwable ignored){}}
-                    @Override protected void afterHookedMethod(MethodHookParam p){try{if(!p.hasThrowable()&&InterfaceHooks.on("message_clock")&&!CrashGuard.tripped)bind(p.thisObject,p.args[0]);}catch(Throwable ignored){}}
+                    @Override protected void afterHookedMethod(MethodHookParam p){try{if(!p.hasThrowable()&&!CrashGuard.tripped){StreakPreviewData.observe(field(field(DownloadHooks.call(p.args[0],"LLILZIL"),"LIZ"),"LIZ"));if(InterfaceHooks.on("message_clock"))bind(p.thisObject,p.args[0]);}}catch(Throwable ignored){}}
                 });count++;}catch(Throwable ignored){}
             }
         }

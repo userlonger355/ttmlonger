@@ -1,130 +1,90 @@
 package dev.ttmlonger;
 
 import android.app.Activity;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
-import android.view.Gravity;
-import android.view.View;
+import android.view.*;
 import android.widget.*;
-import android.os.Build;
+import java.util.*;
 
-/** A local mock conversation using the real selected sticker thumbnail. Never sends a message. */
+/** Real cached conversation preview. The planned sticker is visually separate and never sent here. */
 final class StreakChatPreview extends LinearLayout {
-    private final Ui ui;
-    private final int ink, muted, incoming, field, surface;
-    private final TextView flame, timestamp, hint, status, placeholder;
+    private final Activity act;private final Ui ui;
+    private final int ink,muted,incoming,surface;
+    private final LinearLayout header,avatarSlot,messages,planned;
+    private final TextView name,flame,empty,caption,stickerState,next;
     private final ImageView sticker;
-    private final FrameLayout picture;
-    private final LinearLayout outgoing;
-    private String selected="";
-    private int generation;
-    private boolean auto;
-    private int minute=-1;
-    private final Runnable poll=new Runnable(){
-        @Override public void run(){
-            if(!isAttachedToWindow())return;
-            update(auto,minute);
-            postDelayed(this,1000L);
-        }
-    };
-
+    private final List<StreakRunner.Person> people=new ArrayList<>();
+    private int index,generation,minute=-1;private boolean auto,loading,attached;
+    private String owner,selected="",signature="";
+    private final Runnable poll=new Runnable(){public void run(){if(!attached)return;renderMessages();renderSticker();postDelayed(this,1200);}};
     StreakChatPreview(Activity a){
-        super(a);ui=new Ui(a);
-        boolean dark=Ui.DARK;
-        ink=dark?0xfff6f6f6:0xff161823;muted=dark?0xff99999d:0xff777780;
-        incoming=dark?0xff2b2b2d:0xffededf0;field=dark?0xff29292b:0xfff1f1f3;
-        surface=dark?0xff121212:0xffffffff;
-        setOrientation(VERTICAL);setBackground(ui.round(surface,20));setClipToOutline(true);
-        setPadding(ui.dp(12),ui.dp(10),ui.dp(12),ui.dp(10));
-
-        LinearLayout header=new LinearLayout(a);header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(ui.icon(Icons.CHEVRON_LEFT,ink,20),new LayoutParams(ui.dp(24),ui.dp(30)));
-        TextView avatar=txt("А",16,Color.WHITE,true);
-        avatar.setGravity(Gravity.CENTER);avatar.setBackground(ui.round(0xff655693,50));
-        LayoutParams av=new LayoutParams(ui.dp(35),ui.dp(35));av.setMargins(ui.dp(4),0,ui.dp(8),0);header.addView(avatar,av);
-        LinearLayout name=new LinearLayout(a);name.setOrientation(VERTICAL);
-        name.addView(txt("Алекс",15,ink,true));name.addView(txt("Пример чата",11,muted,false));
-        header.addView(name,new LayoutParams(0,-2,1));
-        flame=txt("",13,0xffff9e48,true);header.addView(flame);
-        TextView phone=txt("  ⋯",23,ink,true);header.addView(phone);
-        addView(header,new LayoutParams(-1,-2));line();
-
-        TextView today=txt("Сегодня",11,muted,false);today.setGravity(Gravity.CENTER);
-        LayoutParams day=new LayoutParams(-1,-2);day.setMargins(0,ui.dp(12),0,ui.dp(12));addView(today,day);
-
-        LinearLayout received=new LinearLayout(a);received.setGravity(Gravity.TOP);
-        TextView mini=txt("А",11,Color.WHITE,true);mini.setGravity(Gravity.CENTER);mini.setBackground(ui.round(0xff655693,50));
-        LayoutParams ma=new LayoutParams(ui.dp(25),ui.dp(25));ma.rightMargin=ui.dp(6);received.addView(mini,ma);
-        TextView message=txt("Не забудь про огонёк 🔥",14,ink,false);
-        message.setPadding(ui.dp(12),ui.dp(9),ui.dp(12),ui.dp(9));message.setBackground(ui.round(incoming,18));
-        received.addView(message,new LayoutParams(-2,-2));addView(received,new LayoutParams(-1,-2));
-
-        outgoing=new LinearLayout(a);outgoing.setOrientation(VERTICAL);outgoing.setGravity(Gravity.END);
-        LayoutParams out=new LayoutParams(-1,-2);out.setMargins(ui.dp(20),ui.dp(12),ui.dp(1),ui.dp(10));addView(outgoing,out);
-        picture=new FrameLayout(a);
-        LayoutParams pic=new LayoutParams(ui.dp(126),ui.dp(126));pic.gravity=Gravity.END;outgoing.addView(picture,pic);
-        sticker=new ImageView(a);sticker.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        sticker.setContentDescription("Выбранный стикер");
-        picture.addView(sticker,new FrameLayout.LayoutParams(-1,-1));
-        placeholder=txt("Выберите\nстикер",13,muted,false);placeholder.setGravity(Gravity.CENTER);placeholder.setBackground(ui.round(field,14));
-        picture.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));
-        timestamp=txt("",11,muted,false);timestamp.setGravity(Gravity.END);outgoing.addView(timestamp,new LayoutParams(-1,-2));
-        status=txt("",11,muted,false);status.setGravity(Gravity.END);outgoing.addView(status,new LayoutParams(-1,-2));
-
-        line();
-        LinearLayout composer=new LinearLayout(a);composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding(0,ui.dp(9),0,0);
-        composer.addView(ui.icon(Icons.IMAGE,ink,22),new LayoutParams(ui.dp(25),ui.dp(28)));
-        TextView input=txt("Сообщение…",13,muted,false);input.setGravity(Gravity.CENTER_VERTICAL);
-        input.setPadding(ui.dp(12),0,ui.dp(8),0);input.setBackground(ui.round(field,30));
-        LayoutParams ip=new LayoutParams(0,ui.dp(34),1);ip.setMargins(ui.dp(6),0,ui.dp(7),0);composer.addView(input,ip);
-        composer.addView(ui.icon(Icons.STICKER,ink,22),new LayoutParams(ui.dp(25),ui.dp(28)));
-        composer.addView(ui.icon(Icons.MIC,ink,21),new LayoutParams(ui.dp(26),ui.dp(28)));
-        addView(composer,new LayoutParams(-1,-2));
-
-        hint=txt("",12,muted,false);
-        hint.setPadding(ui.dp(9),ui.dp(10),ui.dp(9),ui.dp(2));addView(hint,new LayoutParams(-1,-2));
+        super(a);act=a;ui=new Ui(a);ink=Ui.INK;muted=Ui.MUTED;incoming=Ui.DARK?0xff28282a:0xffeeeeef;surface=Ui.DARK?0xff191919:0xffffffff;
+        setOrientation(VERTICAL);setBackground(ui.round(surface,18));setPadding(ui.dp(14),ui.dp(12),ui.dp(14),ui.dp(12));
+        header=new LinearLayout(a);header.setGravity(Gravity.CENTER_VERTICAL);
+        avatarSlot=new LinearLayout(a);LayoutParams av=new LayoutParams(ui.dp(38),ui.dp(38));av.rightMargin=ui.dp(9);header.addView(avatarSlot,av);
+        LinearLayout title=new LinearLayout(a);title.setOrientation(VERTICAL);
+        name=ui.medium("Реальный чат",15,ink);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);title.addView(name);
+        flame=ui.text("",12,muted,false);title.addView(flame);header.addView(title,new LayoutParams(0,-2,1));
+        next=ui.text("Другой чат ›",12,Theme.accent(),true);next.setPadding(ui.dp(8),ui.dp(10),0,ui.dp(10));header.addView(next);next.setOnClickListener(v->next());
+        addView(header);line();
+        messages=new LinearLayout(a);messages.setOrientation(VERTICAL);addView(messages,new LayoutParams(-1,-2));
+        empty=ui.text("Загружаю огоньки…",13,muted,false);empty.setPadding(0,ui.dp(12),0,ui.dp(12));addView(empty);
+        planned=new LinearLayout(a);planned.setOrientation(VERTICAL);planned.setGravity(Gravity.END);
+        LayoutParams pp=new LayoutParams(-1,-2);pp.topMargin=ui.dp(5);addView(planned,pp);
+        sticker=new ImageView(a);sticker.setScaleType(ImageView.ScaleType.FIT_CENTER);planned.addView(sticker,new LayoutParams(ui.dp(74),ui.dp(74)));
+        stickerState=ui.text("",11,muted,false);stickerState.setGravity(Gravity.END);planned.addView(stickerState,new LayoutParams(-1,-2));
+        line();caption=ui.text("",12,muted,false);caption.setPadding(0,ui.dp(8),0,0);addView(caption,new LayoutParams(-1,-2));
     }
-    private TextView txt(String text,int size,int color,boolean bold){
-        TextView t=new TextView(getContext());t.setText(text);t.setTextColor(color);t.setTextSize(size);
-        if(bold)t.setTypeface(Typeface.DEFAULT_BOLD);return t;
-    }
-    private void line(){
-        View line=new View(getContext());line.setBackgroundColor(Ui.DARK?0xff272727:0xffeaeaea);
-        LayoutParams l=new LayoutParams(-1,ui.dp(1));l.topMargin=ui.dp(8);addView(line,l);
-    }
+    private void line(){View v=new View(act);v.setBackgroundColor(Ui.DARK?0xff303030:0xffe7e7e7);LayoutParams lp=new LayoutParams(-1,ui.dp(1));lp.topMargin=ui.dp(8);addView(v,lp);}
     private void set(TextView v,String s){if(!s.contentEquals(v.getText()))v.setText(s);}
-    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();removeCallbacks(poll);post(poll);}
-    @Override protected void onDetachedFromWindow(){removeCallbacks(poll);super.onDetachedFromWindow();}
-    void update(boolean enabled,int time){
-        auto=enabled;minute=time;
-        String id=StreakSticker.chosenId();
-        boolean chosen=!id.isEmpty();
-        set(flame,enabled?"🔥  12":"🔥  11");
-        set(timestamp,time>=0?StreakLogic.formatMinute(time):"При продлении");
-        set(status,enabled?(InterfaceHooks.on("chat_ticks")?"✔️":"Отправлено · пример"):"Не отправлено");
-        set(hint,!enabled?"Автопродление выключено.":!chosen?"Выберите стикер для автопродления.":"Пример: выбранный стикер будет отправлен "+(time>=0?"в "+StreakLogic.formatMinute(time):"когда огонёк потребует продления")+".");
-        if(!id.equals(selected)){
-            selected=id;generation++;sticker.setImageDrawable(null);placeholder.setVisibility(VISIBLE);
-            if(Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled()){
-                picture.setAlpha(.55f);picture.animate().alpha(1f).setDuration(180).start();
-            }
-        }
-        if(!chosen){set(placeholder,"Выберите\nстикер");return;}
-        StickerLibrary.Entry entry=StickerLibrary.byId(id);
-        if(entry==null){
-            Object obj=StreakSticker.get();
-            if(obj!=null){StickerLibrary.add(obj,false);entry=StickerLibrary.byId(id);}
-        }
-        if(entry==null){set(placeholder,"Стикер выбран\nНет изображения");return;}
-        if(entry.thumb!=null){sticker.setImageBitmap(entry.thumb);placeholder.setVisibility(GONE);return;}
-        set(placeholder,entry.failed||entry.url==null?"Нет изображения":"Загрузка…");
-        final StickerLibrary.Entry e=entry;final int g=generation;
-        StickerLibrary.thumb(e,()->{
-            if(g==generation&&e.id.equals(selected)&&e.thumb!=null&&isAttachedToWindow()){
-                sticker.setImageBitmap(e.thumb);placeholder.setVisibility(GONE);
-            }
+    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();attached=true;load();post(poll);}
+    @Override protected void onDetachedFromWindow(){attached=false;generation++;loading=false;people.clear();owner=null;messages.removeAllViews();signature="";removeCallbacks(poll);super.onDetachedFromWindow();}
+    private void load(){
+        if(loading)return;loading=true;final int gen=++generation;owner=StreakHooks.liveOwner();
+        people.clear();signature="";empty.setVisibility(VISIBLE);set(empty,"Загружаю огоньки…");messages.removeAllViews();avatarSlot.removeAllViews();set(name,"Реальный чат");set(flame,"");planned.setVisibility(GONE);
+        StreakRunner.people(p->{
+            if(!attached||gen!=generation)return;loading=false;
+            String current=StreakHooks.liveOwner();if(owner==null||!owner.equals(current)){set(empty,"Откройте входящие, затем обновите превью.");return;}
+            for(StreakRunner.Person person:p.list)if(StreakLogic.worthSending(person.status)&&(!Prefs.streakOnlyPicked||StreakStore.isPicked(person.conv)))people.add(person);
+            Collections.shuffle(people);index=0;
+            if(people.isEmpty()){set(empty,p.problem!=null?p.problem:"Нет доступных активных огоньков");return;}showPerson();
         });
+    }
+    private void next(){if(loading)return;if(people.isEmpty()||index+1>=people.size()){load();return;}index++;showPerson();}
+    private void showPerson(){
+        StreakRunner.Person person=people.get(index);signature="";
+        set(name,person.name);set(flame,"🔥 "+person.streak+" · "+StreakLogic.days(person.streak));
+        flame.setTextColor(StreakLogic.isGrey(person.status)?muted:0xffff9e48);
+        avatarSlot.removeAllViews();avatarSlot.addView(StreakPreviewData.avatarView(act,StreakLogic.friendUid(person.conv,owner),person.name,38),new LayoutParams(-1,-1));
+        renderMessages();renderSticker();
+    }
+    private void renderMessages(){
+        if(owner!=null&&!owner.equals(StreakHooks.knownOwnUid())){people.clear();messages.removeAllViews();avatarSlot.removeAllViews();set(name,"Реальный чат");set(flame,"");empty.setVisibility(VISIBLE);set(empty,"Аккаунт изменился. Обновите чат.");planned.setVisibility(GONE);return;}
+        if(people.isEmpty())return;
+        StreakRunner.Person person=people.get(index);List<StreakPreviewData.Entry> entries=StreakPreviewData.messages(owner,person.conv);
+        StringBuilder k=new StringBuilder(person.conv);for(StreakPreviewData.Entry e:entries)k.append('|').append(e.key).append(':').append(e.text.hashCode());
+        if(k.toString().equals(signature))return;signature=k.toString();messages.removeAllViews();
+        empty.setVisibility(entries.size()<2?VISIBLE:GONE);
+        if(entries.size()<2)set(empty,entries.isEmpty()?"История ещё не загружена. Откройте этот чат в TikTok.":"Загружено одно сообщение. Откройте чат для остальных.");
+        for(StreakPreviewData.Entry e:entries){
+            LinearLayout row=new LinearLayout(act);row.setOrientation(VERTICAL);row.setGravity(e.own?Gravity.END:Gravity.START);LayoutParams rp=new LayoutParams(-1,-2);rp.topMargin=ui.dp(7);
+            TextView bubble=ui.text(e.text,14,e.own?0xffffffff:ink,false);bubble.setMaxWidth((int)(getResources().getDisplayMetrics().widthPixels*.62f));bubble.setMaxLines(4);bubble.setEllipsize(android.text.TextUtils.TruncateAt.END);bubble.setPadding(ui.dp(11),ui.dp(8),ui.dp(11),ui.dp(8));bubble.setBackground(ui.round(e.own?0xff385b88:incoming,15));
+            row.addView(bubble,new LayoutParams(-2,-2));java.text.SimpleDateFormat date=new java.text.SimpleDateFormat("dd.MM · HH:mm",Locale.getDefault());date.setTimeZone(Zones.current());
+            TextView time=ui.text(date.format(new Date(e.time)),10,muted,false);row.addView(time,new LayoutParams(-2,-2));messages.addView(row,rp);
+        }
+    }
+    void update(boolean enabled,int time){auto=enabled;minute=time;renderSticker();}
+    private void renderSticker(){
+        set(caption,"Локальный предпросмотр · ничего не отправляется");
+        if(people.isEmpty()){planned.setVisibility(GONE);return;}
+        planned.setVisibility(VISIBLE);
+        String id=StreakSticker.chosenId();boolean chosen=!id.isEmpty();
+        if(!id.equals(selected)){selected=id;sticker.setImageDrawable(null);}
+        set(stickerState,!auto?"Автопродление выключено":!chosen?"Выберите стикер":("Будущая отправка · "+(minute>=0?StreakLogic.formatMinute(minute):"когда огонёк серый")));
+        sticker.setVisibility(chosen?VISIBLE:GONE);if(!chosen)return;
+        StickerLibrary.Entry e=StickerLibrary.byId(id);
+        if(e==null){Object model=StreakSticker.get();if(model!=null){StickerLibrary.add(model,false);e=StickerLibrary.byId(id);}}
+        if(e==null){sticker.setImageDrawable(Icons.of(Icons.STICKER,muted));return;}
+        if(e.thumb!=null){if(sticker.getDrawable()==null||!(sticker.getDrawable() instanceof android.graphics.drawable.BitmapDrawable)||((android.graphics.drawable.BitmapDrawable)sticker.getDrawable()).getBitmap()!=e.thumb)sticker.setImageBitmap(e.thumb);return;}
+        sticker.setImageDrawable(Icons.of(Icons.STICKER,muted));StickerLibrary.thumb(e,null);
     }
 }
