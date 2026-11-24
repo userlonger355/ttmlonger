@@ -385,6 +385,7 @@ final class VideoInfo {
     }
 
     static Meta metaOf(VideoTracker.Entry e) {
+        e.refreshIdentity();
         Meta have = e.meta;
         if (have != null) return have;
         Object aw = e.aweme;
@@ -413,13 +414,16 @@ final class VideoInfo {
 
     /** Только явно названная метка репоста; время публикации не является её заменой. */
     static long repostTimeOf(Object aweme) {
-        Object raw = get(aweme, "getRepostTime", "repostTime", "repost_time");
-        long time = parseEventTime(raw);
-        if (time == 0) {
-            raw = get(aweme, "getRepostTimestamp", "repostTimestamp", "repost_timestamp");
-            time = parseEventTime(raw);
+        long now = System.currentTimeMillis() / 1000L;
+        for (String getter : new String[]{"getRepostTime", "getRepostTimestamp"}) {
+            long time = parseEventTime(DownloadHooks.call(aweme, getter));
+            if (time > 0 && time <= now + 300L) return time;
         }
-        return time > System.currentTimeMillis() / 1000L + 300L ? 0 : time;
+        for (String field : new String[]{"repostTime","repost_time","repostTimestamp","repost_timestamp"}) {
+            long time = parseEventTime(fieldOf(aweme, field));
+            if (time > 0 && time <= now + 300L) return time;
+        }
+        return 0;
     }
 
     static long parseEventTime(Object raw) {
@@ -462,6 +466,7 @@ final class VideoInfo {
     }
 
     static Keys keysOf(VideoTracker.Entry e) {
+        e.refreshIdentity();
         Keys have = e.keys;
         if (have != null) return have;
         Object aw = e.aweme;
@@ -562,6 +567,12 @@ final class VideoInfo {
     }
 
     /** Какое из недавно виденных видео сейчас на экране; null, если не нашли. */
+    static boolean samePost(VideoTracker.Entry a, VideoTracker.Entry b) {
+        if(a==b || a.aweme==b.aweme) return true;
+        String id=a.aid();
+        return id!=null && !id.isEmpty() && id.equals(b.aid());
+    }
+
     private static Hit locate(Activity a) {
         List<Cand> cands = new ArrayList<>();
         for (VideoTracker.Entry e : VideoTracker.candidates()) {
@@ -587,6 +598,12 @@ final class VideoInfo {
         }
         if (best < 0) {
             return null;
+        }
+        // Equal matches for different videos cannot identify the visible post reliably.
+        for (int i=0;i<cands.size();i++) {
+            if (i==best) continue;
+            int score=(w.nameView[i]!=null?1:0)+(w.descView[i]!=null?3:0);
+            if (score==bestScore && !samePost(cands.get(best).entry,cands.get(i).entry)) return null;
         }
         boolean byName = w.nameView[best] != null;
         return new Hit(cands.get(best).entry, byName ? w.nameView[best] : w.descView[best]);
@@ -739,6 +756,7 @@ final class VideoInfo {
         long reposted;
         String iso;
         VideoTracker.Entry entry;
+        String entryId;
         // выбранное место относительно левого верхнего угла подписи
         boolean slotReady;
         int slotDx;
@@ -786,12 +804,16 @@ final class VideoInfo {
 
         /** Показывает плашки рядом с подписью anchor. */
         void show(TextView anchor, VideoTracker.Entry entry, Meta m, boolean wantTime, boolean wantRegion) {
-            if (this.anchor != anchor || this.entry != entry || created != m.created) {
+            String nextId = entry.aid();
+            boolean changed = this.anchor != anchor || this.entry != entry || !TextUtils.equals(entryId,nextId);
+            if (changed || created != m.created) {
                 slotReady = false;
                 positioned = false;
                 lastFollow = 0L;
             }
             this.entry = entry;
+            entryId = nextId;
+            if (changed) { box.animate().cancel(); box.setVisibility(View.INVISIBLE); }
             this.anchor = anchor;
             this.anchorText = anchor.getText() == null ? "" : anchor.getText().toString();
             created = m.created;
@@ -799,12 +821,16 @@ final class VideoInfo {
             iso = m.region;
             pills.style(Prefs.vtStyle, isNight(act), Prefs.vtOpacity);
             if (wantTime) {
-                timeView.setText(reposted > 0
+                String time = reposted > 0
                         ? "Репост " + formatTime(reposted, true, Zones.current(), System.currentTimeMillis())
-                        : timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
+                        : timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis());
+                if (!TextUtils.equals(timeView.getText(),time)) timeView.setText(time);
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
-            if (wantRegion) regionView.setText(regionText(m.region, Prefs.vtRegionMode));
+            if (wantRegion) {
+                String region=regionText(m.region, Prefs.vtRegionMode);
+                if (!TextUtils.equals(regionView.getText(),region)) regionView.setText(region);
+            }
             regionView.setVisibility(wantRegion ? View.VISIBLE : View.GONE);
             if (!attached) {
                 decor.addView(box, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -912,7 +938,7 @@ final class VideoInfo {
                 return;
             }
             // Подпись теперь про другое видео (TikTok переиспользует view): плашки устарели.
-            if (!TextUtils.equals(a.getText(), anchorText)) {
+            if (!TextUtils.equals(a.getText(), anchorText) || (entry!=null && !TextUtils.equals(entryId,entry.aid()))) {
                 hide();
                 soon();
                 return;

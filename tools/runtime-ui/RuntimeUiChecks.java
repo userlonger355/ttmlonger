@@ -107,6 +107,7 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Перехват запросов")==null
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
+            metadataChecks();
             main.postDelayed(() -> row(0), 1800);
         } catch(Throwable e) { fail("menu_exception",e); finish(); }
     }
@@ -136,6 +137,35 @@ final class RuntimeUiChecks {
                 }, 1600);
             }, 400);
         } catch(Throwable e) { fail("screen_"+id,e); main.postDelayed(() -> row(i+1),250); }
+    }
+    public static final class FakePost {
+        public String aid="one";
+        public long createTime=1700000000L, repostTime=4102444800L, repostTimestamp=1700000123000L;
+        public String region="KZ";
+        public String getAid(){return aid;}
+        public long getCreateTime(){return createTime;}
+        public long getRepostTime(){return repostTime;}
+        public long getRepostTimestamp(){return repostTimestamp;}
+        public String getRegion(){return region;}
+    }
+    private static void metadataChecks() {
+        try {
+            FakePost f=new FakePost();
+            VideoTracker.Entry e=new VideoTracker.Entry(f);
+            result("metadata_repost_ms_fallback",VideoInfo.repostTimeOf(f)==1700000123L);
+            f.repostTimestamp=0;
+            result("metadata_no_fake_repost",VideoInfo.repostTimeOf(f)==0);
+            result("metadata_first_bind",VideoInfo.metaOf(e).created==1700000000L);
+            f.aid="two"; f.createTime=1700000300L; f.region="US";
+            result("metadata_reused_model",VideoInfo.metaOf(e).created==1700000300L && "US".equals(VideoInfo.metaOf(e).region));
+            FakePost other=new FakePost();
+            result("metadata_distinct_id",!VideoInfo.samePost(e,new VideoTracker.Entry(other)));
+            other.aid="two";
+            result("metadata_same_id",VideoInfo.samePost(e,new VideoTracker.Entry(other)));
+            long ms=1700000123000L;
+            result("metadata_timezone",!VideoInfo.formatTime(1700000123L,true,java.util.TimeZone.getTimeZone("UTC"),ms)
+                .equals(VideoInfo.formatTime(1700000123L,true,java.util.TimeZone.getTimeZone("GMT+07:00"),ms)));
+        } catch(Throwable e) { fail("metadata_checks",e); }
     }
     private static void chatPreview(Dialog parent) throws Exception {
         ArrayList<Dialog> before=dialogs();

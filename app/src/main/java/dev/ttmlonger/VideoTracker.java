@@ -29,6 +29,16 @@ final class VideoTracker {
         volatile VideoInfo.Meta meta;
         /** Имена автора и начало описания для поиска на экране, см. VideoInfo. */
         volatile VideoInfo.Keys keys;
+        private String cachedAid;
+
+        synchronized void refreshIdentity() {
+            String id=aid();
+            if (!java.util.Objects.equals(cachedAid,id)) {
+                meta=null;
+                keys=null;
+                cachedAid=id;
+            }
+        }
 
         Entry(Object aweme) {
             this.aweme = aweme;
