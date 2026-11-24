@@ -98,6 +98,5 @@ jobs:
         with:
           name: TTMLonger-preview
           path: |
-            screenshots/menu.png
-            screenshots/streaks.png
+            screenshots/*.png
           if-no-files-found: error

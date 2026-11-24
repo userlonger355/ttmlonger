@@ -13,13 +13,52 @@ public final class PreviewActivity extends Activity {
         setContentView(frame);
         frame.post(() -> {
             verifyFixes();
-            if ("streaks".equals(getIntent().getStringExtra("screen"))) {
+            verifyPreferences();
+            Ui.ensure(this);
+            boolean night=(getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            expect(Ui.DARK==night,"preview theme follows system");
+            String screen=getIntent().getStringExtra("screen");
+            if ("streaks".equals(screen)) {
                 StreakChecks.verifyAccountSettings(this);
                 StreakScreen.show(this);
+            } else if ("chat".equals(screen)) {
+                ChatAppearancePreview.show(this);
+            } else if ("glass".equals(screen)) {
+                GlassBarScreen.show(this);
             } else {
                 ModMenu.show(this);
             }
         });
+    }
+
+    private void verifyPreferences() {
+        java.io.File dir=new java.io.File(getCacheDir(),"preview-prefs");
+        if(!dir.isDirectory() && !dir.mkdirs()) throw new AssertionError("preview prefs directory");
+        Prefs.init(dir);
+        Prefs.setRegion("");
+        Prefs.setVtOpacity(63);
+        Prefs.setHideAds(false);
+        Prefs.setHideLiveRooms(true);
+        Prefs.setUnlock("chat_bubble",false);
+        Prefs.setUnlock("chat_wallpaper",true);
+        Prefs.setPageBg(0);
+        // Change memory without writing, then re-read from disk.
+        Prefs.region="US"; Prefs.vtOpacity=20; Prefs.hideAds=true;
+        Prefs.hideLiveRooms=false; Prefs.unlockOff="";
+        Prefs.init(dir);
+        expect(Prefs.region.isEmpty(),"persist no region override");
+        expect(Prefs.vtOpacity==63,"persist metadata opacity");
+        expect(!Prefs.hideAds && Prefs.hideLiveRooms,"persist independent ad/live switches");
+        expect(!Unlocks.on("chat_bubble") && Unlocks.on("chat_wallpaper"),"persist independent chat settings");
+        Prefs.setVtOpacity(-1);
+        expect(Prefs.vtOpacity==20,"opacity lower bound");
+        Prefs.setVtOpacity(101);
+        expect(Prefs.vtOpacity==100,"opacity upper bound");
+        Prefs.setVtOpacity(90);
+        Prefs.setHideAds(true);
+        Prefs.setHideLiveRooms(false);
+        Prefs.setUnlock("chat_bubble",true);
+        android.util.Log.i("TTMPreview","PREFS_ROUNDTRIP PASS");
     }
 
     private static void expect(boolean condition, String message) {
