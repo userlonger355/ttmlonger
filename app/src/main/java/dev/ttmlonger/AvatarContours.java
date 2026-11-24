@@ -25,6 +25,7 @@ final class AvatarContours {
     private static final String[] OWNERS={"X.1Fnt","X.1Fnu","X.0HEe","X.0GvU"};
     private static final WeakHashMap<Path,float[]> circles=new WeakHashMap<>();
     private static final ThreadLocal<Drawable> drawing=new ThreadLocal<>();
+    private static final ThreadLocal<java.util.ArrayList<Drawable>> stack=new ThreadLocal<>();
     private static volatile int shape;
     private static volatile boolean spin;
     private static volatile int hooks;
@@ -75,11 +76,15 @@ final class AvatarContours {
                             ||java.lang.reflect.Modifier.isAbstract(method.getModifiers()))continue;
                     XposedBridge.hookMethod(method,new XC_MethodHook(){
                         @Override protected void beforeHookedMethod(MethodHookParam p){
-                            p.setObjectExtra("ttm_avatar_previous",drawing.get());drawing.set((Drawable)p.thisObject);
+                            java.util.ArrayList<Drawable> history=stack.get();
+                            if(history==null){history=new java.util.ArrayList<>();stack.set(history);}
+                            history.add(drawing.get());drawing.set((Drawable)p.thisObject);
                         }
                         @Override protected void afterHookedMethod(MethodHookParam p){
-                            Object previous=p.getObjectExtra("ttm_avatar_previous");
-                            if(previous instanceof Drawable)drawing.set((Drawable)previous);else drawing.remove();
+                            java.util.ArrayList<Drawable> history=stack.get();
+                            Drawable previous=history==null||history.isEmpty()?null:history.remove(history.size()-1);
+                            if(previous!=null)drawing.set(previous);else drawing.remove();
+                            if(history!=null&&history.isEmpty())stack.remove();
                         }
                     });hooks++;
                 }
@@ -89,7 +94,7 @@ final class AvatarContours {
                 @Override protected void beforeHookedMethod(MethodHookParam p){
                     if(p.args.length!=4||!(p.thisObject instanceof Path)||!((Path)p.thisObject).isEmpty())return;
                     boolean known=drawing.get()!=null;
-                    if(!known)for(StackTraceElement frame:Thread.currentThread().getStackTrace())
+                    if(!known && shape!=0)for(StackTraceElement frame:Thread.currentThread().getStackTrace())
                         for(String n:OWNERS)if(n.equals(frame.getClassName()))known=true;
                     if(!known)return;
                     float r=((Number)p.args[2]).floatValue();
@@ -139,7 +144,7 @@ final class AvatarContours {
             final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas c){
                 float r=Math.min(getWidth(),getHeight())*.38f,cx=getWidth()/2f,cy=getHeight()/2f;
-                Path mask=contour(draft[0],cx,cy,r,rotating[0]?angle(SystemClock.uptimeMillis()):0);
+                Path mask=contour(draft[0],cx,cy,r,rotating[0]&&(android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled())?angle(SystemClock.uptimeMillis()):0);
                 int save=c.save();c.clipPath(mask);
                 paint.setShader(new LinearGradient(cx-r,cy-r,cx+r,cy+r,new int[]{0xff774bd3,0xfff48ea5,0xff369dcc},null,Shader.TileMode.CLAMP));
                 c.drawRect(cx-r,cy-r,cx+r,cy+r,paint);paint.setShader(null);

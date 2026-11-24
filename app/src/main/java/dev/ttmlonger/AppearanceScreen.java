@@ -73,6 +73,7 @@ final class AppearanceScreen extends Screen {
         body.addView(restartCard, rp);
 
         body.addView(ui.menuRow(Icons.IMAGE,"Форма аватарок","10 контуров · вращение · предпросмотр",null,v -> AvatarContours.editor(act)));
+        body.addView(ui.toggleRow(-1,"Системная яркость","Не разрешать TikTok принудительно повышать яркость окна",BrightnessLock.enabled(act),on -> BrightnessLock.set(act,on)));
         buildAccentCard(body);
         buildFontCard(body);
         buildIconCard(body);

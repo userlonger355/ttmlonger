@@ -63,6 +63,7 @@ final class ScreenWatcher {
     static void onResumed(Activity a) {
         try {
             MainHook.ensureBoot(a);
+            BrightnessLock.apply(a.getWindow());
             Activity prev = lastSeen == null ? null : lastSeen.get();
             if (prev != a) {
                 lastSeen = new WeakReference<>(a);

@@ -49,7 +49,6 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
         try {
             AvatarHooks.install(cl);
-            AvatarContours.install(cl,ctx);
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -125,6 +124,8 @@ public final class MainHook implements IXposedHookLoadPackage {
         if (ctx == null || !booted.compareAndSet(false, true)) return;
         try {
             FlagStore.init(ctx);      // внутри читаются и Prefs
+            try { AvatarContours.install(cl,ctx); } catch(Throwable t) { FlagStore.log(t); }
+            try { BrightnessLock.install(ctx); } catch(Throwable t) { FlagStore.log(t); }
             try {
                 InterfaceHooks.install(ctx);
             } catch (Throwable t) {

@@ -166,6 +166,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow(Icons.SLIDERS,"Управление репостами","Просмотр собственных репостов и удаление выбранных",null,v -> RepostManager.show(act)));
         body = section(page, "Личные сообщения");
         streakMenuRow = ui.menuRow(Icons.FLAME, "Огоньки", "Автопродление серии в чатах", StreakScreen.menuSummary(),
                 v -> StreakScreen.show(act));
