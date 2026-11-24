@@ -173,16 +173,20 @@ final class ScreenWatcher {
             View decor = act.getWindow().getDecorView();
             InterfaceHooks.labels(act);
             InboxBadge.attach(act);
+            CommentTools.apply(decor);
+            StoryShare.update(act, decor);
+            ChatTicks.apply(decor);
             DisplayInfo di = new DisplayInfo(act);
             Scan s = new Scan();
             scan(decor, s, 0, di);
 
             profile.bind(!CrashGuard.tripped && s.followers && s.following ? s.handle : null);
+            ProfileStyle.apply(decor, !CrashGuard.tripped && s.followers && s.following && s.handle != null);
             boolean page = s.settingsTitle || s.rows.size() >= Targets.SETTINGS_ROWS_MIN;
             report(s, page);
 
-            if (page) showSettingsBlock(s.hasSample && luminance(s.sampleColor) < 0.5f);
-            else hideSettingsBlock();
+            // Do not add the legacy top banner on unknown settings screens.
+            hideSettingsBlock();
 
             if (s.avatar != null && s.shareLabel != null) showAvatarButton(s);
             else hideAvatarButton();

@@ -60,14 +60,14 @@ final class Prefs {
     /** Пробовать включать голосовые, обои и пузырь чата в модели настроек, которую шлёт сервер (DmGate). */
     static volatile boolean dmGate = true;
     /** Вид времени в плашке: 0 точное («26.09 02:32:00»), 1 давность, а для старых видео дата («3 дн. назад», «26.09.2026»). */
-    static volatile int vtFormat = 1;
+    static volatile int vtFormat = 2;
     /** Плашка с регионом видео: флаг и код страны. */
     static volatile boolean vtRegion = true;
     /** Вид плашки региона: 0 флаг и код, 1 только флаг, 2 только код. */
     static volatile int vtRegionMode = 0;
 
     /** Вид плашек: 0 по теме приложения, 1 тёмные, 2 светлые. */
-    static volatile int vtStyle = 0;
+    static volatile int vtStyle = 3;
     /** Где плашки: 0 авто (там, где свободно), 1 справа от имени, 2 над именем, 3 под именем. */
     static volatile int vtPos = 0;
     /** Непрозрачность плашек в процентах, 20..100. */
@@ -90,6 +90,10 @@ final class Prefs {
 
     /** Убирать рекламные посты из ленты ещё до показа. */
     static volatile boolean hideAds = true;
+    static volatile boolean hideAdVideos = true;
+    static volatile boolean hideAdCards = true;
+    static volatile boolean hideAdAiCards = true;
+    static volatile int commentBlur = 15;
     /** Прятать кнопку LIVE в левом верхнем углу главной. */
     static volatile boolean hideLiveButton = true;
     /** Убирать из ленты прямые эфиры, которые TikTok подмешивает среди видео. */
@@ -140,12 +144,12 @@ final class Prefs {
             vtTime = o.optBoolean("vtTime", true);
             vtRepost = o.optBoolean("vtRepost", true);
             vtSeconds = o.optBoolean("vtSeconds", true);
-            vtFormat = Math.max(0, Math.min(1, o.optInt("vtFormat", 1)));
+            vtFormat = o.optBoolean("compactVideoInfoV1",false) ? Math.max(0, Math.min(2, o.optInt("vtFormat", 2))) : 2;
             apiTapOn = o.optBoolean("apiTap", true);
             dmGate = o.optBoolean("dmGate", true);
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
-            vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
+            vtStyle = o.optBoolean("compactVideoInfoV1",false) ? Math.max(0, Math.min(3, o.optInt("vtStyle", 3))) : 3;
             vtPos = Math.max(0, Math.min(3, o.optInt("vtPos", 0)));
             vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
             viewBlocked = o.optBoolean("viewBlocked", false);
@@ -155,6 +159,10 @@ final class Prefs {
             hideTyping = o.optBoolean("hideTyping", false);
             hideOnline = o.optBoolean("hideOnline", false);
             hideAds = o.optBoolean("hideAds", true);
+            hideAdVideos = o.optBoolean("hideAdVideos", true);
+            hideAdCards = o.optBoolean("hideAdCards", true);
+            hideAdAiCards = o.optBoolean("hideAdAiCards", true);
+            commentBlur = Math.max(0, Math.min(100, o.optInt("commentBlur", 15)));
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
             unlockOff = o.optString("unlockOff", "");
@@ -277,7 +285,7 @@ final class Prefs {
     }
 
     static void setVtFormat(int v) {
-        vtFormat = Math.max(0, Math.min(1, v));
+        vtFormat = Math.max(0, Math.min(2, v));
         save();
     }
 
@@ -297,7 +305,7 @@ final class Prefs {
     }
 
     static void setVtStyle(int v) {
-        vtStyle = Math.max(0, Math.min(2, v));
+        vtStyle = Math.max(0, Math.min(3, v));
         save();
     }
 
@@ -341,6 +349,11 @@ final class Prefs {
         hideOnline = v;
         save();
     }
+
+    static void setAdVideos(boolean v) { hideAdVideos = v; save(); }
+    static void setAdCards(boolean v) { hideAdCards = v; save(); }
+    static void setAdAiCards(boolean v) { hideAdAiCards = v; save(); }
+    static void setCommentBlur(int v) { commentBlur = Math.max(0, Math.min(100, v)); save(); }
 
     static void setHideAds(boolean v) {
         hideAds = v;
@@ -398,6 +411,7 @@ final class Prefs {
             o.put("vtTime", vtTime);
             o.put("vtRepost", vtRepost);
             o.put("vtSeconds", vtSeconds);
+            o.put("compactVideoInfoV1", true);
             o.put("vtFormat", vtFormat);
             o.put("apiTap", apiTapOn);
             o.put("dmGate", dmGate);
@@ -413,6 +427,10 @@ final class Prefs {
             o.put("hideTyping", hideTyping);
             o.put("hideOnline", hideOnline);
             o.put("hideAds", hideAds);
+            o.put("hideAdVideos", hideAdVideos);
+            o.put("hideAdCards", hideAdCards);
+            o.put("hideAdAiCards", hideAdAiCards);
+            o.put("commentBlur", commentBlur);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);
             o.put("chatAppearanceGroups", true);

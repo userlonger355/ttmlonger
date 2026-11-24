@@ -284,7 +284,15 @@ final class VideoScreen extends Screen {
                 }
             }
         });
-        card.addView(row.button);
+        LinearLayout actions = new LinearLayout(act);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.addView(row.button);
+        TextView audio = TtStyle.neutral(act, "Скачать звук", 36f, 13f);
+        audio.setOnClickListener(v -> AudioSaver.start(app, row.entry));
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1,-2);
+        ap.topMargin=ui.dp(5);
+        actions.addView(audio,ap);
+        card.addView(actions);
 
         ui.decorate(card,0xff7361be);
         refresh(row);

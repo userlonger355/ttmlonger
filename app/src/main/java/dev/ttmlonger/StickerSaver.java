@@ -271,6 +271,7 @@ final class StickerSaver {
         for (int i = roots.size() - 1; i >= 0; i--) {
             View root = roots.get(i);
             if (root == null || !root.isShown() || Screen.isOwnDecor(root)) continue;
+            if (StoryShare.excludeSticker(root)) continue;
             SheetFinder.Scan s = SheetFinder.scan(root, picFraction);
             if (s.hit == null) continue;
             if (!s.hit.placed) place(s.hit);
@@ -388,7 +389,7 @@ final class StickerSaver {
             @Override
             public void run() {
                 try {
-                    if (!d.isShowing()) return;
+                    if (!d.isShowing() || StoryShare.excludeSticker(decor)) return;
                     SheetFinder.Scan s = SheetFinder.scan(decor, PIC_HOOKED);
                     if (s.hit != null) {
                         if (!s.hit.placed) place(s.hit);
@@ -552,7 +553,7 @@ final class StickerSaver {
                 @Override
                 public void run() {
                     try {
-                        boolean gone = !h.row.isAttachedToWindow() || !h.row.isShown()
+                        boolean gone = StoryShare.excludeSticker(h.row.getRootView()) || !h.row.isAttachedToWindow() || !h.row.isShown()
                                 || android.os.SystemClock.uptimeMillis() > until;
                         if (gone) {
                             h.row.setTag(SheetFinder.TAG_PLACED, null);

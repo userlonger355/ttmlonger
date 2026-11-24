@@ -100,7 +100,7 @@ final class ProfileFacts {
 
     void bind(TextView view) {
         if (!InterfaceHooks.on("profile_copy") && !InterfaceHooks.on("profile_follow")
-                && !InterfaceHooks.on("profile_date") && !InterfaceHooks.on("profile_counts")) view = null;
+                && !InterfaceHooks.on("profile_date") && !InterfaceHooks.on("profile_counts") && !InterfaceHooks.on("profile_repost")) view = null;
         if (anchor != view || !InterfaceHooks.on("profile_copy")) {
             if (anchor != null && handles.remove(anchor) != null) anchor.setLongClickable(wasLongClickable);
         }
@@ -119,6 +119,16 @@ final class ProfileFacts {
         boolean follows = follower instanceof Number && ((Number) follower).intValue() == 1;
         String info = follows ? "Подписан(-а) на вас" : "";
         if (created != null) info += (info.isEmpty() ? "" : "  ·  ") + "В TikTok с " + created;
+        if(user!=null && InterfaceHooks.on("profile_repost")) {
+            for(String getter:new String[]{"getLastRepostTime","getLastRepostTimestamp"}) {
+                Object value=DownloadHooks.call(user,getter);
+                if(!(value instanceof Number))continue;
+                long ts=((Number)value).longValue();if(ts>100000000000L)ts/=1000;
+                if(ts>=1262304000L && ts<=System.currentTimeMillis()/1000L) {
+                    info+=(info.isEmpty()?"":"\n")+"Последний репост: "+DateFormat.getDateTimeInstance().format(new Date(ts*1000L));break;
+                }
+            }
+        }
         if (user != null && InterfaceHooks.on("profile_counts")) {
             List<String> counts = new ArrayList<>();
             String[] getters = {"getFollowingCount", "getFollowerCount", "getTotalFavorited"};

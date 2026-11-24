@@ -396,7 +396,7 @@ final class AdHooks {
             // examine both the wrapper and its actual Aweme, and explicit ad-card slots.
             boolean wrapper=s.getAweme!=null||!s.post;
             if(ads){
-                if(advert(s,item) || wrapper && (present(s.preciseAd,item)||present(s.aiAdCard,item))){
+                if((Prefs.hideAdVideos && advert(s,item)) || wrapper && ((Prefs.hideAdCards && present(s.preciseAd,item))||(Prefs.hideAdAiCards && present(s.aiAdCard,item)))){
                     s.ads++;return AD;
                 }
             }
@@ -405,7 +405,7 @@ final class AdHooks {
             Object post=nested!=null?nested:s.post?item:null;
             if(post==null)return KEEP;
             Shape ps=post==item?s:shapeOf(post.getClass());
-            if(ads&&advert(ps,post)){s.ads++;return AD;}
+            if(ads&&Prefs.hideAdVideos&&advert(ps,post)){s.ads++;return AD;}
             if (rooms && room(ps, post) && !mine(ps, post)) {
                 s.rooms++;
                 return ROOM;

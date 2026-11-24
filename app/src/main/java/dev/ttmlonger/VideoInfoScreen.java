@@ -100,7 +100,7 @@ final class VideoInfoScreen extends Screen {
         LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(ViewGroupLP.MATCH, ViewGroupLP.WRAP);
         pl.setMargins(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(10));
         body.addView(previewHost, pl);
-        styleRow = ui.menuRow(-1, "Оформление", "Контраст текста даты и флага",
+        styleRow = ui.menuRow(-1, "Оформление", "Компактная строка: · 10-13 · 🇫🇷 FR, без подложки",
                 VideoInfo.styleLabel(Prefs.vtStyle), new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {

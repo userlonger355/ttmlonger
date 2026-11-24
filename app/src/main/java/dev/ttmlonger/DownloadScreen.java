@@ -54,8 +54,8 @@ final class DownloadScreen extends Screen {
                 }));
 
         body.addView(toggleRow(-1, "Кнопка «Сохранить через мод»",
-                "Когда у видео запрещено скачивание, на несколько секунд появляется кнопка: её файл "
-                        + "проверяется и не бывает битым",
+                "Отдельная кнопка в меню «Поделиться» с подписью под значком. "
+                        + "Без плавающей кнопки и таймера.",
                 Prefs.dlPill, new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {

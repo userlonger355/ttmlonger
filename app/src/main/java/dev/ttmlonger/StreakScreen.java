@@ -2,8 +2,6 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.TimePickerDialog;
-import android.content.DialogInterface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -21,6 +19,7 @@ final class StreakScreen extends Screen {
     private LinearLayout checkRow;
     private boolean checking;
     private ModSwitch autoSwitch;
+    private StreakChatPreview chatPreview;
 
     private StreakScreen(Activity act) {
         super(act);
@@ -67,12 +66,18 @@ final class StreakScreen extends Screen {
         caption = ui.text("", 14, ink, false);
         hero.addView(caption);
 
+        body.addView(ui.header("Как это выглядит в чате"));
+        chatPreview=new StreakChatPreview(act);
+        LinearLayout.LayoutParams previewParams=ui.matchWrap();
+        previewParams.setMargins(ui.dp(16),0,ui.dp(16),ui.dp(6));
+        body.addView(chatPreview,previewParams);
+        body.addView(ui.note("Это пример переписки. Стикер здесь не отправляется."));
         body.addView(ui.header("Правила продления"));
         LinearLayout rules = ui.panel(body);
-        timeRow = ui.menuRow(Icons.CLOCK, "Когда отправлять", "", null, v -> pickTime());
+        timeRow = ui.menuRow(Icons.CLOCK, "Время отправки", "", null, v -> pickTime());
         rules.addView(timeRow);
         rules.addView(ui.divider());
-        stickerRow = ui.menuRow(Icons.STICKER, "Стикер", "", null, v -> StickerPickScreen.show(act, this::refresh));
+        stickerRow = ui.menuRow(Icons.STICKER, "Стикер для отправки", "", null, v -> StickerPickScreen.show(act, this::refresh));
         rules.addView(stickerRow);
         forgetRow = ui.row(Icons.CLOSE, "Снять выбор стикера", null, null, false, v -> {
             StreakSticker.forget();
@@ -112,6 +117,7 @@ final class StreakScreen extends Screen {
         Ui.subtitleOf(peopleRow).setText(Prefs.streakOnlyPicked
                 ? "Только отмеченные · " + StreakStore.pickedCount() : "Все чаты с действующей серией");
         forgetRow.setVisibility(chosen || StreakSticker.armed() ? View.VISIBLE : View.GONE);
+        if(chatPreview!=null)chatPreview.update(Prefs.streakAuto,minute);
     }
 
     private void pickTime() {
@@ -122,13 +128,7 @@ final class StreakScreen extends Screen {
         }
         int minute = schedule.minute(owner);
         int initial = minute >= 0 ? minute : Prefs.streakMinute;
-        TimePickerDialog picker = new TimePickerDialog(act, Ui.dialogTheme(),
-                (v, hour, min) -> setTime(owner, hour * 60 + min), initial / 60, initial % 60, true);
-        picker.setTitle("Время отправки");
-        picker.setButton(DialogInterface.BUTTON_NEUTRAL, "Без расписания", (dialog, which) -> setTime(owner, -1));
-        markOwn(picker);
-        picker.show();
-        Ui.style(picker);
+        StreakTimeSheet.show(act, initial, value -> setTime(owner,value));
     }
 
     private void setTime(String owner, int minute) {

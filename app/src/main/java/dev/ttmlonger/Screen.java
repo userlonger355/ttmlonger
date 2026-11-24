@@ -146,11 +146,16 @@ abstract class Screen {
                 w.getDecorView().setSystemUiVisibility(flags);
             }
         }
-        dialog.show();
-        if(Ui.motionEnabled()){
-            scroll.setAlpha(.72f);scroll.setTranslationY(ui.dp(10));
-            scroll.animate().alpha(1f).translationY(0f).setDuration(360).setInterpolator(Ui.motionCurve()).start();
+        boolean animate = android.os.Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled();
+        if (animate) {
+            if(w!=null)w.setWindowAnimations(0);
+            page.setAlpha(0f);
+            page.setTranslationX(ui.dp(22));
+            page.setScaleX(.99f);page.setScaleY(.99f);
         }
+        dialog.show();
+        if(animate) page.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f)
+                .setDuration(290L).setInterpolator(new android.view.animation.PathInterpolator(.18f,.82f,.22f,1f)).start();
     }
 
     /** Строка с названием, описанием и переключателем справа. */

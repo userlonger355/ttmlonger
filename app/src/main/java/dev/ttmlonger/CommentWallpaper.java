@@ -55,8 +55,8 @@ final class CommentWallpaper {
                 if(Screen.isOwn(d)||d.getWindow()==null)return;
                 View root=d.getWindow().getDecorView();
                 if(root==null||!dialogs.add(root))return;
-                root.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(enabled&&root.isShown())scan(root);});
-                if(enabled)root.post(()->scan(root));
+                root.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(root.isShown()){CommentTools.apply(root);if(enabled)scan(root);}});
+                root.post(()->{CommentTools.apply(root);if(enabled)scan(root);});
             }
         });}catch(Throwable e){FlagStore.log(e);}
     }
@@ -167,6 +167,7 @@ final class CommentWallpaper {
         if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View found=find(g.getChildAt(i),root,depth+1,budget);if(found!=null)return found;}}
         return null;
     }
+    static View panel(View root){return find(root,root,0,new int[]{1800});}
     static void apply(Activity a){if(a!=null&&enabled&&image!=null&&!a.isFinishing()&&!a.isDestroyed())scan(a.getWindow().getDecorView());}
     private static void refresh(){
         Activity a=ScreenWatcher.top();if(a!=null)apply(a);

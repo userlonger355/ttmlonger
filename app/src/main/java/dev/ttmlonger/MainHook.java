@@ -74,6 +74,7 @@ public final class MainHook implements IXposedHookLoadPackage {
             FlagStore.log(t);
         }
         try {
+            StoryShare.install();
             StickerSaver.install();
         } catch (Throwable t) {
             FlagStore.log(t);
@@ -134,6 +135,7 @@ public final class MainHook implements IXposedHookLoadPackage {
             try { SponsorSegments.install(ctx,cl); } catch(Throwable t) { FlagStore.log(t); }
             try {
                 InterfaceHooks.install(ctx);
+                CommentTools.install(cl);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
@@ -149,6 +151,8 @@ public final class MainHook implements IXposedHookLoadPackage {
             }
             try {
                 ProfileFacts.install(cl);
+                ProfileGrid.install(cl);
+                EmojiFonts.install(ctx);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }

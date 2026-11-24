@@ -90,10 +90,7 @@ final class InterfaceScreen extends Screen {
         option(body, "share", "Двойное нажатие для «Поделиться»", null);
         body.addView(ui.note("Повторите нажатие на ту же кнопку в течение двух секунд."));
         body.addView(ui.header("Профиль"));
-        option(body, "profile_copy", "Копировать данные профиля", "Удерживайте @имя в шапке профиля");
-        option(body, "profile_counts", "Точные счётчики профиля", "Полные числа под именем пользователя");
-        option(body, "profile_date", "Дата создания аккаунта", "Приблизительная дата из ID аккаунта");
-        option(body, "profile_follow", "Статус подписки", "Показывать, когда владелец профиля подписан на вас");
+        body.addView(ui.menuRow(Icons.SLIDERS,"Настройки профиля","Предпросмотр, счётчики, дата, кнопки и сортировка",null,v -> ProfileStyleScreen.show(act)));
         body.addView(ui.header("Публикация"));
         option(body, "details", "Сведения по нажатию на флаг", "Нажмите на строку сведений, чтобы скопировать её");
     }

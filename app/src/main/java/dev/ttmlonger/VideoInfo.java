@@ -71,14 +71,15 @@ final class VideoInfo {
 
     static final int FORMAT_EXACT = 0;
     static final int FORMAT_AGO = 1;
-    private static final String[] FORMAT_LABELS = {"Точное время", "Давность, потом дата"};
+    static final int FORMAT_COMPACT = 2;
+    private static final String[] FORMAT_LABELS = {"Точное время", "Давность, потом дата", "Месяц-день (10-13)"};
 
     static String formatLabel(int f) {
-        return FORMAT_LABELS[f < 0 || f > 1 ? 1 : f];
+        return FORMAT_LABELS[f < 0 || f > 2 ? 2 : f];
     }
 
     static int nextFormat(int f) {
-        return (f < 0 || f > 1 ? 1 : f) == 0 ? 1 : 0;
+        return ((f < 0 || f > 2 ? 2 : f) + 1) % 3;
     }
 
     /**
@@ -101,6 +102,9 @@ final class VideoInfo {
 
     /** Текст плашки времени по выбранному виду; если «давность» не получилась, показывается точное время. */
     static String timeText(long sec, int format, boolean seconds, TimeZone tz, long nowMs) {
+        if(format == FORMAT_COMPACT) {
+            SimpleDateFormat date=new SimpleDateFormat("MM-dd",Locale.US);date.setTimeZone(tz);return date.format(new Date(sec*1000L));
+        }
         if (format == FORMAT_AGO) {
             String s = agoLabel(sec, nowMs, tz);
             if (s != null) return s;
@@ -213,14 +217,15 @@ final class VideoInfo {
     static final int STYLE_AUTO = 0;
     static final int STYLE_DARK = 1;
     static final int STYLE_LIGHT = 2;
-    private static final String[] STYLE_LABELS = {"По теме приложения", "Тёмные", "Светлые"};
+    static final int STYLE_INLINE = 3;
+    private static final String[] STYLE_LABELS = {"По теме приложения", "Тёмные", "Светлые", "Компактная строка"};
 
     static String styleLabel(int style) {
-        return STYLE_LABELS[style < 0 || style > 2 ? 0 : style];
+        return STYLE_LABELS[style < 0 || style > 3 ? 3 : style];
     }
 
     static int nextStyle(int style) {
-        return ((style < 0 || style > 2 ? 0 : style) + 1) % 3;
+        return ((style < 0 || style > 3 ? 3 : style) + 1) % 4;
     }
 
     /** Цвета плашки: {фон, текст}. «По теме» даёт тёмные плашки в тёмной теме и светлые в светлой. */
@@ -744,12 +749,13 @@ final class VideoInfo {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
 
-            box.addView(regionView, lp);
+            box.setOrientation(LinearLayout.VERTICAL);
             LinearLayout dates=new LinearLayout(ctx);
-            dates.setOrientation(LinearLayout.VERTICAL);
+            dates.setOrientation(LinearLayout.HORIZONTAL);
             dates.addView(timeView,new LinearLayout.LayoutParams(-2,-2));
-            dates.addView(repostView,new LinearLayout.LayoutParams(-2,-2));
+            dates.addView(regionView,lp);
             box.addView(dates,new LinearLayout.LayoutParams(-2,-2));
+            box.addView(repostView,new LinearLayout.LayoutParams(-2,-2));
         }
 
         int dp(float v) {
@@ -781,7 +787,7 @@ final class VideoInfo {
             background.setColor(c[0]);
             background.setCornerRadius(dp(12));
             box.setBackground(null);
-            int ink=style==STYLE_LIGHT?0xff25252b:0xffeeeeee;
+            int ink=style==STYLE_INLINE?0xff999999:style==STYLE_LIGHT?0xff25252b:0xffeeeeee;
             timeView.setTextColor(ink);
             regionView.setTextColor(ink);
             repostView.setTextColor(ink);
@@ -791,6 +797,7 @@ final class VideoInfo {
             box.setAlpha(op / 100f);
         }
 
+        String inline(String label) {return label==null?null:(Prefs.vtStyle==STYLE_INLINE?"· ":"")+label;}
         void measure() {
             box.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
@@ -802,9 +809,9 @@ final class VideoInfo {
         Pills p = new Pills(c);
         p.style(Prefs.vtStyle, isNight(c), Prefs.vtOpacity);
         long sample = System.currentTimeMillis() / 1000L - 2 * 86400L - 3600L * 5;
-        p.timeView.setText(timeText(sample, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
-        String r = regionText("KZ", Prefs.vtRegionMode);
-        p.regionView.setText(r == null ? "KZ" : r);
+        p.timeView.setText(p.inline(timeText(sample, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis())));
+        String r = regionText("FR", Prefs.vtRegionMode);
+        p.regionView.setText(p.inline(r));
         p.timeView.setVisibility(Prefs.vtTime ? View.VISIBLE : View.GONE);
         p.regionView.setVisibility(Prefs.vtRegion ? View.VISIBLE : View.GONE);
         p.timeView.setClickable(false);
@@ -896,7 +903,7 @@ final class VideoInfo {
             iso = m.region;
             pills.style(Prefs.vtStyle, isNight(act), Prefs.vtOpacity);
             if (wantTime) {
-                String time = timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis());
+                String time = pills.inline(timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
                 if (!TextUtils.equals(timeView.getText(),time)) timeView.setText(time);
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
@@ -905,7 +912,7 @@ final class VideoInfo {
                 if(!TextUtils.equals(pills.repostView.getText(),label))pills.repostView.setText(label);}
             pills.repostView.setVisibility(showRepost?View.VISIBLE:View.GONE);
             if (wantRegion) {
-                String region=regionText(m.region, Prefs.vtRegionMode);
+                String region=pills.inline(regionText(m.region, Prefs.vtRegionMode));
                 if (!TextUtils.equals(regionView.getText(),region)) regionView.setText(region);
             }
             regionView.setVisibility(wantRegion ? View.VISIBLE : View.GONE);
@@ -1029,7 +1036,7 @@ final class VideoInfo {
             decor.getLocationOnScreen(dloc);
             int key = a.getWidth() * 7919 + a.getHeight() * 31 + Prefs.vtPos * 3 + box.getMeasuredWidth() * 13
                     + box.getMeasuredHeight();
-            if (!slotReady || key != slotKey || SystemClock.uptimeMillis() - slotAt > 700L) chooseSlot(a);
+            if (!slotReady || key != slotKey) chooseSlot(a);
             long now = SystemClock.uptimeMillis();
             // Следуем за подписью сразу, но плавно меняем относительное место плашки.
             boolean animate = android.os.Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled();

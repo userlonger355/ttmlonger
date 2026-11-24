@@ -65,7 +65,7 @@ final class DownloadHooks {
                         lastCaller = callerOf(new Throwable());
                         Object better = choose(v, stamped, blocked);
                         if (better != null && better != stamped) param.setResult(better);
-                        if (blocked && Prefs.dlAlways && Prefs.dlPill) NativeOffer.maybe(v);
+                        // Extra download action is inserted by StoryShare in the share sheet.
                     } catch (Throwable ignored) {
                         // остаётся ответ TikTok
                     }
