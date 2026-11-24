@@ -34,7 +34,7 @@ final class CommentWallpaperScreen extends Screen {
         dimText=ui.header("Приглушение фона · "+dim+"%");body.addView(dimText);
         slider(body,dim,false);
         body.addView(ui.menuRow(Icons.REFRESH,"Вернуть стандартный фон",null,null,v->{CommentWallpaper.reset();dialog.dismiss();show(act);}));
-        body.addView(ui.note("Если оформление не применилось, закройте и снова откройте комментарии. Поддержка зависит от контейнера этой версии TikTok."));
+        body.addView(ui.note("Фон применяется при открытии комментариев. Если TikTok использует неподдерживаемую разметку, стандартный фон сохраняется."));
         render();main.postDelayed(()->waitRender(0),150);
     }
     private void slider(LinearLayout body,int initial,boolean isBlur){

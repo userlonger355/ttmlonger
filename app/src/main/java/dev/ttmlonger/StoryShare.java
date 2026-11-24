@@ -353,11 +353,9 @@ final class StoryShare {
         android.util.TypedValue tv=new android.util.TypedValue();if(c.getTheme().resolveAttribute(android.R.attr.selectableItemBackground,tv,true)&&tv.resourceId!=0)r.setBackgroundResource(tv.resourceId);
         r.setClickable(true);r.setFocusable(true);r.setContentDescription("Скачать через мод, открыть варианты");
         r.setOnClickListener(v->{
-            android.widget.PopupMenu menu=new android.widget.PopupMenu(c,r,Gravity.END);
-            menu.getMenu().add(0,1,0,"Скачать видео").setIcon(Icons.of(Icons.DOWNLOAD,ink));menu.getMenu().add(0,2,1,"Скачать звук").setIcon(Icons.of(Icons.MUSIC,ink));
-            if(android.os.Build.VERSION.SDK_INT>=29)menu.setForceShowIcon(true);
-            menu.setOnMenuItemClickListener(item->{try{Context app=c.getApplicationContext();if(item.getItemId()==1)VideoSaver.start(app==null?c:app,e);else AudioSaver.start(app==null?c:app,e);}catch(Throwable t){FlagStore.log(t);Toasts.show(c,"Не удалось сохранить");}return true;});
-            menu.show();
+            Activity a=ScreenWatcher.top();
+            if(a==null||a.isFinishing()||a.isDestroyed()){Toasts.show(c,"Откройте видео заново");return;}
+            DownloadChoice.show(a,e);
         });return r;
     }
     private static boolean compactInSheet(View root,Scan s,VideoTracker.Entry e){
