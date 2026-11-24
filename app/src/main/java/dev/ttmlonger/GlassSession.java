@@ -1008,7 +1008,9 @@ final class GlassSession implements Choreographer.FrameCallback {
                 // отпустили над другой вкладкой: сам TikTok нажатия не увидит (палец лёг на одну, поднят над другой),
                 // поэтому нажимаем на вкладку под линзой сами; если палец увели далеко от панели, это отмена
                 boolean near = y >= capT - 48 * dm && y <= capB + 48 * dm;
-                if (near && n >= 0 && n < eligible.length) {
+                if (!near) {
+                    restoreDragSelection();
+                } else if (n >= 0 && n < eligible.length) {
                     int target = eligible[n];
                     if (target != downTab) {
                         pendingTab = target;
@@ -1018,7 +1020,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                     }
                 }
             } else {
-                ph.up(ph.tgt);
+                restoreDragSelection();
             }
             burstUntil = SystemClock.uptimeMillis() + BURST_MS;
             capDirty = true;
@@ -1032,6 +1034,15 @@ final class GlassSession implements Choreographer.FrameCallback {
                 }
             }, delay);
         }
+    }
+
+    /** Cancelled/outside gestures must not animate towards an unselected tab. */
+    private void restoreDragSelection() {
+        pendingTab = -1;
+        int p = posOf(readSelected());
+        if (p < 0) p = posOf(lastSelected);
+        if (p < 0) p = posOf(downTab);
+        ph.up(p >= 0 ? p : ph.downAt);
     }
 
     /**

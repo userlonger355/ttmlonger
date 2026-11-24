@@ -36,7 +36,7 @@ finish_capture() {
 }
 trap finish_capture EXIT
 capture before-launch
-adb shell screenrecord --time-limit 35 --bit-rate 4000000 /sdcard/ttmlonger-startup.mp4 > "$media/screenrecord.txt" 2>&1 &
+adb shell screenrecord --time-limit 180 --bit-rate 4000000 /sdcard/ttmlonger-startup.mp4 > "$media/screenrecord.txt" 2>&1 &
 record_pid=$!
 adb shell am start -W -n "$component"
 capture launch
@@ -64,7 +64,7 @@ fi
 echo "### Patched TikTok started and TTMLonger initialization reached its completion marker" >> "$GITHUB_STEP_SUMMARY"
 if [[ "${TTM_UI_CHECKS:-0}" == 1 ]]; then
   echo "Collecting UI regression results"
-  for attempt in $(seq 1 100); do
+  for attempt in $(seq 1 155); do
     ui_logs="$(adb logcat -d -s TTMRuntimeUI:I '*:S')"
     printf '%s\n' "$ui_logs" > "$media/ui-results.log"
     stage="$(sed -n 's/.*TTMRuntimeUI: STAGE \([a-zA-Z0-9_-]*\).*/\1/p' <<< "$ui_logs" | tail -n 1)"

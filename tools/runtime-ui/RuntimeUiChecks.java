@@ -196,9 +196,94 @@ final class RuntimeUiChecks {
                 result("glass_drag_settles",to.isSelected());
                 Log.i(TAG,"GLASS_RENDER "+session.shaderNote()+" / "+session.bkStatus());
                 stage("glass-drag");
-                main.postDelayed(RuntimeUiChecks::finish,1800);
+                main.postDelayed(RuntimeUiChecks::cancelDrag,1800);
             },2500);
         } catch(Throwable e) { fail("glass_drag_exception",e); finish(); }
+    }
+    private static void cancelDrag() {
+        try {
+            View from=preview.getChildAt(4), to=preview.getChildAt(0);
+            int[] a=new int[2], b=new int[2];
+            from.getLocationOnScreen(a); to.getLocationOnScreen(b);
+            float x=a[0]+from.getWidth()/2f, y=a[1]+from.getHeight()/2f;
+            float end=b[0]+to.getWidth()/2f;
+            long down=SystemClock.uptimeMillis();
+            touch(MotionEvent.ACTION_DOWN,down,x,y);
+            touch(MotionEvent.ACTION_MOVE,down,end,y);
+            result("glass_cancel_tracks",session.ph.drag);
+            touch(MotionEvent.ACTION_CANCEL,down,end,y);
+            result("glass_cancel_target",!session.ph.drag && session.ph.tgt==3);
+            down=SystemClock.uptimeMillis();
+            touch(MotionEvent.ACTION_DOWN,down,x,y);
+            touch(MotionEvent.ACTION_MOVE,down,end,y);
+            touch(MotionEvent.ACTION_UP,down,end,y-2*preview.getHeight());
+            result("glass_outside_target",!session.ph.drag && session.ph.tgt==3);
+            main.postDelayed(() -> {
+                result("glass_cancel_keeps_tab",from.isSelected() && session.selectedTab()==4);
+                stage("glass-cancel");
+                main.postDelayed(RuntimeUiChecks::configChecks,1500);
+            },2200);
+        } catch(Throwable e) { fail("glass_cancel_exception",e); finish(); }
+    }
+    private static void configChecks() {
+        org.json.JSONObject original=GlassCfg.toJson();
+        try {
+            for(int i=0;i<GlassCfg.GLASS_NAMES.length;i++) {
+                GlassCfg.applyGlassPreset(i);
+                result("glass_preset_"+i,GlassCfg.glassPreset()==i);
+            }
+            for(int i=0;i<GlassCfg.PHYS_NAMES.length;i++) {
+                GlassCfg.applyPhysPreset(i);
+                result("physics_preset_"+i,GlassCfg.physPreset()==i);
+            }
+            GlassCfg.setTr(-999);
+            result("glass_min_bound",GlassCfg.tr==GlassCfg.TR_MIN);
+            GlassCfg.setTr(999);
+            result("glass_max_bound",GlassCfg.tr==GlassCfg.TR_MAX);
+            GlassCfg.setTr(47);
+            GlassCfg.setBk(false);
+            GlassCfg.save();
+            GlassCfg.setTr(65);
+            GlassCfg.setBk(true);
+            GlassCfg.init(FlagStore.dir());
+            result("glass_disk_roundtrip",GlassCfg.tr==47 && !GlassCfg.bk);
+            GlassCfg.resetLook();
+            result("glass_reset_keeps_style",GlassCfg.style==GlassCfg.GLASS && GlassCfg.tr==55);
+        } catch(Throwable e) { fail("glass_config_exception",e); }
+        finally { GlassCfg.load(original); GlassCfg.save(); GlassBar.refresh(); }
+        try {
+            session.demoCompact();
+            result("glass_compact_target",session.compacted());
+            stage("glass-compact");
+            main.postDelayed(() -> {
+                result("glass_expand_target",!session.compacted());
+                stage("glass-expand");
+                main.postDelayed(RuntimeUiChecks::reopenGlass,1500);
+            },1800);
+        } catch(Throwable e) { fail("glass_compact_exception",e); finish(); }
+    }
+    private static void reopenGlass() {
+        try {
+            GlassSession previous=session;
+            glass.dismiss();
+            result("glass_close_detaches",!previous.isAttached());
+            ArrayList<Dialog> before=dialogs();
+            boolean clicked=click(menu,"Нижняя панель");
+            glass=newest(before);
+            result("glass_reopen",clicked && glass!=null);
+            if(glass==null) { finish(); return; }
+            main.postDelayed(() -> {
+                try {
+                    preview=preview(glass.getWindow().getDecorView());
+                    Field f=preview.getClass().getDeclaredField("session");
+                    f.setAccessible(true);
+                    session=(GlassSession)f.get(preview);
+                    result("glass_new_session",session!=null && session!=previous && session.isAttached());
+                    stage("glass-reopen");
+                } catch(Throwable e) { fail("glass_reopen_exception",e); }
+                main.postDelayed(RuntimeUiChecks::finish,1800);
+            },1600);
+        } catch(Throwable e) { fail("glass_reopen_exception",e); finish(); }
     }
     private static void fail(String id,Throwable e) {
         fails++; Log.e(TAG,"RESULT "+id+" FAIL "+e.getClass().getSimpleName());
