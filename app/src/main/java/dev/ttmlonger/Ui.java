@@ -137,25 +137,14 @@ final class Ui {
                 Math.round(Color.green(a)*(1-f)+Color.green(b)*f),
                 Math.round(Color.blue(a)*(1-f)+Color.blue(b)*f));
     }
+    /** Neutral surface for settings; the accent remains only on actual controls. */
     GradientDrawable glassCard(int tint,float radius) {
-        int base=DARK?0xff15141e:0xfffaf8ff;
-        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{blend(base,tint,DARK?.32f:.16f),blend(base,tint,DARK?.12f:.06f),base});
+        GradientDrawable d=new GradientDrawable();
+        d.setColor(CARD);
         d.setCornerRadius(dp(radius));
-        d.setStroke(Math.max(1,dp(0.7f)),blend(base,tint,DARK?.48f:.24f));
         return d;
     }
-    int cardTint(int icon) {
-        switch(icon) {
-            case Icons.FLAME: return 0xffdd765b;
-            case Icons.GLOBE: return 0xffd07279;
-            case Icons.SLIDERS: return 0xff569fce;
-            case Icons.PALETTE: return 0xffa583e5;
-            case Icons.DOWNLOAD: return 0xff4aaf9c;
-            case Icons.CLOCK: return 0xffa18add;
-            default: return 0xff8265bb;
-        }
-    }
+    int cardTint(int icon) { return INK; }
     void decorate(LinearLayout r,int tint) {
         r.setBackground(glassCard(tint,20));
         r.setClipToOutline(true);
@@ -166,7 +155,7 @@ final class Ui {
         if(r.getChildCount()>0 && r.getChildAt(0) instanceof ImageView) {
             ImageView icon=(ImageView)r.getChildAt(0);
             if(icon.getTag() instanceof Integer) icon.setImageDrawable(Icons.of((Integer)icon.getTag(),
-                    blend(tint,DARK?Color.WHITE:Color.BLACK,DARK?.40f:.30f)));
+                    INK));
         }
     }
 

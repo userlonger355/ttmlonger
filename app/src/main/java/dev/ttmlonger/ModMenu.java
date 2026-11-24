@@ -222,19 +222,21 @@ final class ModMenu extends Screen {
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
 
-        page.addView(ui.menuRow(Icons.GLOBE, "Автор: @Ueod5",
-                "t.me/Ueod5", null, v -> {
-                    try {
-                        act.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://t.me/Ueod5")));
-                    } catch (android.content.ActivityNotFoundException e) {
-                        Toasts.show(act, "Не удалось открыть Telegram");
-                    }
-                }));
-        TextView ver = ui.text("0.0.1a (dev buld)", 13, Ui.MUTED, false);
-        ver.setGravity(android.view.Gravity.CENTER);
-        ver.setPadding(0, ui.dp(12), 0, ui.dp(12));
-        page.addView(ver, ui.matchWrap());
+        LinearLayout footer=new LinearLayout(act);
+        footer.setGravity(Gravity.CENTER);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setPadding(ui.dp(12),ui.dp(20),ui.dp(12),ui.dp(16));
+        TextView ver=ui.text("0.0.1a (dev buld)",13,Ui.MUTED,false);
+        TextView author=ui.medium("Автор: @Ueod5",13,Ui.INK);
+        author.setPadding(ui.dp(12),ui.dp(8),ui.dp(8),ui.dp(8));
+        author.setBackground(ui.ripple());
+        author.setOnClickListener(v->{
+            try{act.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://t.me/Ueod5")));}
+            catch(android.content.ActivityNotFoundException e){Toasts.show(act,"Не удалось открыть Telegram");}
+        });
+        footer.addView(ver);
+        footer.addView(author);
+        page.addView(footer,ui.matchWrap());
         empty = ui.note("По этому запросу настроек нет");
         page.addView(empty);
         empty.setVisibility(View.GONE);
@@ -266,18 +268,16 @@ final class ModMenu extends Screen {
     }
 
     private TextView tile(int icon, String title, String value, boolean warm, Runnable open) {
-        int from = warm ? (Ui.DARK ? 0xFF542D32 : 0xFFFFDBCB) : (Ui.DARK ? 0xFF273F53 : 0xFFD5EEFA);
-        int to = warm ? (Ui.DARK ? 0xFF302029 : 0xFFFFF0DD) : (Ui.DARK ? 0xFF222A40 : 0xFFEAECFF);
-        int ink = Ui.DARK ? 0xFFFDF4EF : 0xFF252432;
+        int ink = Ui.INK;
         LinearLayout tile = new LinearLayout(act);
         tile.setOrientation(LinearLayout.VERTICAL);
         tile.setPadding(ui.dp(16), ui.dp(15), ui.dp(12), ui.dp(16));
-        tile.setBackground(ui.wash(from, to));
+        tile.setBackground(ui.round(Ui.CARD,18));
         tile.setClipToOutline(true);
         tile.setForeground(ui.ripple());
         tile.setFocusable(true);
         tile.setOnClickListener(v -> open.run());
-        int tint = warm ? (Ui.DARK ? 0xFFFFB584 : 0xFF964123) : (Ui.DARK ? 0xFFA7DCFF : 0xFF285378);
+        int tint = Ui.MUTED;
         tile.addView(ui.icon(icon, tint, 27));
         TextView heading = ui.text(title, 19, ink, true);
         heading.setPadding(0, ui.dp(12), 0, ui.dp(2));
