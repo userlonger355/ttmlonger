@@ -1,0 +1,87 @@
+name: Ready-to-install TikTok with TTMLonger
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/navigation-metadata-20261124
+    paths:
+      - .github/workflows/ready-apk.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ready-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build ordinary module (no UI test injection)
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Prepare Android APK validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apksigner aapt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Patch pinned single-file TikTok 47.9.3
+        env:
+          TIKTOK_APK_URL: ${{ secrets.TIKTOK_APK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TIKTOK_APK_URL" == https://www.dropbox.com/* ]]
+          work="$RUNNER_TEMP/ready-apk-work"
+          mkdir -p "$work/output" "$RUNNER_TEMP/ready-apk"
+          chmod 700 "$work"
+          curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 180 --max-filesize 1073741824 --output "$work/TikTok.apk" "$TIKTOK_APK_URL"
+          echo "7321ae3537572004956e2308c7eb5b1d82e6eb536c2c2fac432f3d8a1801ff70  $work/TikTok.apk" | sha256sum -c
+          curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 120 --output "$work/lspatch.jar" "https://github.com/JingMatrix/LSPatch/releases/download/v1.2/lspatch-v1.2-487-release.jar"
+          echo "d238fdc414d121b7fa454d8b4ccf420df3a8c97d563761861ff92bd9c5da2165  $work/lspatch.jar" | sha256sum -c
+          java -jar "$work/lspatch.jar" -o "$work/output" -m app/build/outputs/apk/debug/app-debug.apk "$work/TikTok.apk"
+          mapfile -t outputs < <(find "$work/output" -maxdepth 1 -type f -name '*.apk')
+          [[ "${#outputs[@]}" == 1 ]]
+          apk="$RUNNER_TEMP/ready-apk/TikTok-47.9.3-TTMLonger.apk"
+          cp "${outputs[0]}" "$apk"
+          apksigner verify "$apk"
+          aapt dump badging "$apk" > "$work/badging.txt"
+          grep -E "^package: name='com.zhiliaoapp.musically'.*versionName='47\.9\.3'" "$work/badging.txt"
+          python3 - "$apk" app/build/outputs/apk/debug/app-debug.apk <<'PY'
+          import hashlib, sys, zipfile
+          from pathlib import Path
+          expected=hashlib.sha256(Path(sys.argv[2]).read_bytes()).digest()
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              candidates=[n for n in z.namelist() if n.startswith("assets/lspatch/") and n.endswith(".apk") and "/modules/" in n]
+              assert len(candidates)==1, candidates
+              assert hashlib.sha256(z.read(candidates[0])).digest()==expected, "Embedded module mismatch"
+              print("Embedded production module verified:", candidates[0])
+          PY
+          cd "$RUNNER_TEMP/ready-apk"
+          sha256sum TikTok-47.9.3-TTMLonger.apk > SHA256SUMS.txt
+          printf 'Commit: %s\nTikTok: 47.9.3\nLSPatch: 1.2-487\nSignature: patched APK signed, verified\nAndroid 17: not device-tested\n' "$GITHUB_SHA" > build-info.txt
+          cat SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload ready-to-install APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTok-47.9.3-TTMLonger-ready
+          path: ${{ runner.temp }}/ready-apk/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove temporary APKs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ready-apk-work" "$RUNNER_TEMP/ready-apk"
