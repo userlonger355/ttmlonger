@@ -138,6 +138,7 @@ final class Invisible {
     static void install(ClassLoader cl) {
         installOn(XposedHelpers.findClassIfExists(BODY, cl), XposedHelpers.findClassIfExists(REQUEST, cl),
                 XposedHelpers.findClassIfExists(BUILDER, cl), XposedHelpers.findClassIfExists(REPORT, cl));
+        ReadPrivacy.install(cl);
     }
 
     /** Ставит хуки на найденные классы; null — класса нет. Вынесено отдельно, чтобы проверять на подставных классах. */
@@ -189,7 +190,7 @@ final class Invisible {
     }
 
     static int enabledCount() {
-        return (Prefs.hideTyping ? 1 : 0) + (Prefs.hideOnline ? 1 : 0);
+        return (Prefs.hideTyping ? 1 : 0) + (Prefs.hideOnline ? 1 : 0) + (ReadPrivacy.ready() && ReadPrivacy.enabled() ? 1 : 0);
     }
 
     /** Короткая строка для экрана. */

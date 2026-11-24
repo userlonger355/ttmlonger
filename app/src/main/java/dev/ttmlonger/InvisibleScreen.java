@@ -13,7 +13,7 @@ import android.widget.TextView;
  * профиля отдельным запросом не уходят, поэтому спрятать их модом нельзя: экран говорит об этом прямо.
  */
 final class InvisibleScreen extends Screen {
-    private TextView status;
+    private TextView status, preview;
 
     private InvisibleScreen(Activity act) {
         super(act);
@@ -26,12 +26,28 @@ final class InvisibleScreen extends Screen {
     }
 
     static String menuSummary() {
-        return Invisible.enabledCount() + " из 2";
+        return Invisible.enabledCount() + " вкл";
     }
 
     @Override
     void build(LinearLayout body) {
+        body.addView(ui.header("Предпросмотр чата"));
+        preview=ui.text("",15,Ui.INK,false);
+        preview.setPadding(ui.dp(18),ui.dp(16),ui.dp(18),ui.dp(16));
+        preview.setBackground(ui.round(Ui.FIELD,18));
+        LinearLayout.LayoutParams pp=ui.matchWrap();pp.setMargins(ui.dp(16),0,ui.dp(16),ui.dp(8));body.addView(preview,pp);
         body.addView(ui.header("Чаты"));
+        if(ReadPrivacy.ready()) {
+            body.addView(toggleRow(Icons.EYE_OFF,"Не отправлять статус прочтения",
+                    "Экспериментально: пропускает распознанное тело запроса отметки прочтения. Возможны отличия синхронизации непрочитанных.",
+                    ReadPrivacy.enabled(),on->{InterfaceHooks.set("read_private",on);refresh();}));
+            if(ReadPrivacy.replyReady()) body.addView(toggleRow(-1,"Отмечать прочитанным при ответе",
+                    "Разрешает следующий запрос прочтения того же чата после распознанной ручной отправки. Не воспроизводит старые запросы. Автоогоньки исключены на две минуты.",
+                    InterfaceHooks.on("read_reply"),on->{InterfaceHooks.set("read_reply",on);refresh();}));
+            else body.addView(ui.note("Разрешение прочтения при ответе: тело отправки сообщения не распознано."));
+        } else body.addView(ui.note("Статус прочтения: классы запроса не распознаны в этой версии TikTok. Блокировка не включается."));
+        body.addView(toggleRow(-1,"Галочки прочтения","В распознанном чате заменяет «Прочитано» на ✓✓ и «Отправлено» на ✓. Статус сообщения не меняется.",
+                InterfaceHooks.on("chat_ticks"),on->{InterfaceHooks.set("chat_ticks",on);refresh();}));
         body.addView(toggleRow(Icons.EYE_OFF, "Не показывать «печатает…»",
                 "Собеседник не увидит, что вы набираете сообщение. Мод убирает тело запроса «печатает», и сервер "
                         + "получает пустой запрос",
@@ -68,15 +84,19 @@ final class InvisibleScreen extends Screen {
             }
         }));
 
-        body.addView(ui.header("Просмотры профиля"));
+        body.addView(ui.header("Просмотры и истории"));
         body.addView(ui.note("Спрятать их модом нельзя: в коде TikTok нет отдельного отчёта о просмотре профиля, "
                 + "сервер узнаёт о нём из самого запроса страницы. Это настройка самого TikTok («Просмотры профиля»: "
                 + "по описанию TikTok, если выключить её, вас не покажут в чужих списках гостей, а свой список "
                 + "вы тоже не увидите)."));
+        body.addView(ui.note("Для историй, подборок, LIVE и просмотров подписок подтверждённого отдельного запроса пока нет. Не считаются анонимными."));
+        body.addView(ui.header("Огоньки"));
+        body.addView(ui.menuRow(Icons.FLAME,"Автопродление огоньков","Расписание, стикер и список чатов",StreakScreen.menuSummary(),v -> StreakScreen.show(act)));
     }
 
     private void refresh() {
-        if (status != null) status.setText(Invisible.status());
+        if (status != null) status.setText(Invisible.status()+"\n"+ReadPrivacy.status());
+        if(preview!=null)preview.setText("Пример переписки\n\nПривет! Видел новое видео?\n00:30:12\n\n                     Да, огонь\n                     00:31:05  "+(InterfaceHooks.on("chat_ticks")?"✓✓":"Прочитано")+"\n\n"+(Prefs.hideTyping?"Набор текста скрыт":"Набор текста обычный")+" · "+(ReadPrivacy.ready()&&ReadPrivacy.enabled()?"Блокировка прочтения включена":"Обычное прочтение"));
     }
 
     private void copy() {

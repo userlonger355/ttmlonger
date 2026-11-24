@@ -172,6 +172,7 @@ final class ScreenWatcher {
             InterfaceHooks.labels(act);
             CommentBackground.apply(decor);
             StoryShare.update(act, decor);
+            ChatTicks.apply(decor);
             DisplayInfo di = new DisplayInfo(act);
             Scan s = new Scan();
             scan(decor, s, 0, di);

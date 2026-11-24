@@ -1525,6 +1525,7 @@ final class StreakHooks {
             }
             Context app = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
             Object[] args = buildArgs(types, sp.template, sp.ctx, sp.source, source, sp.sticker, sticker, sp.conv, conv, app);
+            ReadPrivacy.modSend(conv);
             OWN.set(Boolean.TRUE);
             try {
                 sp.m.invoke(ms, args);
