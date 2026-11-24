@@ -167,6 +167,20 @@ final class FlagStore {
                     overridesChanged = true;
                 }
             }
+            // Enable existing profile backgrounds by default on upgrade too.
+            // Do this once, so later manual disabling and flag edits remain respected.
+            if (seeded.add("migrate:profile-banner-default-v2")) {
+                seededChanged = true;
+                for (String[] spec : Targets.BANNER_FLAGS) {
+                    String key = spec[0];
+                    if (overrides.containsKey(key)) continue;
+                    int type = typeByName(spec[1]);
+                    if (type < 0 || coerce(spec[2], type) == null) continue;
+                    overrides.put(key, new Patch(type, spec[2]));
+                    flags.putIfAbsent(key, new Flag(key, type, null));
+                    overridesChanged = true;
+                }
+            }
             if (overridesChanged) {
                 catalogDirty = true;
                 saveOverridesAsync();

@@ -183,7 +183,7 @@ final class ModMenu extends Screen {
 
         body = section(page, "Функции TikTok");
         body.addView(toggleRow(Icons.IMAGE, "Баннер профиля",
-                "Установка баннера в «Изменить профиль». Нужен перезапуск TikTok",
+                "Отображение баннеров своего и чужих профилей включено по умолчанию. Анимация зависит от формата баннера и поддержки TikTok. После изменения перезапустите приложение.",
                 FlagStore.allOn(Targets.BANNER_FLAGS), new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
