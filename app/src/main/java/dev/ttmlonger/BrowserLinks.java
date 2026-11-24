@@ -32,12 +32,38 @@ final class BrowserLinks {
         });
     }
 
+    static boolean nativeAdPage(String clientClass, String currentUrl) {
+        String name = clientClass == null ? "" : clientClass.toLowerCase(Locale.ROOT);
+        if (name.contains("adlanding") || name.contains("adwebview")
+                || name.contains("commercialize") || name.contains("ad.landing")
+                || name.contains("ad.webview")) return true;
+        if (currentUrl == null) return false;
+        try {
+            Uri uri = Uri.parse(currentUrl);
+            String host = uri.getHost(), path = uri.getPath();
+            if (host == null || path == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            path = path.toLowerCase(Locale.ROOT);
+            boolean internal = host.equals("tiktok.com") || host.endsWith(".tiktok.com")
+                    || host.equals("tiktokv.com") || host.endsWith(".tiktokv.com");
+            return internal && (path.startsWith("/ad/") || path.startsWith("/ads/")
+                    || path.contains("/landing_page/") || path.contains("/ad_landing/"));
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     private static final XC_MethodHook OPEN = new XC_MethodHook() {
         @Override protected void beforeHookedMethod(MethodHookParam p) {
             boolean external = InterfaceHooks.on("browser");
             boolean reader = InterfaceHooks.on("reader");
             if ((!external && !reader) || CrashGuard.tripped) return;
             if (p.thisObject.getClass().getName().startsWith(ReaderWindow.class.getName() + "$")) return;
+            if (!(p.args[0] instanceof WebView) || !(p.args[1] instanceof WebResourceRequest)) return;
+            WebView web = (WebView) p.args[0];
+            // Рекламные посадочные страницы оставляем штатному обработчику TikTok.
+            // Иначе режим чтения или внешний браузер могут прервать переход и возврат.
+            if (nativeAdPage(p.thisObject.getClass().getName(), web.getUrl())) return;
             WebResourceRequest request = (WebResourceRequest) p.args[1];
             if (request == null || !request.isForMainFrame() || !request.hasGesture()
                     || !"GET".equalsIgnoreCase(request.getMethod())) return;
@@ -53,7 +79,6 @@ final class BrowserLinks {
                 p.setResult(true);
                 return;
             }
-            WebView web = (WebView) p.args[0];
             Context ctx = web.getContext();
             Intent browser = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER);
             android.content.ComponentName component = browser.resolveActivity(ctx.getPackageManager());
