@@ -141,6 +141,8 @@ public final class MainHook implements IXposedHookLoadPackage {
             }
             try {
                 ProfileFacts.install(cl);
+                ProfileGrid.install(cl);
+                EmojiFonts.install(ctx);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }

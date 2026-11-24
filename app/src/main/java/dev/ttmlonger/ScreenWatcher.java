@@ -177,6 +177,7 @@ final class ScreenWatcher {
             scan(decor, s, 0, di);
 
             profile.bind(!CrashGuard.tripped && s.followers && s.following ? s.handle : null);
+            ProfileStyle.apply(decor, !CrashGuard.tripped && s.followers && s.following && s.handle != null);
             boolean page = s.settingsTitle || s.rows.size() >= Targets.SETTINGS_ROWS_MIN;
             report(s, page);
 

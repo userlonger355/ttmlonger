@@ -77,6 +77,7 @@ final class AppearanceScreen extends Screen {
         body.addView(ui.menuRow(Icons.SLIDERS, "Фон комментариев", "Изображение из галереи и размытие", null,
                 v -> CommentBackgroundScreen.show(act)));
         buildFontCard(body);
+        body.addView(ui.menuRow(Icons.SLIDERS,"Эмодзи","Системные или свой файл TTF/OTF",EmojiFonts.label(),v -> EmojiFonts.show(act, () -> restartCard.setVisibility(View.VISIBLE))));
         buildIconCard(body);
 
         refreshSwatches();
@@ -201,7 +202,7 @@ final class AppearanceScreen extends Screen {
 
     private void buildFontCard(LinearLayout body) {
         body.addView(ui.header("Шрифт"));
-        fontRow = ui.row(-1, "Шрифт", null, "", false, null);
+        fontRow = ui.menuRow(Icons.SLIDERS, "Шрифт", "Готовые варианты и свой файл", "", v -> FontPicker.show(act, () -> { restartCard.setVisibility(View.VISIBLE); refreshFont(); }, this::pickFont));
         fontName = Ui.valueOf(fontRow);
         body.addView(fontRow);
 
@@ -237,7 +238,7 @@ final class AppearanceScreen extends Screen {
 
     private void refreshFont() {
         boolean set = !Prefs.fontName.isEmpty();
-        fontName.setText(set ? Prefs.fontName : "Стандартный");
+        fontName.setText(FontHooks.label());
         fontReset.setVisibility(set ? View.VISIBLE : View.GONE);
     }
 

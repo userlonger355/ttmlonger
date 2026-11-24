@@ -117,6 +117,11 @@ final class FontHooks {
         synchronized (FontHooks.class) {
             if (base != null || baseFailed) return base;
             try {
+                if (Prefs.fontName.startsWith("builtin:")) {
+                    base = preset(Prefs.fontName.substring(8));
+                    if (base != null) ours.add(base);
+                    return base;
+                }
                 File f = file();
                 if (f == null || !f.isFile()) {
                     baseFailed = true;
@@ -132,6 +137,20 @@ final class FontHooks {
         }
     }
 
+    static final String[] PRESET_NAMES={"Системный шрифт","Light","Condensed","Serif","Monospace"};
+    static final String[] PRESET_IDS={"sans-serif","sans-serif-light","sans-serif-condensed","serif","monospace"};
+    static Typeface preset(String id) {
+        for(String known:PRESET_IDS) if(known.equals(id)) {
+            Typeface t=Typeface.create(id,Typeface.NORMAL);ours.add(t);return t;
+        }
+        return null;
+    }
+    static void choose(String id) { if(preset(id)!=null){forget();Prefs.setFontName("builtin:"+id);} }
+    static String label() {
+        String s=Prefs.fontName;
+        for(int i=0;i<PRESET_IDS.length;i++)if(s.equals("builtin:"+PRESET_IDS[i]))return PRESET_NAMES[i];
+        return s.isEmpty()?"TikTok Sans (по умолчанию)":s;
+    }
     private static File file() {
         File d = FlagStore.dir();
         return d == null ? null : new File(new File(d, "fonts"), "custom.ttf");
