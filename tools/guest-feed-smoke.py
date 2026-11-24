@@ -21,6 +21,18 @@ def tap(n):
     adb("shell","input","tap",*map(str,center(n)))
 def report(msg):
     print("GUEST "+msg,flush=True)
+def display_size():
+    size=adb("shell","wm","size").decode()
+    return tuple(map(int,re.findall(r"(\\d+)x(\\d+)",size)[-1]))
+def fresh_attach(after=-1, timeout=15):
+    deadline=time.monotonic()+timeout
+    while time.monotonic()<deadline:
+        log=adb("logcat","-d","-s","TTMGuest:I","*:S").decode(errors="replace")
+        markers=re.findall(r"NATIVE_GLASS_ATTACHED seq=(\\d+) tabs=(\\d+) selected=(-?\\d+)",log)
+        if markers and int(markers[-1][0])>after:
+            return tuple(map(int,markers[-1]))
+        time.sleep(1)
+    return None
 guest={"skip","skip for now","not now","maybe later","continue as guest","browse as guest","start watching","пропустить","не сейчас","смотреть без регистрации","продолжить как гость"}
 feed={"for you","для вас","рекомендации"}
 home={"home","главная"}
@@ -43,9 +55,9 @@ try:
             report("navigation "+label(options[0]))
             tap(options[0])
             capture("guest-step-"+str(step))
-        elif step==4 or step==8:
-            # Dismiss transient optional overlays by the standard back action, not coordinates.
-            adb("shell","input","keyevent","4")
+        elif not nodes:
+            report("BLOCKED TikTok UI unavailable or another app is foreground")
+            break
         time.sleep(3)
     if not ready:
         capture("guest-blocked")
@@ -53,20 +65,34 @@ try:
     else:
         capture("guest-feed")
         report("PASS visible guest feed and labelled home/profile tabs")
-        deadline=time.monotonic()+15
-        attached=False
-        while time.monotonic()<deadline:
-            log=adb("logcat","-d","-s","TTMGuest:I","*:S").decode(errors="replace")
-            if "NATIVE_GLASS_ATTACHED" in log:
-                attached=True
-                break
-            time.sleep(1)
-        report(("PASS" if attached else "FAIL")+" native glass attachment")
+        marker=fresh_attach()
+        report(("PASS" if marker else "FAIL")+" native glass attachment")
         capture("guest-glass")
-        if not attached: sys.exit(1)
+        if not marker: sys.exit(1)
+        seq,tabs,selected=marker
+        report(f"native tabs={tabs} selected={selected}")
+        width,height=display_size()
+        # Only target an accessibility-labelled Home tab in the bottom portion of the actual UI.
+        home_nodes=[n for n in dump() if label(n) in home and n.get("bounds") and center(n)[1]>=height*.80]
+        if home_nodes:
+            x,y=center(home_nodes[0])
+            adb("shell","input","swipe",str(x),str(y),str(x),str(y),"850")
+            time.sleep(2)
+            capture("guest-home-hold")
+            menu_labels={label(n) for n in dump()}
+            if not (menu_labels & {"настройки мода","поиск по настройкам мода"}):
+                report("FAIL native Home long press did not open mod menu")
+                sys.exit(1)
+            report("PASS native Home long press opens mod menu")
+            adb("shell","input","keyevent","4")
+            time.sleep(2)
+            if not ({label(n) for n in dump()}&home):
+                report("BLOCKED returning from mod menu did not restore visible Home")
+                sys.exit(1)
+            report("PASS return from mod menu")
+        else:
+            report("SKIP native Home long press: no bottom-labelled target")
         # Swipe only the feed area. This does not interact with ads or send messages.
-        size=adb("shell","wm","size").decode()
-        width,height=map(int,re.findall(r"(\d+)x(\d+)",size)[-1])
         for i in range(3):
             adb("shell","input","swipe",str(width//2),str(int(height*.68)),str(width//2),str(int(height*.24)),"350")
             time.sleep(3)
@@ -75,6 +101,12 @@ try:
             if not (current&home and current&profile):
                 report("BLOCKED feed navigation disappeared during scroll")
                 break
+            marker=fresh_attach(seq,8)
+            if not marker:
+                report("FAIL fresh native glass attachment missing after swipe")
+                sys.exit(1)
+            seq=marker[0]
+            report("PASS native glass still attached after swipe "+str(i+1))
         else:
             report("PASS three feed swipe gestures with navigation still visible; content changes not independently verified")
 except (subprocess.SubprocessError,ET.ParseError,IndexError,ValueError) as exc:

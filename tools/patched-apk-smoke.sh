@@ -83,6 +83,6 @@ if [[ "${TTM_UI_CHECKS:-0}" == 1 ]]; then
   fi
 fi
 if [[ "${TTM_GUEST_CHECKS:-0}" == 1 ]]; then
-  python3 "$GITHUB_WORKSPACE/tools/guest-feed-smoke.py" "$media" | tee -a "$GITHUB_STEP_SUMMARY"
+  python3 "$GITHUB_WORKSPACE/tools/guest-feed-smoke.py" "$media" | tee "$media/guest-results.log" | tee -a "$GITHUB_STEP_SUMMARY"
 fi
 echo "Account-dependent features still need separate checks."

@@ -425,7 +425,7 @@ final class RuntimeUiChecks {
     }
     // CI-only: after menu regression checks, observe the actual TikTok window while ADB navigates guest UI.
     private static void guestBarProbe(int attempt) {
-        if(attempt>=100) return;
+        if(attempt>=180) return;
         try {
             Activity a=ScreenWatcher.top();
             if(a!=null && !a.isFinishing()) {
@@ -443,7 +443,7 @@ final class RuntimeUiChecks {
                         Field lf=GlassBar.class.getDeclaredField("live"); lf.setAccessible(true);
                         GlassSession live=(GlassSession)lf.get(null);
                         if(live!=null && live.bar==f.bar && live.isAttached()) {
-                            Log.i("TTMGuest","NATIVE_GLASS_ATTACHED tabs="+f.tabs.size()+" selected="+live.selectedTab());
+                            Log.i("TTMGuest","NATIVE_GLASS_ATTACHED seq="+attempt+" tabs="+f.tabs.size()+" selected="+live.selectedTab());
                         }
                     }
                 }
