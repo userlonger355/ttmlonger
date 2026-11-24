@@ -6,6 +6,11 @@ import android.os.Looper;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+import android.os.SystemClock;
+import java.lang.ref.WeakReference;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
@@ -21,6 +26,10 @@ final class Trigger {
     private static final float[] start = new float[4];
     private static Runnable pending;
     private static boolean installed;
+    private static Runnable homeHold;
+    private static WeakReference<Activity> homeOwner = new WeakReference<>(null);
+    private static float homeX, homeY;
+    private static boolean homeConsumed, cancellingHome;
 
     private Trigger() {
     }
@@ -35,6 +44,11 @@ final class Trigger {
                         try {
                             Activity a = (Activity) param.thisObject;
                             MotionEvent event = (MotionEvent) param.args[0];
+                            if (cancellingHome) return;
+                            if (homeTouch(a, event)) {
+                                param.setResult(true);
+                                return;
+                            }
                             onTouch(a, event);
                             if (FeedGestures.touch(a, event)) param.setResult(true);
                         } catch (Throwable ignored) {
@@ -69,6 +83,97 @@ final class Trigger {
         } catch (Throwable t) {
             FlagStore.log(t);
         }
+    }
+
+    private static void cancelHome() {
+        if (homeHold != null) HANDLER.removeCallbacks(homeHold);
+        homeHold = null;
+    }
+
+    private static boolean isHomeLabel(CharSequence value) {
+        if (value == null) return false;
+        String s = value.toString().trim().toLowerCase(java.util.Locale.ROOT);
+        return s.equals("home") || s.equals("главная") || s.equals("главная страница");
+    }
+
+    private static boolean homeLabel(View v, int depth) {
+        if (v == null || depth > 5 || v.getVisibility() != View.VISIBLE) return false;
+        if (isHomeLabel(v.getContentDescription())) return true;
+        if (v instanceof TextView && isHomeLabel(((TextView) v).getText())) return true;
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++)
+                if (homeLabel(g.getChildAt(i), depth + 1)) return true;
+        }
+        return false;
+    }
+
+    private static View homeAt(Activity activity, float rawX, float rawY) {
+        View root = activity.getWindow().getDecorView();
+        int[] xy = new int[2];
+        root.getLocationOnScreen(xy);
+        if (rawY < xy[1] + root.getHeight() * .80f) return null;
+        BarFinder.Found f = BarFinder.find(root);
+        if (f == null || !f.bar.isShown()) return null;
+        for (int i = 0; i < f.tabs.size(); i++) {
+            View v = f.tabs.get(i);
+            if (i == f.create || !v.isShown() || !homeLabel(v, 0)) continue;
+            v.getLocationOnScreen(xy);
+            if (rawX >= xy[0] && rawX < xy[0] + v.getWidth()
+                    && rawY >= xy[1] && rawY < xy[1] + v.getHeight()) return v;
+        }
+        return null;
+    }
+
+    /** Обычный тап идёт в TikTok; удержание Главной отменяет нативный жест и открывает меню. */
+    private static boolean homeTouch(final Activity a, MotionEvent e) {
+        if (cancellingHome) return false;
+        int action = e.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            cancelHome();
+            homeConsumed = false;
+            homeOwner = new WeakReference<>(a);
+            if (CrashGuard.tripped || !a.hasWindowFocus()) return false;
+            final View home = homeAt(a, e.getRawX(), e.getRawY());
+            if (home == null) return false;
+            homeX = e.getX();
+            homeY = e.getY();
+            final long down = e.getDownTime();
+            homeHold = () -> {
+                homeHold = null;
+                if (homeOwner.get() != a || a.isFinishing() || a.isDestroyed()
+                        || !a.hasWindowFocus() || !home.isShown() || !home.isAttachedToWindow()) return;
+                MotionEvent cancelEvent = MotionEvent.obtain(down, SystemClock.uptimeMillis(),
+                        MotionEvent.ACTION_CANCEL, homeX, homeY, 0);
+                cancellingHome = true;
+                try {
+                    a.dispatchTouchEvent(cancelEvent);
+                } finally {
+                    cancellingHome = false;
+                    cancelEvent.recycle();
+                }
+                cancel();
+                homeConsumed = true;
+                open(a);
+            };
+            HANDLER.postDelayed(homeHold, Math.max(150L, ViewConfiguration.getLongPressTimeout() - 40L));
+        } else if (homeOwner.get() != a) {
+            cancelHome();
+            homeConsumed = false;
+        } else if (homeConsumed) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) homeConsumed = false;
+            return true;
+        } else if (homeHold != null) {
+            int slop = ViewConfiguration.get(a).getScaledTouchSlop();
+            if (action == MotionEvent.ACTION_MOVE) {
+                float dx = e.getX() - homeX, dy = e.getY() - homeY;
+                if (dx * dx + dy * dy > slop * slop) cancelHome();
+            } else if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_UP
+                    || action == MotionEvent.ACTION_CANCEL) {
+                cancelHome();
+            }
+        }
+        return false;
     }
 
     private static void onTouch(final Activity activity, MotionEvent e) {
