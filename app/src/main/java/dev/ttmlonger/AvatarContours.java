@@ -21,7 +21,7 @@ import de.robv.android.xposed.XposedHelpers;
 /** Runtime adaptation of the round-loader integration points documented by MargyT.
  * Original circles remain untouched; only known circle draw/clip calls are substituted. */
 final class AvatarContours {
-    static final String[] LABELS={"Круг","Скруглённый квадрат","Квадрат","Печенье","Клевер","Вспышка","Солнце","Пятиугольник","Шестиугольник","Сердце"};
+    static final String[] LABELS={"Круг","Скруглённый","Скверкл","Печенье","Клевер","Вспышка","Волна","Ромб","Шестигранник","Сердечко","Цветок","Арка"};
     private static final String[] OWNERS={"X.1Fnt","X.1Fnu","X.0HEe","X.0GvU"};
     private static final WeakHashMap<Path,float[]> circles=new WeakHashMap<>();
     private static final java.util.Set<String> BUILDERS=new java.util.HashSet<>(java.util.Arrays.asList("X.1Fnt","X.0HEe","X.0GvU"));
@@ -43,9 +43,17 @@ final class AvatarContours {
         Path path=new Path();
         id=clamp(id);
         if(id==0){path.addCircle(cx,cy,radius,Path.Direction.CW);return path;}
-        if(id==1||id==2){
-            float side=radius*.90f;
-            path.addRoundRect(new RectF(-side,-side,side,side),id==1?radius*.30f:0,id==1?radius*.30f:0,Path.Direction.CW);
+        if(id==1){
+            float side=radius*.96f;
+            path.addRoundRect(new RectF(-side,-side,side,side),radius*.35f,radius*.35f,Path.Direction.CW);
+        }else if(id==2){
+            // Superellipse, not a hard square.
+            for(int i=0;i<128;i++){
+                double t=i*2*Math.PI/128;
+                float x=(float)(radius*.94*Math.copySign(Math.sqrt(Math.abs(Math.cos(t))),Math.cos(t)));
+                float y=(float)(radius*.94*Math.copySign(Math.sqrt(Math.abs(Math.sin(t))),Math.sin(t)));
+                if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
+            }path.close();
         }else if(id==9){
             path.moveTo(0,radius*.86f);
             path.cubicTo(-radius*.18f,radius*.62f,-radius,radius*.10f,-radius,-radius*.32f);
@@ -53,15 +61,17 @@ final class AvatarContours {
             path.cubicTo(radius*.34f,-radius,radius,-radius*.94f,radius,-radius*.32f);
             path.cubicTo(radius,radius*.10f,radius*.18f,radius*.62f,0,radius*.86f);
             path.close();
+        }else if(id==11){
+            float r=radius*.94f;
+            path.addRoundRect(new RectF(-r,-r,r,r),new float[]{r,r,r,r,r*.16f,r*.16f,r*.16f,r*.16f},Path.Direction.CW);
         }else{
-            int n=id==7?5:id==8?6:120;
+            int n=id==7?4:id==8?6:144;
             for(int j=0;j<n;j++){
                 double t=j*2*Math.PI/n-Math.PI/2;
-                double q=id==3?.91+.09*Math.cos(8*t):id==4?.81+.19*Math.cos(4*t):id==5?.82+.18*Math.cos(6*t):id==6?.88+.12*Math.cos(12*t):1;
+                double q=id==3?.91+.09*Math.cos(8*t):id==4?.80+.20*Math.cos(4*t):id==5?.82+.18*Math.cos(8*t):id==6?.90+.10*Math.cos(12*t):id==10?.82+.18*Math.cos(6*t):1;
                 float x=(float)(radius*q*Math.cos(t)),y=(float)(radius*q*Math.sin(t));
                 if(j==0)path.moveTo(x,y);else path.lineTo(x,y);
-            }
-            path.close();
+            }path.close();
         }
         Matrix matrix=new Matrix();matrix.setRotate(angle);matrix.postTranslate(cx,cy);path.transform(matrix);
         return path;
@@ -75,6 +85,7 @@ final class AvatarContours {
     private static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences("ttmlonger_interface",0);}
     static void install(ClassLoader cl,Context c){
         shape=clamp(prefs(c).getInt("avatar_contour",0));spin=prefs(c).getBoolean("avatar_contour_spin",false);
+        installAvatarViews();
         try{
             java.util.HashSet<Method> done=new java.util.HashSet<>();
             java.util.HashSet<Method> builders=new java.util.HashSet<>();
@@ -174,41 +185,95 @@ final class AvatarContours {
             if(animates())for(Drawable one:due)if(one!=null&&one.isVisible()&&one.getCallback()!=null)one.invalidateSelf();
         },33);
     }
-    static void editor(Activity act){
-        Ui ui=new Ui(act);
-        LinearLayout body=new LinearLayout(act);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(ui.dp(16),0,ui.dp(16),ui.dp(8));
-        final int[] draft={shape};final boolean[] rotating={spin};
-        View sample=new View(act){
-            final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
-            @Override protected void onDraw(Canvas c){
-                float r=Math.min(getWidth(),getHeight())*.38f,cx=getWidth()/2f,cy=getHeight()/2f;
-                Path mask=contour(draft[0],cx,cy,r,rotating[0]&&(android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled())?angle(SystemClock.uptimeMillis()):0);
-                int save=c.save();c.clipPath(mask);
-                paint.setShader(new LinearGradient(cx-r,cy-r,cx+r,cy+r,new int[]{0xff774bd3,0xfff48ea5,0xff369dcc},null,Shader.TileMode.CLAMP));
-                c.drawRect(cx-r,cy-r,cx+r,cy+r,paint);paint.setShader(null);
-                paint.setColor(0xfff8e9db);c.drawCircle(cx,cy-r*.26f,r*.28f,paint);
-                c.drawOval(new RectF(cx-r*.58f,cy+r*.10f,cx+r*.58f,cy+r*1.10f),paint);c.restoreToCount(save);
-                paint.setColor(0xffc8baff);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(ui.dp(2));c.drawPath(mask,paint);paint.setStyle(Paint.Style.FILL);
-                if(rotating[0]&&draft[0]!=0&&isShown())postInvalidateDelayed(33);
+    // Additional rendering route for explicitly named avatar image views.
+    // Never match generic square pictures or arbitrary profile illustrations.
+    private static final WeakHashMap<View,Boolean> avatarViews=new WeakHashMap<>();
+    private static final WeakHashMap<View,Boolean> visibleAvatars=new WeakHashMap<>();
+    private static boolean avatarView(View v){
+        Boolean hit=avatarViews.get(v);if(hit!=null)return hit;
+        boolean yes=false;
+        try{
+            String name=v.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+            if(name.contains("avatar")&&!name.contains("enlarge")&&!name.contains("editor"))yes=true;
+            if(!yes&&v.getId()!=View.NO_ID){
+                String id=v.getResources().getResourceEntryName(v.getId()).toLowerCase(java.util.Locale.ROOT);
+                yes=(id.contains("avatar")||id.contains("head_image")||id.contains("user_head"))&&!id.contains("border")&&!id.contains("ring")&&!id.contains("edit")&&!id.contains("badge");
             }
-        };
-        body.addView(sample,new LinearLayout.LayoutParams(-1,ui.dp(150)));
-        TextView selected=ui.text(LABELS[draft[0]],16,Ui.INK,true);body.addView(selected);
-        android.widget.Spinner picker=new android.widget.Spinner(act);
-        android.widget.ArrayAdapter<String> adapter=new android.widget.ArrayAdapter<>(act,android.R.layout.simple_spinner_dropdown_item,LABELS);
-        picker.setAdapter(adapter);picker.setSelection(draft[0]);body.addView(picker,ui.matchWrap());
-        picker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onNothingSelected(android.widget.AdapterView<?> p){}
-            public void onItemSelected(android.widget.AdapterView<?> p,View v,int position,long id){draft[0]=position;selected.setText(LABELS[position]);sample.invalidate();}
-        });
-        body.addView(ui.toggleRow(-1,"Вращать контур","Фотография остаётся неподвижной",rotating[0],on->{rotating[0]=on;sample.invalidate();}));
-        body.addView(ui.note(matchedBuilders>0?"Найдено классов построения масок: "+matchedBuilders+". После смены формы нужен перезапуск TikTok, чтобы пересоздать кэшированные контуры.":"Обработчики масок этой версии не найдены. Доступен только предпросмотр."));
-        AlertDialog dialog=new AlertDialog.Builder(act,Ui.dialogTheme()).setTitle("Форма аватарок").setView(body)
-                .setNegativeButton("Отмена",null).setPositiveButton("Применить",(d,w)->{
-                    shape=clamp(draft[0]);spin=rotating[0];prefs(act).edit().putInt("avatar_contour",shape).putBoolean("avatar_contour_spin",spin).apply();
-                    act.getWindow().getDecorView().invalidate();
-                    Restart.offer(act);
-                }).create();
-        Screen.markOwn(dialog);dialog.show();Ui.style(dialog);
+        }catch(Throwable ignored){}
+        avatarViews.put(v,yes);return yes;
+    }
+    private static void installAvatarViews(){
+        try{
+            XposedHelpers.findAndHookMethod(View.class,"draw",Canvas.class,new XC_MethodHook(){
+                @Override protected void beforeHookedMethod(MethodHookParam p){
+                    if(shape==0||CrashGuard.tripped||!(p.thisObject instanceof android.widget.ImageView))return;
+                    View v=(View)p.thisObject;
+                    if(!avatarView(v)||v.getWidth()<12||v.getHeight()<12||Math.abs(v.getWidth()-v.getHeight())>Math.min(v.getWidth(),v.getHeight())*.15f)return;
+                    if(Screen.isOwnDecor(v.getRootView()))return;
+                    Canvas canvas=(Canvas)p.args[0];
+                    if(canvas==null)return;
+                    float cx=v.getWidth()/2f,cy=v.getHeight()/2f,r=Math.min(cx,cy);
+                    // Round native masks remain handled by the original builder hooks.
+                    // Clip this rendering route to the same geometric contour, leaving the photo stationary.
+                    int save=canvas.save();p.setObjectExtra("ttm_avatar_save",save);
+                    canvas.clipPath(contour(shape,cx,cy,r,animates()?angle(SystemClock.uptimeMillis()):0));
+                    if(Looper.myLooper()==Looper.getMainLooper())visibleAvatars.put(v,true);
+                }
+                @Override protected void afterHookedMethod(MethodHookParam p){
+                    Object save=p.getObjectExtra("ttm_avatar_save");
+                    if(save instanceof Integer){try{((Canvas)p.args[0]).restoreToCount((Integer)save);}catch(Throwable ignored){}
+                        if(animates())((View)p.thisObject).postInvalidateDelayed(33);}
+                }
+            });
+        }catch(Throwable t){FlagStore.log(t);}
+    }
+    private static final int[][] GROUPS={{0,1,2},{3,4,10,5,6},{7,8,9,11}};
+    private static final String[] GROUP_NAMES={"Классические","Material You","Другие"};
+    static void editor(Activity act){
+        StreakSheet sheet=new StreakSheet(act,"Форма аватарок");Ui ui=sheet.ui;
+        android.widget.ScrollView scroll=new android.widget.ScrollView(act);scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout body=new LinearLayout(act);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(ui.dp(12),0,ui.dp(12),ui.dp(8));scroll.addView(body);
+        final boolean[] rotating={spin};
+        final java.util.ArrayList<MaskSample> samples=new java.util.ArrayList<>();
+        final java.util.ArrayList<TextView> labels=new java.util.ArrayList<>();
+        for(int group=0;group<GROUPS.length;group++){
+            TextView title=ui.text(GROUP_NAMES[group],14,Ui.MUTED,false);title.setPadding(ui.dp(4),ui.dp(12),0,ui.dp(8));body.addView(title);
+            LinearLayout row=new LinearLayout(act);row.setGravity(android.view.Gravity.CENTER);
+            for(int id:GROUPS[group]){
+                LinearLayout cell=new LinearLayout(act);cell.setOrientation(LinearLayout.VERTICAL);cell.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+                MaskSample sample=new MaskSample(act,id,rotating);
+                samples.add(sample);
+                cell.addView(sample,new LinearLayout.LayoutParams(-1,ui.dp(57)));
+                TextView label=ui.text(LABELS[id],12,shape==id?Theme.accent():Ui.MUTED,shape==id);label.setGravity(android.view.Gravity.CENTER);label.setMaxLines(2);
+                labels.add(label);cell.addView(label,new LinearLayout.LayoutParams(-1,ui.dp(33)));
+                cell.setContentDescription(LABELS[id]);cell.setOnClickListener(v->{
+                    shape=id;spin=rotating[0];prefs(act).edit().putInt("avatar_contour",shape).putBoolean("avatar_contour_spin",spin).apply();
+                    for(MaskSample item:samples)item.invalidate();
+                    for(View item:visibleAvatars.keySet().toArray(new View[0]))if(item!=null)item.invalidate();
+                    sheet.dialog.dismiss();Restart.offer(act);
+                });
+                row.addView(cell,new LinearLayout.LayoutParams(0,-2,1));
+            }
+            body.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        }
+        body.addView(ui.toggleRow(-1,"Вращать контур","Фотография остаётся неподвижной",rotating[0],on->{rotating[0]=on;for(MaskSample sample:samples)sample.invalidate();}));
+        sheet.root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(475),(int)(act.getResources().getDisplayMetrics().heightPixels*.65f))));
+        sheet.button("Отмена",false,()->sheet.dialog.dismiss());sheet.show();
+    }
+    private static final class MaskSample extends View{
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final int id;private final boolean[] rotation;private final Ui ui;
+        MaskSample(Activity act,int id,boolean[] rotation){super(act);this.id=id;this.rotation=rotation;ui=new Ui(act);}
+        @Override protected void onDraw(Canvas canvas){
+            float cx=getWidth()/2f,cy=getHeight()/2f,r=Math.min(cx,cy)*.84f;
+            boolean move=rotation[0]&&id!=0&&(android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled());
+            Path mask=contour(id,cx,cy,r,move?angle(SystemClock.uptimeMillis()):0);
+            int saved=canvas.save();canvas.clipPath(mask);
+            paint.setShader(new LinearGradient(cx-r,cy-r,cx+r,cy+r,new int[]{0xff6b427c,0xfff48ea5,0xffb05db5},null,Shader.TileMode.CLAMP));
+            canvas.drawRect(cx-r,cy-r,cx+r,cy+r,paint);paint.setShader(null);
+            paint.setColor(0xfff7dbe6);canvas.drawCircle(cx,cy-r*.22f,r*.30f,paint);
+            canvas.drawOval(new RectF(cx-r*.62f,cy+r*.12f,cx+r*.62f,cy+r*1.05f),paint);canvas.restoreToCount(saved);
+            if(shape==id){paint.setColor(Theme.accent());paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(ui.dp(2));canvas.drawPath(mask,paint);paint.setStyle(Paint.Style.FILL);}
+            if(move&&isShown())postInvalidateDelayed(33);
+        }
     }
 }
