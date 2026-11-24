@@ -24,6 +24,8 @@ final class GlassBar {
     private static volatile GlassSession live;
     private static WeakReference<Activity> liveAct = new WeakReference<>(null);
     private static boolean hooked;
+    private static boolean cancellingNative;
+    private static WeakReference<Activity> dragOwner = new WeakReference<>(null);
     private static boolean looping;
 
     private static volatile String diag = "Не включено";
@@ -43,11 +45,30 @@ final class GlassBar {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            GlassSession s = live;
-                            if (s == null) return;
+                            if (cancellingNative || !(param.args[0] instanceof MotionEvent)) return;
                             try {
-                                if (param.thisObject == liveAct.get() && param.args[0] instanceof MotionEvent) {
-                                    s.onTouch((MotionEvent) param.args[0]);
+                                Activity a=(Activity)param.thisObject;
+                                MotionEvent e=(MotionEvent)param.args[0];
+                                int action=e.getActionMasked();
+                                if(action==MotionEvent.ACTION_DOWN) dragOwner=new WeakReference<>(null);
+                                GlassSession s=live;
+                                boolean own=dragOwner.get()==a;
+                                if(s!=null && a==liveAct.get()) {
+                                    if(!own && s.claimDrag(e)) {
+                                        dragOwner=new WeakReference<>(a);
+                                        own=true;
+                                        MotionEvent cancel=MotionEvent.obtain(e);
+                                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                                        cancellingNative=true;
+                                        try { a.dispatchTouchEvent(cancel); }
+                                        finally { cancellingNative=false; cancel.recycle(); }
+                                    }
+                                    s.onTouch(e);
+                                }
+                                if(own) {
+                                    param.setResult(true);
+                                    if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL)
+                                        dragOwner=new WeakReference<>(null);
                                 }
                             } catch (Throwable t) {
                                 FlagStore.log(t);
@@ -109,7 +130,7 @@ final class GlassBar {
             boolean same = a == liveAct.get();
             if (same && s.isAttached() && s.bar.isAttachedToWindow() && s.bar.isShown()
                     && s.bar.getWidth() > 0 && s.bar.getHeight() > 0
-                    && s.bar.getRootView() == a.getWindow().peekDecorView()) {
+                    && s.bar.getRootView() == a.getWindow().peekDecorView() && s.tabsCurrent()) {
                 diag = "Панель найдена: " + found;
                 return 750L;
             }

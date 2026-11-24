@@ -87,6 +87,8 @@ final class GlassSession implements Choreographer.FrameCallback {
     private boolean framePosted;
     private long lastNanos;
     private boolean track;
+    private float gestureX, gestureY;
+    private boolean ownedDrag;
     /** Вкладка (номер в tabs), на которую лёг палец. */
     private int downTab = -1;
     // Не синхронизируем линзу со старой вкладкой, пока штатная навигация выполняется.
@@ -724,6 +726,7 @@ final class GlassSession implements Choreographer.FrameCallback {
             if (!attached) return;
             try {
                 if (CrashGuard.tripped || !GlassCfg.glass() && !preview) return;
+                if (bar.getBackground() == bg) bgFailures = 0;
                 if (bar.getBackground() != bg) {
                     // TikTok поставил свой фон заново: берём его за основу и накрываем ещё раз
                     if (bgFailures++ < 20) {
@@ -936,7 +939,23 @@ final class GlassSession implements Choreographer.FrameCallback {
 
     // ------------------------------------------------------------ касания
 
-    /** Касание окна (для TikTok вызывается из хука Activity.dispatchTouchEvent). Только смотрит, ничего не гасит. */
+    /** Only a horizontal gesture starting on a tab belongs to the glass; normal taps stay native. */
+    boolean claimDrag(MotionEvent e) {
+        if(preview || !attached || !track || ownedDrag || synthetic || e.getActionMasked()!=MotionEvent.ACTION_MOVE
+                || e.getPointerCount()!=1) return false;
+        if(!horizontalDrag(e.getRawX()-gestureX,e.getRawY()-gestureY,dm)) return false;
+        ownedDrag=true;
+        return true;
+    }
+    static boolean horizontalDrag(float dx,float dy,float density) {
+        return Math.abs(dx)>Math.max(1f,8f*density) && Math.abs(dx)>1.35f*Math.abs(dy);
+    }
+    boolean tabsCurrent() {
+        for(View tab:tabs) if(tab.getParent()!=bar || !tab.isShown() || tab.getWidth()<=0) return false;
+        return true;
+    }
+
+    /** Касание окна. Горизонтальное перетаскивание панели отделено от жестов плеера. */
     void onTouch(MotionEvent ev) {
         if (!attached || !measured || ev == null || synthetic) return;
         int a = ev.getActionMasked();
@@ -944,8 +963,9 @@ final class GlassSession implements Choreographer.FrameCallback {
             if (ph.drag) restoreDragSelection();
             lastDevice = ev.getDeviceId();
             ++gestureEpoch;
-            pendingTab = -1;
             track = false;
+            ownedDrag = false;
+            gestureX=ev.getRawX(); gestureY=ev.getRawY();
             downTab = -1;
             sTrack = false;
             scrolling = false;
@@ -964,6 +984,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                 return;
             }
             setCompact(false);
+            pendingTab = -1;
             int t = tabAt(x);
             if (t < 0 || t == create) return;
             track = true;
@@ -1011,6 +1032,10 @@ final class GlassSession implements Choreographer.FrameCallback {
         } else if (a == MotionEvent.ACTION_MOVE) {
             int[] loc = new int[2];
             bar.getLocationOnScreen(loc);
+            if(!preview && !ownedDrag && Math.abs(ev.getRawY()-gestureY)>12*dm
+                    && Math.abs(ev.getRawY()-gestureY)>Math.abs(ev.getRawX()-gestureX)) {
+                track=false; restoreDragSelection(); kick(); return;
+            }
             ph.move(GlassGeo.xToPos(centers, ev.getRawX() - loc[0] - capL));
             kick();
         } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
@@ -1030,11 +1055,11 @@ final class GlassSession implements Choreographer.FrameCallback {
                     restoreDragSelection();
                 } else if (n >= 0 && n < eligible.length) {
                     int target = eligible[n];
-                    if (target != downTab) {
+                    if (target != downTab || ownedDrag) {
                         pendingTab = target;
-                        pendingUntil = SystemClock.uptimeMillis() + 1900L;
+                        pendingUntil = SystemClock.uptimeMillis() + 3000L;
                         chooseLater(target, gestureEpoch);
-                        delay = 1900L;
+                        delay = 3000L;
                     }
                 }
             } else {
@@ -1079,6 +1104,11 @@ final class GlassSession implements Choreographer.FrameCallback {
                     dragNote = "TikTok сам выбрал вкладку " + (target + 1);
                     return;
                 }
+                // Dispatch to the actual tab listener first, not to the surrounding video touch layer.
+                if (!preview && clickDeep(tabs.get(target), bar, 0)) {
+                    dragNote = "нажатие передано обработчику вкладки " + (target + 1);
+                    return;
+                }
                 final boolean taken = tapTab(target);
                 h.postDelayed(new Runnable() {
                     @Override
@@ -1089,8 +1119,8 @@ final class GlassSession implements Choreographer.FrameCallback {
                             dragNote = "нажатие на вкладку " + (target + 1) + " сработало";
                             return;
                         }
-                        if (sel < 0 && taken) {
-                            dragNote = "нажатие на вкладку " + (target + 1) + " принято, выбранную прочитать нельзя";
+                        if (taken) {
+                            dragNote = "нажатие на вкладку " + (target + 1) + " принято; ожидаем подтверждения выбранной вкладки";
                             return;
                         }
                         boolean ok = clickDeep(tabs.get(target), bar, 0);

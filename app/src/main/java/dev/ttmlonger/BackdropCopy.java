@@ -91,11 +91,12 @@ final class BackdropCopy {
                 || !s.getHolder().getSurface().isValid()) return null;
         int[] xy = new int[2];
         s.getLocationInWindow(xy);
-        int left = pl[0] - xy[0], top = pl[1] - xy[1];
-        int right = pl[2] - xy[0], bottom = pl[3] - xy[1];
-        if (left < 0 || top < 0 || right > s.getWidth() || bottom > s.getHeight()) return null;
         Rect visible = new Rect();
-        if (!s.getLocalVisibleRect(visible) || !visible.contains(left, top, right, bottom)) return null;
+        if (!s.getLocalVisibleRect(visible)) return null;
+        int[] crop=GlassBackdrop.videoStrip(pl,xy[0]+visible.left,xy[1]+visible.top,
+                xy[0]+visible.right,xy[1]+visible.bottom);
+        if(crop==null) return null;
+        int left=crop[0]-xy[0],top=crop[1]-xy[1],right=crop[2]-xy[0],bottom=crop[3]-xy[1];
         Rect frame = s.getHolder().getSurfaceFrame();
         if (frame.width() <= 0 || frame.height() <= 0) return null;
         double sx = (double) frame.width() / s.getWidth(), sy = (double) frame.height() / s.getHeight();

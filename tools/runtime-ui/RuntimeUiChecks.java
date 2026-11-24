@@ -109,6 +109,7 @@ final class RuntimeUiChecks {
             stage("menu");
             metadataChecks();
             adChecks();
+            glassGestureLogic();
             streakChecks();
             main.postDelayed(() -> row(0), 1800);
         } catch(Throwable e) { fail("menu_exception",e); finish(); }
@@ -139,6 +140,17 @@ final class RuntimeUiChecks {
                 }, 1600);
             }, 400);
         } catch(Throwable e) { fail("screen_"+id,e); main.postDelayed(() -> row(i+1),250); }
+    }
+    private static void glassGestureLogic() {
+        result("glass_horizontal_claim",GlassSession.horizontalDrag(40,5,2));
+        result("glass_vertical_not_claimed",!GlassSession.horizontalDrag(8,50,2));
+        result("glass_tap_not_claimed",!GlassSession.horizontalDrag(5,2,2));
+        int[] pl={10,800,390,900,95,25,4};
+        int[] crop=GlassBackdrop.videoStrip(pl,0,100,400,760);
+        result("glass_video_above_footer",crop!=null && crop[1]==660 && crop[3]==760);
+        result("glass_video_partial",GlassBackdrop.videoStrip(pl,20,100,380,850)!=null);
+        result("glass_video_unrelated",GlassBackdrop.videoStrip(pl,0,100,400,300)==null);
+        result("glass_video_narrow",GlassBackdrop.videoStrip(pl,100,100,150,850)==null);
     }
     private static void streakChecks() {
         try {

@@ -53,6 +53,19 @@ final class GlassBackdrop {
         return new int[]{l, t, r, b, dw, dh, ds};
     }
 
+    /** Clip the requested strip to a visible video surface, or move it slightly above a black player footer. */
+    static int[] videoStrip(int[] pl,int left,int top,int right,int bottom) {
+        if(pl==null || pl.length<7 || right<=left || bottom<=top) return null;
+        int w=pl[2]-pl[0],h=pl[3]-pl[1];
+        if(w<=0 || h<=0) return null;
+        int l=Math.max(pl[0],left),r=Math.min(pl[2],right);
+        if((long)(r-l)*10 < (long)w*6) return null;
+        if(bottom<pl[1]-2*h || top>=pl[3]) return null;
+        int b=Math.min(pl[3],bottom),a=Math.max(top,b-h);
+        if(b-a<Math.max(2,h/3)) return null;
+        return new int[]{l,a,r,b};
+    }
+
     /** Строка снимка, которую читает капсула на любой высоте: центр последней строки, у самой панели. */
     static double edgeRow(double rows) {
         return rows - 0.5;
