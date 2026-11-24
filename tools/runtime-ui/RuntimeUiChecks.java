@@ -108,6 +108,15 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            try{
+                android.graphics.Path mask=new android.graphics.Path();
+                AvatarContours.addMask(mask,2,50,50,20);
+                android.graphics.RectF bounds=new android.graphics.RectF();mask.computeBounds(bounds,true);
+                android.graphics.Region region=new android.graphics.Region();
+                region.setPath(mask,new android.graphics.Region(0,0,100,100));
+                result("avatar_mask_square_corner",region.contains(34,34)&&region.contains(50,50)&&!region.contains(10,10));
+                result("avatar_mask_not_empty",!mask.isEmpty()&&bounds.width()>30);
+            }catch(Throwable e){fail("avatar_mask",e);}
             result("top_tabs_independent", "top_hide_community".equals(TopTabs.setting("community"))&&"top_hide_friends".equals(TopTabs.setting("friends"))&&"top_hide_recommend".equals(TopTabs.setting("recommend"))&&TopTabs.setting("following")==null);
             result("top_tabs_scoped_row",TopTabs.navigation(new java.util.HashSet<>(java.util.Arrays.asList("community","friends","recommend")),false)&&!TopTabs.navigation(new java.util.HashSet<>(java.util.Arrays.asList("friends","community","following")),true));
             result("comment_copy_preserves_mentions","Спасибо @friend! https://example.org".equals(CommentSelect.body(new CopyCommentFixture()))&&CommentSelect.body(new Object())==null);

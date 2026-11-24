@@ -24,6 +24,12 @@ final class AvatarContours {
     static final String[] LABELS={"Круг","Скруглённый квадрат","Квадрат","Печенье","Клевер","Вспышка","Солнце","Пятиугольник","Шестиугольник","Сердце"};
     private static final String[] OWNERS={"X.1Fnt","X.1Fnu","X.0HEe","X.0GvU"};
     private static final WeakHashMap<Path,float[]> circles=new WeakHashMap<>();
+    private static final java.util.Set<String> BUILDERS=new java.util.HashSet<>(java.util.Arrays.asList("X.1Fnt","X.0HEe","X.0GvU"));
+    private static final java.util.Set<String> DRAWERS=new java.util.HashSet<>(java.util.Arrays.asList("X.1Fnu","X.0HEe","X.0GvU"));
+    private static final ThreadLocal<Integer> building=new ThreadLocal<>();
+    private static volatile int builderHooks;
+    private static volatile int matchedBuilders;
+    private static final java.util.concurrent.atomic.AtomicInteger substitutions=new java.util.concurrent.atomic.AtomicInteger();
     private static final ThreadLocal<Drawable> drawing=new ThreadLocal<>();
     private static final ThreadLocal<java.util.ArrayList<Drawable>> stack=new ThreadLocal<>();
     private static volatile int shape;
@@ -60,6 +66,10 @@ final class AvatarContours {
         Matrix matrix=new Matrix();matrix.setRotate(angle);matrix.postTranslate(cx,cy);path.transform(matrix);
         return path;
     }
+    static void addMask(Path destination,int selected,float x,float y,float r){
+        if(clamp(selected)==0){destination.addCircle(x,y,r,Path.Direction.CW);return;}
+        destination.addPath(contour(selected,x,y,r,0));
+    }
     static float angle(long ms){return (ms%9000L)*360f/9000f;}
     private static boolean animates(){return spin&&shape!=0&&(android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled());}
     private static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences("ttmlonger_interface",0);}
@@ -67,9 +77,22 @@ final class AvatarContours {
         shape=clamp(prefs(c).getInt("avatar_contour",0));spin=prefs(c).getBoolean("avatar_contour_spin",false);
         try{
             java.util.HashSet<Method> done=new java.util.HashSet<>();
+            java.util.HashSet<Method> builders=new java.util.HashSet<>();
             for(String name:OWNERS){
                 Class<?> type=XposedHelpers.findClassIfExists(name,cl);
-                if(type==null||!Drawable.class.isAssignableFrom(type))continue;
+                if(type==null){android.util.Log.i("TTMLonger","Avatar anchor absent "+name);continue;}
+                android.util.Log.i("TTMLonger","Avatar anchor present "+name);
+                if(BUILDERS.contains(name)){
+                    matchedBuilders++;
+                    for(Method method:type.getDeclaredMethods()){
+                        if(java.lang.reflect.Modifier.isAbstract(method.getModifiers())||java.lang.reflect.Modifier.isNative(method.getModifiers())||!builders.add(method))continue;
+                        try{XposedBridge.hookMethod(method,new XC_MethodHook(){
+                            protected void beforeHookedMethod(MethodHookParam p){Integer d=building.get();building.set(d==null?1:d+1);}
+                            protected void afterHookedMethod(MethodHookParam p){Integer d=building.get();if(d==null||d<=1)building.remove();else building.set(d-1);}
+                        });builderHooks++;}catch(Throwable ignored){}
+                    }
+                }
+                if(!Drawable.class.isAssignableFrom(type))continue;
                 for(Method method:type.getDeclaredMethods()){
                     Class<?>[] args=method.getParameterTypes();
                     if(!method.getName().equals("draw")||args.length!=1||args[0]!=Canvas.class||!done.add(method)
@@ -89,16 +112,26 @@ final class AvatarContours {
                     });hooks++;
                 }
             }
-            if(hooks==0)return;
+            android.util.Log.i("TTMLonger","Avatar builder anchors="+matchedBuilders+" methods="+builderHooks+" draw="+hooks);
+            if(matchedBuilders==0)return;
             XposedBridge.hookAllMethods(Path.class,"addCircle",new XC_MethodHook(){
                 @Override protected void beforeHookedMethod(MethodHookParam p){
-                    if(p.args.length!=4||!(p.thisObject instanceof Path)||!((Path)p.thisObject).isEmpty())return;
-                    boolean known=drawing.get()!=null;
-                    if(!known && shape!=0)for(StackTraceElement frame:Thread.currentThread().getStackTrace())
-                        for(String n:OWNERS)if(n.equals(frame.getClassName()))known=true;
+                    if(shape==0||CrashGuard.tripped||p.args.length!=4||!(p.thisObject instanceof Path))return;
+                    boolean known=building.get()!=null;
+                    if(!known)for(StackTraceElement frame:Thread.currentThread().getStackTrace()){
+                        if(BUILDERS.contains(frame.getClassName())){known=true;break;}
+                    }
                     if(!known)return;
-                    float r=((Number)p.args[2]).floatValue();
-                    if(r>0)synchronized(circles){circles.put((Path)p.thisObject,new float[]{((Number)p.args[0]).floatValue(),((Number)p.args[1]).floatValue(),r});}
+                    try{
+                        Path path=(Path)p.thisObject;
+                        float x=((Number)p.args[0]).floatValue(),y=((Number)p.args[1]).floatValue(),r=((Number)p.args[2]).floatValue();
+                        if(!(r>0)||!Float.isFinite(r)||!Float.isFinite(x)||!Float.isFinite(y))return;
+                        boolean empty=path.isEmpty();
+                        addMask(path,shape,x,y,r);
+                        if(empty)synchronized(circles){circles.put(path,new float[]{x,y,r,shape});}
+                        p.setResult(null);
+                        if(substitutions.getAndIncrement()==0)android.util.Log.i("TTMLonger","AVATAR_NATIVE_MASK_REPLACED");
+                    }catch(Throwable ignored){}
                 }
             });
             XC_MethodHook reset=new XC_MethodHook(){
@@ -113,11 +146,16 @@ final class AvatarContours {
                         Path original=(Path)p.args[0];float[] at;
                         synchronized(circles){at=circles.get(original);}
                         if(at==null)return;
-                        RectF b=new RectF();original.computeBounds(b,true);
-                        if(Math.abs(b.left-(at[0]-at[2]))>1||Math.abs(b.right-(at[0]+at[2]))>1||
-                           Math.abs(b.top-(at[1]-at[2]))>1||Math.abs(b.bottom-(at[1]+at[2]))>1)return;
-                        p.args[0]=contour(shape,at[0],at[1],at[2],animates()?angle(SystemClock.uptimeMillis()):0);
-                        if(animates())again(drawing.get());
+                        // Static shape was already inserted at construction. Rotate only a pure mask
+                        // with the same bounds; preserve composite border paths.
+                        if(!animates())return;
+                        Path unturned=contour((int)at[3],at[0],at[1],at[2],0);
+                        RectF originalBounds=new RectF(),maskBounds=new RectF();
+                        original.computeBounds(originalBounds,true);unturned.computeBounds(maskBounds,true);
+                        if(Math.abs(originalBounds.left-maskBounds.left)>1||Math.abs(originalBounds.right-maskBounds.right)>1||
+                            Math.abs(originalBounds.top-maskBounds.top)>1||Math.abs(originalBounds.bottom-maskBounds.bottom)>1)return;
+                        p.args[0]=contour((int)at[3],at[0],at[1],at[2],angle(SystemClock.uptimeMillis()));
+                        again(drawing.get());
                     }catch(Throwable ignored){}
                 }
             };
@@ -164,11 +202,12 @@ final class AvatarContours {
             public void onItemSelected(android.widget.AdapterView<?> p,View v,int position,long id){draft[0]=position;selected.setText(LABELS[position]);sample.invalidate();}
         });
         body.addView(ui.toggleRow(-1,"Вращать контур","Фотография остаётся неподвижной",rotating[0],on->{rotating[0]=on;sample.invalidate();}));
-        body.addView(ui.note(hooks>0?"Эффект применяется к распознанным круглым изображениям. При необходимости перезапустите TikTok.":"Предпросмотр доступен; обработчики изображений этой версии ещё не распознаны."));
+        body.addView(ui.note(matchedBuilders>0?"Найдено классов построения масок: "+matchedBuilders+". После смены формы нужен перезапуск TikTok, чтобы пересоздать кэшированные контуры.":"Обработчики масок этой версии не найдены. Доступен только предпросмотр."));
         AlertDialog dialog=new AlertDialog.Builder(act,Ui.dialogTheme()).setTitle("Форма аватарок").setView(body)
                 .setNegativeButton("Отмена",null).setPositiveButton("Применить",(d,w)->{
                     shape=clamp(draft[0]);spin=rotating[0];prefs(act).edit().putInt("avatar_contour",shape).putBoolean("avatar_contour_spin",spin).apply();
                     act.getWindow().getDecorView().invalidate();
+                    Restart.offer(act);
                 }).create();
         Screen.markOwn(dialog);dialog.show();Ui.style(dialog);
     }
