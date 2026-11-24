@@ -135,8 +135,7 @@ final class StreakSticker {
             from = how;
             return;
         }
-        boolean take = armed() || (item == null && chosenId.isEmpty());
-        if (!take) return;
+        if (!armed()) return;
         choose(o, how);
     }
 

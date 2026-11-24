@@ -58,3 +58,37 @@ jobs:
             Модуль TTMLonger для LSPatch. Скачайте TTMLonger.apk и установите.
             Как пропатчить TikTok — в README проекта.
           files: ${{ env.PROJECT }}/TTMLonger.apk
+
+  ui-preview:
+    name: Проверить меню и снять экраны Android
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Собрать временное приложение для проверки экранов
+        run: |
+          cp tools/ui-preview/*.java app/src/main/java/dev/ttmlonger/
+          sed -i '/<application/,/supportsRtl=/ { /supportsRtl=/a\            <activity android:name="dev.ttmlonger.PreviewActivity" android:exported="true" />
+          }' app/src/main/AndroidManifest.xml
+          sed -i 's/compileOnly(project/implementation(project/' app/build.gradle.kts
+          gradle --no-daemon :app:assembleDebug
+      - name: Разрешить эмулятору использовать KVM
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          script: bash tools/ui-preview/capture.sh
+      - name: Добавить снимки экранов к сборке
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "build-${{ github.run_number }}" screenshots/menu.png screenshots/streaks.png --clobber

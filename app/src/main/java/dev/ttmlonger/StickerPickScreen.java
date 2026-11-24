@@ -60,10 +60,8 @@ final class StickerPickScreen extends Screen {
         body.addView(list, ui.matchWrap());
 
         fill();
-        if (Prefs.streakAuto) {
-            StreakHooks.prepareSender();
-            load();
-        }
+        StreakHooks.prepareSender();
+        load();
     }
 
     private void load() {

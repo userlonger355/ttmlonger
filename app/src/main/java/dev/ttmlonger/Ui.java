@@ -144,6 +144,23 @@ final class Ui {
         return g;
     }
 
+    GradientDrawable wash(int from, int to) {
+        GradientDrawable shape = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{from, to});
+        shape.setCornerRadius(dp(22));
+        return shape;
+    }
+
+    LinearLayout panel(LinearLayout page) {
+        LinearLayout card = new LinearLayout(ctx);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(round(DARK ? CARD : FIELD, 18));
+        card.setClipToOutline(true);
+        LinearLayout.LayoutParams box = matchWrap();
+        box.setMargins(dp(14), dp(4), dp(14), dp(6));
+        page.addView(card, box);
+        return card;
+    }
+
     GradientDrawable oval(int color) {
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);

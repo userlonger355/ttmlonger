@@ -25,13 +25,9 @@ import java.util.Map;
 import java.util.TimeZone;
 import java.util.TreeMap;
 
-/**
- * Проходы автопродления огонька. Работает в фоновом потоке, пока жив процесс TikTok: на старте
- * (когда TikTok сам спросил про огоньки), при появлении нового чата и каждые десять минут. Пока
- * TikTok выгружен из памяти, ничего не происходит: мод не ставит будильников и не будит приложение.
- */
+/** Serialises checks and sticker submissions on a worker in the TikTok process. */
 final class StreakRunner {
-    private static final long PERIOD_MS = 10L * 60L * 1000L;
+    private static final long PERIOD_MS = 15L * 60L * 1000L;
     private static final long FIRST_MS = 90L * 1000L;
     private static final int MAX_LOG = 40;
     /** Свой сигнал будильника: проход в выбранное время, даже если телефон спал. */
@@ -42,7 +38,8 @@ final class StreakRunner {
     private static long lastWake = -WAKE_GAP_MS;
 
     private static Context app;
-    private static Handler handler;
+    private static volatile Handler handler;
+    private static StreakSchedule schedule;
     private static boolean pending;
     private static final ArrayDeque<String> LOG = new ArrayDeque<>();
     private static final Runnable DAILY = new Runnable() {
@@ -69,6 +66,7 @@ final class StreakRunner {
     static synchronized void init(Context ctx) {
         if (handler != null || ctx == null) return;
         app = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        schedule = new StreakSchedule(app);
         HandlerThread t = new HandlerThread("ttmlonger-streak", Process.THREAD_PRIORITY_BACKGROUND);
         t.setDaemon(true);
         t.start();
@@ -97,9 +95,10 @@ final class StreakRunner {
         Handler h = handler;
         if (h == null) return;
         h.removeCallbacks(DAILY);
-        if (Prefs.streakAuto && Prefs.streakDaily) {
+        int minute = Prefs.streakAuto ? schedule.minute(StreakHooks.liveOwner()) : -1;
+        if (minute >= 0) {
             long now = System.currentTimeMillis();
-            long wait = StreakLogic.millisUntil(now, Prefs.streakMinute, Zones.current());
+            long wait = StreakLogic.millisUntil(now, minute, Zones.current());
             // Задержка Handler считается по времени работы процессора и во сне не идёт: сам по себе он
             // сработает позже срока. Поэтому рядом ставится будильник по настоящему времени, а на включение
             // экрана и смену времени или пояса проход запрашивается заново (registerWake).
@@ -260,7 +259,8 @@ final class StreakRunner {
                     round(true);
                 } catch (Throwable e) {
                     FlagStore.log(e);
-                    last = "проверка: " + e;
+                    hint = "Не удалось прочитать огоньки: " + e.getClass().getSimpleName();
+                    last = hint;
                 }
                 new Handler(Looper.getMainLooper()).post(done);
             }
@@ -294,9 +294,23 @@ final class StreakRunner {
      *
      * @param dry true — только прочитать и посчитать, ничего не отправлять
      */
-    static synchronized void round(boolean dry) {
-        if (!dry && (!Prefs.streakAuto || CrashGuard.tripped)) return;
+    static void round(boolean dry) {
+        if (CrashGuard.tripped || (!dry && !Prefs.streakAuto)) return;
+        if (schedule == null) {
+            hint = "Мод ещё подключается к TikTok. Повторите проверку.";
+            return;
+        }
+        String owner = StreakHooks.liveOwner();
+        if (owner == null) {
+            hint = "Откройте входящие TikTok, чтобы определить текущий аккаунт.";
+            return;
+        }
+        int minute = schedule.minute(owner);
         long t0 = System.currentTimeMillis();
+        if (!dry && minute >= 0 && StreakLogic.minuteOfDay(t0, Zones.current()) < minute) {
+            reschedule();
+            return;
+        }
         StreakHooks.discover(dry);
         StreakHooks.prepareSender();
 
@@ -311,11 +325,12 @@ final class StreakRunner {
             hint = "Чатов с огоньком пока не видно: откройте в TikTok список чатов";
             return;
         }
+        convs.removeIf(conv -> StreakLogic.friendUid(conv, owner) == null);
         int known = convs.size();
         convs = StreakLogic.filterPicked(Prefs.streakOnlyPicked, StreakStore.picked(), convs);
         if (convs.isEmpty()) {
             last = "включено «только выбранным», но никто не отмечен (известно чатов " + known + ")";
-            hint = "Режим «только выбранным»: отметьте людей в «Люди»";
+            hint = known == 0 ? "Нет известных чатов текущего аккаунта" : "Отметьте людей в разделе «Кому продлевать»";
             return;
         }
 
@@ -326,7 +341,7 @@ final class StreakRunner {
         Map<String, Integer> statuses = new TreeMap<>();
         List<String> due = new ArrayList<>();
         for (String conv : convs) {
-            StreakHooks.Info i = StreakHooks.read(conv, false);
+            StreakHooks.Info i = StreakHooks.read(conv, true);
             if (i == null || i.streak < 0) {
                 unreadable++;
                 continue;
@@ -336,8 +351,8 @@ final class StreakRunner {
                 Integer c = statuses.get(key);
                 statuses.put(key, c == null ? 1 : c + 1);
             }
-            StreakLogic.Verdict v = StreakLogic.decide(Prefs.streakDaily, Prefs.streakMinute, i.status, i.streak,
-                    StreakStore.lastSent(conv), StreakStore.lastFail(conv), now, tz);
+            StreakLogic.Verdict v = StreakLogic.decide(minute >= 0, minute, i.status, i.streak,
+                    schedule.last(owner, minute, conv), StreakStore.lastFail(conv), now, tz);
             by[v.ordinal()]++;
             if (v == StreakLogic.Verdict.SEND) due.add(conv);
         }
@@ -382,7 +397,8 @@ final class StreakRunner {
         int done = 0;
         for (String conv : due) {
             if (done++ >= StreakLogic.MAX_PER_ROUND) break;
-            if (!Prefs.streakAuto) break;
+            if (!Prefs.streakAuto || !owner.equals(StreakHooks.liveOwner()) || schedule.minute(owner) != minute) break;
+            if (Prefs.streakOnlyPicked && !StreakStore.isPicked(conv)) continue;
             // Перед отправкой читаем огонёк заново: серый из кэша стикер вызывать не должен.
             StreakHooks.Info fresh = StreakHooks.read(conv, true);
             long at = System.currentTimeMillis();
@@ -390,11 +406,11 @@ final class StreakRunner {
                 bad++;
                 continue;
             }
-            StreakLogic.Verdict again = StreakLogic.decide(Prefs.streakDaily, Prefs.streakMinute, fresh.status,
-                    fresh.streak, StreakStore.lastSent(conv), StreakStore.lastFail(conv), at, tz);
+            StreakLogic.Verdict again = StreakLogic.decide(minute >= 0, minute, fresh.status,
+                    fresh.streak, schedule.last(owner, minute, conv), StreakStore.lastFail(conv), at, tz);
             if (again != StreakLogic.Verdict.SEND) continue;
-            if (StreakHooks.send(app, sticker, conv)) {
-                StreakStore.markSent(conv, at);
+            if (StreakHooks.send(app, sticker, conv, owner, true)) {
+                schedule.submitted(owner, minute, conv, at);
                 ok++;
                 sends++;
             } else {
@@ -403,16 +419,11 @@ final class StreakRunner {
                 fails++;
             }
             StreakStore.flush();
-            try {
-                Thread.sleep(1500L);
-            } catch (InterruptedException e) {
-                break;
-            }
         }
         StreakStore.flush();
         last = "отправлено " + ok + ", ошибок " + bad + "; " + head;
-        hint = "Отправлено: " + ok + (bad > 0 ? " · не удалось: " + bad : "") + " · сегодня уже: "
-                + StreakStore.sentToday(System.currentTimeMillis(), tz);
+        hint = "Передано TikTok: " + ok + (bad > 0 ? " · ошибок: " + bad : "");
+        if (bad > 0 || due.size() > StreakLogic.MAX_PER_ROUND) request(StreakLogic.FAIL_BACKOFF_MS);
     }
 
     static String checkSummary() {
@@ -440,24 +451,23 @@ final class StreakRunner {
         final int known;
         /** Сколько из них не удалось прочитать. */
         final int unreadable;
-        /** Огоньки прочитать не удалось: цели — все известные чаты. */
-        final boolean guess;
+        final String owner;
         /** Чатов с огоньком было больше предела, часть отброшена. */
         final boolean capped;
         /** Что мешает (тогда targets пуст); иначе null. */
         final String problem;
 
-        Plan(List<String> targets, int known, int unreadable, boolean guess, boolean capped, String problem) {
+        Plan(List<String> targets, int known, int unreadable, String owner, boolean capped, String problem) {
             this.targets = targets;
             this.known = known;
             this.unreadable = unreadable;
-            this.guess = guess;
+            this.owner = owner;
             this.capped = capped;
             this.problem = problem;
         }
 
         static Plan blocked(String why) {
-            return new Plan(new ArrayList<String>(), 0, 0, false, false, why);
+            return new Plan(new ArrayList<String>(), 0, 0, null, false, why);
         }
     }
 
@@ -492,8 +502,10 @@ final class StreakRunner {
         });
     }
 
-    private static synchronized Plan makePlan() {
-        if (!Prefs.streakAuto) return Plan.blocked("Сначала включите автопродление и перезапустите TikTok");
+    private static Plan makePlan() {
+        String owner = StreakHooks.liveOwner();
+        if (owner == null || schedule == null) return Plan.blocked("Откройте входящие TikTok и повторите проверку");
+        StreakHooks.discover(true);
         if (CrashGuard.tripped) return Plan.blocked("Автопродление отключено защитой от сбоев");
         if (StreakHooks.service() == null) {
             return Plan.blocked("Мод ещё не видит огоньков: откройте в TikTok список чатов и повторите");
@@ -515,28 +527,23 @@ final class StreakRunner {
         }
         List<String> hot = new ArrayList<>();
         int unreadable = 0;
-        // Сначала по кэшу TikTok; если нигде огонька не видно, перечитываем заново.
-        for (int pass = 0; pass < 2 && hot.isEmpty(); pass++) {
-            hot.clear();
-            unreadable = 0;
-            for (String conv : convs) {
-                StreakHooks.Info i = StreakHooks.read(conv, pass == 1);
-                if (i == null || i.streak < 0) {
-                    unreadable++;
-                } else if (i.streak >= StreakLogic.FLAME_FROM && StreakLogic.worthSending(i.status)) {
-                    hot.add(conv);
-                }
+        for (String conv : convs) {
+            if (StreakLogic.friendUid(conv, owner) == null) continue;
+            StreakHooks.Info info = StreakHooks.read(conv, true);
+            if (info == null || info.streak < 0 || info.status == null) {
+                unreadable++;
+            } else if (info.streak >= StreakLogic.FLAME_FROM && StreakLogic.worthSending(info.status)) {
+                hot.add(conv);
             }
         }
-        boolean guess = hot.isEmpty() && unreadable == convs.size();
-        List<String> targets = guess ? new ArrayList<>(convs) : hot;
+        List<String> targets = hot;
         boolean capped = targets.size() > ALL_MAX;
         if (capped) targets = new ArrayList<>(targets.subList(0, ALL_MAX));
         if (targets.isEmpty()) {
-            return new Plan(targets, convs.size(), unreadable, false, false,
+            return new Plan(targets, convs.size(), unreadable, owner, false,
                     "Чатов с огоньком не видно (проверено " + convs.size() + ")");
         }
-        return new Plan(targets, convs.size(), unreadable, guess, capped, null);
+        return new Plan(targets, convs.size(), unreadable, owner, capped, null);
     }
 
     /** Отправляет стикер по плану, в фоне и по одному; итог (одно предложение) в главном потоке. */
@@ -571,12 +578,13 @@ final class StreakRunner {
         });
     }
 
-    private static synchronized String execute(Plan p) {
-        if (!Prefs.streakAuto) return "Автопродление выключено: отправка не начата";
+    private static String execute(Plan p) {
+        String owner = p.owner;
+        if (owner == null || !owner.equals(StreakHooks.liveOwner()) || CrashGuard.tripped)
+            return "Аккаунт изменился или сработала защита. Откройте список заново.";
         if (!online()) return "Нет сети: отправка не начата";
         Object sticker = StreakSticker.get();
         if (sticker == null) return "Стикер не выбран: отправка не начата";
-        TimeZone tz = Zones.current();
         int total = p.targets.size();
         int ok = 0;
         int bad = 0;
@@ -586,8 +594,12 @@ final class StreakRunner {
             hint = "Отправляю всем: " + (i + 1) + " из " + total + "…";
             String conv = p.targets.get(i);
             long at = System.currentTimeMillis();
-            if (StreakHooks.send(app, sticker, conv)) {
-                StreakStore.markSent(conv, at);
+            if (!owner.equals(StreakHooks.liveOwner()) || CrashGuard.tripped) break;
+            if (Prefs.streakOnlyPicked && !StreakStore.isPicked(conv)) continue;
+            StreakHooks.Info fresh = StreakHooks.read(conv, true);
+            if (fresh == null || fresh.streak < StreakLogic.FLAME_FROM || !StreakLogic.worthSending(fresh.status)) continue;
+            if (StreakHooks.send(app, sticker, conv, owner, false)) {
+                schedule.submitted(owner, StreakSchedule.WHEN_GREY, conv, at);
                 ok++;
                 sends++;
                 row = 0;
@@ -603,7 +615,7 @@ final class StreakRunner {
             StreakStore.flush();
             if (i + 1 < total) {
                 try {
-                    Thread.sleep(1500L);
+                    Thread.sleep(600L);
                 } catch (InterruptedException e) {
                     break;
                 }
@@ -611,10 +623,9 @@ final class StreakRunner {
         }
         StreakStore.flush();
         last = "отправка всем: отправлено " + ok + " из " + total + ", ошибок " + bad;
-        hint = "Отправлено всем: " + ok + (bad > 0 ? " · не удалось: " + bad : "") + " · сегодня уже: "
-                + StreakStore.sentToday(System.currentTimeMillis(), tz);
-        String msg = "Отправлено " + ok + " из " + total;
-        if (bad > 0) msg += ", не удалось " + bad;
+        hint = "Передано TikTok: " + ok + " из " + total + (bad > 0 ? " · ошибок: " + bad : "");
+        String msg = hint;
+
         if (stopped) msg += ". Остановился после " + STOP_AFTER_FAILS + " ошибок подряд: " + StreakHooks.senderNote();
         return msg;
     }
@@ -692,9 +703,10 @@ final class StreakRunner {
         });
     }
 
-    private static synchronized People makePeople() {
-        if (!Prefs.streakAuto) {
-            return new People(new ArrayList<Person>(), 0, 0, "Сначала включите автопродление и перезапустите TikTok");
+    private static People makePeople() {
+        String own = StreakHooks.liveOwner();
+        if (own == null || schedule == null || CrashGuard.tripped) {
+            return new People(new ArrayList<Person>(), 0, 0, "Откройте входящие TikTok и обновите список.");
         }
         StreakHooks.discover(false);
         if (StreakHooks.service() == null) {
@@ -705,13 +717,13 @@ final class StreakRunner {
         if (convs.isEmpty()) {
             return new People(new ArrayList<Person>(), 0, 0, "Чатов пока не видно: откройте в TikTok список чатов");
         }
-        String own = ownForNames();
         long now = System.currentTimeMillis();
         TimeZone tz = Zones.current();
         List<Person> out = new ArrayList<>();
         int unreadable = 0;
         for (String conv : convs) {
-            StreakHooks.Info i = StreakHooks.read(conv, false);
+            if (StreakLogic.friendUid(conv, own) == null) continue;
+            StreakHooks.Info i = StreakHooks.read(conv, true);
             if (i == null || i.streak < 0) {
                 unreadable++;
                 continue;
@@ -719,7 +731,7 @@ final class StreakRunner {
             if (i.streak < StreakLogic.FLAME_FROM) continue;
             String uid = StreakLogic.friendUid(conv, own);
             String name = StreakLogic.displayName(StreakStore.name(uid), uid);
-            long sentAt = StreakStore.lastSent(conv);
+            long sentAt = schedule.lastAny(own, conv);
             out.add(new Person(conv, name, i.streak, i.status, sentAt > 0 && StreakLogic.sameDay(sentAt, now, tz)));
         }
         java.util.Collections.sort(out, new java.util.Comparator<Person>() {
@@ -746,7 +758,7 @@ final class StreakRunner {
         }
         sb.append('\n');
         sb.append("автопродление: ").append(Prefs.streakAuto ? "вкл" : "выкл")
-                .append(", каждый день: ").append(Prefs.streakDaily ? "да" : "нет").append('\n');
+                .append(", расписание: ").append(schedule == null ? -1 : schedule.minute(StreakHooks.knownOwnUid())).append('\n');
         sb.append("часовой пояс расписания: ").append(Zones.note()).append(" · по умолчанию в процессе: ")
                 .append(TimeZone.getDefault().getID()).append('\n');
         sb.append(StreakHooks.details()).append('\n');

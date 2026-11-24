@@ -18,7 +18,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Мост к огонькам TikTok. Имя интерфейса службы огоньков настоящее, а имена методов и класса,
@@ -125,12 +124,30 @@ final class StreakHooks {
 
     // ---------------------------------------------------------------- подключение
 
+    private static volatile Context host;
+    private static volatile boolean toolsRequested;
+    private static boolean installed;
+
+    static void openTools() {
+        toolsRequested = true;
+        StreakRunner.async(StreakHooks::installIfNeeded);
+    }
+
     static void apply(DexScan.Result r, ClassLoader cl, Context ctx) {
+        scan = r;
         loader = cl;
-        if (!Prefs.streakAuto) {
-            status = "выключено в настройках (включите и перезапустите TikTok)";
-            return;
-        }
+        host = ctx.getApplicationContext();
+        if (Prefs.streakAuto || toolsRequested) installIfNeeded();
+    }
+
+    private static synchronized void installIfNeeded() {
+        if (installed || host == null || scan == null || CrashGuard.tripped) return;
+        installed = true;
+        install(scan, loader, host);
+    }
+
+    private static void install(DexScan.Result r, ClassLoader cl, Context ctx) {
+        loader = cl;
         if (CrashGuard.tripped) {
             status = "отключено защитой от сбоев";
             return;
@@ -444,46 +461,40 @@ final class StreakHooks {
         return have.isEmpty() ? null : have;
     }
 
-    /** Номер аккаунта владельца: из службы аккаунта TikTok, а если не вышло, по общему номеру в известных чатах. */
-    private static String ownUid() {
-        String have = ownUid;
-        if (!have.isEmpty()) return have;
-        StringBuilder why = new StringBuilder();
-        DexScan.Result r = scan;
-        Class<?> ac = null;
+    private static volatile Method accountProvider;
+
+    /** Resolve the current identity again at dispatch time, including after logout or account switches. */
+    static String liveOwner() {
+        DexScan.Result result = scan;
+        if (result == null) return null;
         try {
-            ac = Class.forName("com.ss.android.ugc.aweme.IAccountUserService", false, loader);
-        } catch (Throwable ignored) {
-            why.append("IAccountUserService нет; ");
-        }
-        if (r != null && ac != null) {
-            for (DexScan.Ref ref : r.refs("act:account-user")) {
-                try {
-                    Method m = DexHooks.findMethod(loader, ref.cls, ref.name, ref.proto);
-                    if (m == null || !Modifier.isStatic(m.getModifiers()) || m.getParameterTypes().length != 0) continue;
-                    m.setAccessible(true);
-                    Object svc = m.invoke(null);
-                    if (svc == null || !ac.isInstance(svc)) continue;
-                    Object v = DownloadHooks.call(svc, "getCurUserId");
-                    String uid = v instanceof String ? (String) v : v instanceof Number ? String.valueOf(((Number) v).longValue()) : null;
-                    if (StreakLogic.isUid(uid)) {
-                        ownUid = uid;
-                        uidNote = "из службы аккаунта (" + uid.length() + " цифр)";
-                        return uid;
+            Method provider = accountProvider;
+            if (provider == null) {
+                for (DexScan.Ref ref : result.refs("act:account-user")) {
+                    Method candidate = DexHooks.findMethod(loader, ref.cls, ref.name, ref.proto);
+                    if (candidate == null || !Modifier.isStatic(candidate.getModifiers())
+                            || candidate.getParameterTypes().length != 0) continue;
+                    candidate.setAccessible(true);
+                    if (candidate.invoke(null) != null) {
+                        provider = candidate;
+                        accountProvider = candidate;
+                        break;
                     }
-                    why.append("getCurUserId пусто; ");
-                } catch (Throwable t) {
-                    why.append("служба аккаунта: ").append(causeOf(t)).append("; ");
                 }
             }
+            Object svc = provider == null ? null : provider.invoke(null);
+            Object raw = svc == null ? null : DownloadHooks.call(svc, "getCurUserId");
+            String id = raw == null ? "" : raw.toString();
+            if (StreakLogic.isUid(id) && !StreakLogic.stripZeros(id).equals("0")) {
+                ownUid = StreakLogic.stripZeros(id);
+                uidNote = "из службы аккаунта";
+                return ownUid;
+            }
+        } catch (Throwable ignored) {
+            accountProvider = null;
         }
-        String common = StreakLogic.commonUid(StreakStore.conversations());
-        if (common != null) {
-            ownUid = common;
-            uidNote = "по общему номеру в известных чатах (" + common.length() + " цифр)";
-            return common;
-        }
-        uidNote = "не получен: " + why + "общего номера в чатах пока нет";
+        ownUid = "";
+        uidNote = "аккаунт ещё не определён";
         return null;
     }
 
@@ -594,7 +605,7 @@ final class StreakHooks {
     private static void applyFriends() {
         List<String> uids = friendUids;
         if (uids.isEmpty()) return;
-        String own = ownUid();
+        String own = liveOwner();
         if (own == null) {
             friendsNote += "; свой номер аккаунта неизвестен, чаты не построены";
             return;
@@ -620,7 +631,7 @@ final class StreakHooks {
         long now = android.os.SystemClock.uptimeMillis();
         if (!force && now - lastDiscover < 30_000L) return;
         lastDiscover = now;
-        if (!Prefs.streakAuto || CrashGuard.tripped || loader == null) return;
+        if (CrashGuard.tripped || loader == null) return;
         try {
             if (service == null) {
                 Class<?> ic = serviceInterface();
@@ -705,7 +716,13 @@ final class StreakHooks {
             }
             Object d = m.invoke(svc, conv, fresh);
             reads++;
-            if (d == null) return new Info(0, null);
+            if (d == null) return null;
+            try {
+                Object reported = dc.getField("convId").get(d);
+                if (reported != null && !conv.equals(reported)) return null;
+            } catch (NoSuchFieldException ignored) {
+                // Older models only expose the status and length.
+            }
             return new Info(streakOf(dc, d), statusOf(svc, d));
         } catch (Throwable t) {
             readFails++;
@@ -721,12 +738,12 @@ final class StreakHooks {
         for (Method m : ic.getMethods()) {
             Class<?>[] p = m.getParameterTypes();
             if (p.length == 2 && p[0] == String.class && p[1] == boolean.class && m.getReturnType() == dc) {
+                if (m.getName().equals("LJIJJLI") || m.getName().equals("J")) return m;
                 n++;
-                if (best == null) best = m;
+                best = m;
             }
         }
-        if (n > 1) readNote = "подходящих методов чтения " + n + ", взят " + best.getName();
-        return best;
+        return n == 1 ? best : null;
     }
 
     private static int streakOf(Class<?> dc, Object d) {
@@ -1445,20 +1462,24 @@ final class StreakHooks {
     }
 
     /** Отправляет стикер в чат; true — вызов прошёл без ошибки (доставку TikTok не подтверждает). */
-    static boolean send(final Context ctx, final Object sticker, final String conv) {
-        if (Looper.myLooper() == Looper.getMainLooper()) return sendOnMain(ctx, sticker, conv);
+    static boolean send(final Context ctx, final Object sticker, final String conv, final String owner, final boolean automatic) {
+        if (Looper.myLooper() == Looper.getMainLooper()) return sendOnMain(ctx, sticker, conv, owner, automatic);
         FutureTask<Boolean> task = new FutureTask<>(new java.util.concurrent.Callable<Boolean>() {
             @Override
             public Boolean call() {
-                return sendOnMain(ctx, sticker, conv);
+                return sendOnMain(ctx, sticker, conv, owner, automatic);
             }
         });
         if (!new Handler(Looper.getMainLooper()).post(task)) return false;
         try {
-            return task.get(8, TimeUnit.SECONDS);
-        } catch (Throwable e) {
-            task.cancel(false);
-            senderNote = "отправка не уложилась в 8 с: " + e.getClass().getSimpleName();
+            // The worker is separate from the UI. An in-flight call cannot be retracted or
+            // classified as a failure just because the main thread is busy.
+            return task.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (java.util.concurrent.ExecutionException e) {
+            senderNote = "ошибка отправки: " + e.getCause();
             return false;
         }
     }
@@ -1485,8 +1506,11 @@ final class StreakHooks {
         return args;
     }
 
-    private static boolean sendOnMain(Context ctx, Object sticker, String conv) {
+    private static boolean sendOnMain(Context ctx, Object sticker, String conv, String owner, boolean automatic) {
         try {
+            if (CrashGuard.tripped || (automatic && !Prefs.streakAuto) || !owner.equals(liveOwner())
+                    || StreakLogic.friendUid(conv, owner) == null
+                    || (Prefs.streakOnlyPicked && !StreakStore.isPicked(conv))) return false;
             if (!ensureSender()) return false;
             Sender sp = sender;
             Object ms = message;

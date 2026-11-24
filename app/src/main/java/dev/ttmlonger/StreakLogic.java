@@ -12,14 +12,6 @@ import java.util.TimeZone;
  * Чистая логика автопродления огонька: кому отправлять и как хранить отметки «уже отправляли».
  * Без Android и без TikTok, поэтому проверяется обычными тестами на JVM.
  *
- * Правила (их же пишет экран «Огонёк»):
- *  - огонёк есть только с третьего дня подряд (до этого серии для сохранения нет);
- *  - один стикер на чат в сутки, и после отправки в этот день повторов нет, даже если огонёк
- *    остался серым: он может оставаться серым, пока друг не ответит;
- *  - серый огонёк (у TikTok он зовётся SECONDARY_ACTIVE: серия ещё ждёт ответа сегодня) получает
- *    стикер сразу; уже поддержанный сегодня (ACTIVE) — только в режиме «каждый день» и не раньше
- *    выбранного времени; погасший (EXPIRED и всё остальное) пропускается;
- *  - если отправка не удалась, повтор не раньше чем через полчаса.
  */
 final class StreakLogic {
     enum Verdict {
@@ -40,7 +32,7 @@ final class StreakLogic {
     }
 
     static final int FLAME_FROM = 3;
-    static final long FAIL_BACKOFF_MS = 30L * 60L * 1000L;
+    static final long FAIL_BACKOFF_MS = 5L * 60L * 1000L;
     /** Имя статуса серого огонька в enum TikTok: серия ещё жива, но сегодня её не поддержали. */
     static final String GREY = "SECONDARY_ACTIVE";
     /** Старое условное имя; принимается, если встретится. */
@@ -51,9 +43,9 @@ final class StreakLogic {
         return GREY.equals(status) || GREY_ALIAS.equals(status);
     }
 
-    /** Есть ли смысл слать в чат с таким статусом: серый и поддержанный сегодня огоньки — да, погасший (EXPIRED и прочее) — нет. Статус не прочитан — да. */
+    /** Есть ли смысл слать в чат с таким статусом: серый и поддержанный сегодня огоньки — да, погасший (EXPIRED и прочее) — нет. */
     static boolean worthSending(String status) {
-        return status == null || isGrey(status) || ACTIVE.equals(status);
+        return isGrey(status) || ACTIVE.equals(status);
     }
 
     /** Сколько стикеров максимум за один проход: страховка от ошибки в данных. */
@@ -68,13 +60,11 @@ final class StreakLogic {
                           long lastSent, long lastFail, long now, TimeZone tz) {
         if (streak < FLAME_FROM) return Verdict.NO_FLAME;
         if (status == null) return Verdict.UNKNOWN;
+        if (!worthSending(status)) return Verdict.GONE;
+        if (daily && minuteOfDay(now, tz) < dailyMinute) return Verdict.LIT;
         if (lastSent > 0 && sameDay(lastSent, now, tz)) return Verdict.SENT_TODAY;
         if (lastFail > 0 && now >= lastFail && now - lastFail < FAIL_BACKOFF_MS) return Verdict.BACKOFF;
-        if (isGrey(status)) return Verdict.SEND;
-        if (ACTIVE.equals(status)) {
-            return daily && minuteOfDay(now, tz) >= dailyMinute ? Verdict.SEND : Verdict.LIT;
-        }
-        return Verdict.GONE;
+        return daily || isGrey(status) ? Verdict.SEND : Verdict.LIT;
     }
 
     static boolean sameDay(long a, long b, TimeZone tz) {

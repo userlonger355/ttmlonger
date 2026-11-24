@@ -2,12 +2,29 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.view.View;
+import android.view.Gravity;
+import android.widget.HorizontalScrollView;
+import android.widget.EditText;
+import android.text.Editable;
+import android.text.TextWatcher;
+import java.util.ArrayList;
+import java.util.List;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /** Главная страница «Настройки мода». */
 final class ModMenu extends Screen {
     private LinearLayout regionRow;
+    private LinearLayout tabs;
+    private LinearLayout shortcuts;
+    private EditText search;
+    private TextView empty;
+    private TextView streakValue;
+    private LinearLayout streakMenuRow;
+    private HorizontalScrollView tabScroll;
+    private final List<LinearLayout> sections = new ArrayList<>();
+    private final List<TextView> labels = new ArrayList<>();
+    private int selected;
 
     private ModMenu(Activity act) {
         super(act);
@@ -19,7 +36,14 @@ final class ModMenu extends Screen {
 
     @Override
     void build(LinearLayout page) {
-        android.widget.EditText search = new android.widget.EditText(act);
+        shortcuts = new LinearLayout(act);
+        shortcuts.setBaselineAligned(false);
+        shortcuts.setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(6));
+        page.addView(shortcuts, ui.matchWrap());
+        streakValue = tile(Icons.FLAME, "Огоньки", StreakScreen.menuSummary(), true, () -> StreakScreen.show(act));
+        tile(Icons.SLIDERS, "Интерфейс", "Лента и жесты", false, () -> InterfaceScreen.show(act));
+
+        search = new EditText(act);
         search.setSingleLine(true);
         search.setHint("Поиск по настройкам мода");
         search.setTextColor(Ui.INK);
@@ -31,6 +55,12 @@ final class ModMenu extends Screen {
         page.setFocusableInTouchMode(true);
         page.requestFocus();
         page.addView(search, inset);
+        tabScroll = new HorizontalScrollView(act);
+        tabScroll.setHorizontalScrollBarEnabled(false);
+        tabs = new LinearLayout(act);
+        tabs.setPadding(ui.dp(14), ui.dp(12), ui.dp(8), ui.dp(6));
+        tabScroll.addView(tabs);
+        page.addView(tabScroll, ui.matchWrap());
         if (CrashGuard.tripped) {
             page.addView(ui.menuRow(Icons.FLAG, "Включена защита от сбоев",
                     "После нескольких коротких запусков часть функций приостановлена. Открыть настройки защиты",
@@ -102,22 +132,6 @@ final class ModMenu extends Screen {
                         InvisibleScreen.show(act);
                     }
                 }));
-        body.addView(ui.menuRow(Icons.SEARCH, "Перехват запросов",
-                "Для удаления лайков, избранного и репостов: запись настоящих вызовов TikTok", ApiTap.menuSummary(),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        ApiTapScreen.show(act);
-                    }
-                }));
-        body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
-                "Для «Невидимки», заблокированного профиля, удаления и личных сообщений", ReconScreen.menuSummary(),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        ReconScreen.show(act);
-                    }
-                }));
         body.addView(ui.menuRow(Icons.EYE_OFF, "Реклама и LIVE",
                 "Автоскрытие рекламы в ленте, скрытие кнопки LIVE", AdsScreen.menuSummary(),
                 new View.OnClickListener() {
@@ -153,13 +167,9 @@ final class ModMenu extends Screen {
                 }));
 
         body = section(page, "Личные сообщения");
-        body.addView(ui.menuRow(Icons.FLAME, "Огонёк", "Само продлевает серию дней в чате", StreakScreen.menuSummary(),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        StreakScreen.show(act);
-                    }
-                }));
+        streakMenuRow = ui.menuRow(Icons.FLAME, "Огоньки", "Автопродление серии в чатах", StreakScreen.menuSummary(),
+                v -> StreakScreen.show(act));
+        body.addView(streakMenuRow);
         body.addView(toggleRow(Icons.MIC, "Голосовые и обои без региона",
                 "Пробует включить функции чата, которые сервер скрывает по региону аккаунта. Экспериментально. "
                         + "Нужен перезапуск TikTok",
@@ -204,6 +214,23 @@ final class ModMenu extends Screen {
                 }));
 
         body = section(page, "Для опытных");
+        body.addView(ui.menuRow(Icons.SEARCH, "Перехват запросов",
+                "Для удаления лайков, избранного и репостов: запись настоящих вызовов TikTok", ApiTap.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        ApiTapScreen.show(act);
+                    }
+                }));
+        body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
+                "Для «Невидимки», заблокированного профиля, удаления и личных сообщений", ReconScreen.menuSummary(),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        ReconScreen.show(act);
+                    }
+                }));
+
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Внутренние флаги (A/B) для тестирования функций", null,
                 new View.OnClickListener() {
@@ -217,52 +244,96 @@ final class ModMenu extends Screen {
         ver.setGravity(android.view.Gravity.CENTER);
         ver.setPadding(0, ui.dp(28), 0, ui.dp(8));
         page.addView(ver, ui.matchWrap());
-        TextView empty = ui.note("По этому запросу настроек нет");
+        empty = ui.note("По этому запросу настроек нет");
         page.addView(empty);
         empty.setVisibility(View.GONE);
-        search.addTextChangedListener(new android.text.TextWatcher() {
+        search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            public void afterTextChanged(android.text.Editable s) {}
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                String q = VideoScreen.normalize(s.toString());
-                boolean any = false;
-                for (int i = 1; i < page.getChildCount(); i++) {
-                    View item = page.getChildAt(i);
-                    if (!(item instanceof LinearLayout) || !(item.getTag() instanceof TextView)) continue;
-                    LinearLayout card = (LinearLayout) item;
-                    TextView header = (TextView) card.getTag();
-                    boolean group = VideoScreen.normalize(header.getText().toString()).contains(q);
-                    boolean visible = false;
-                    for (int j = 0; j < card.getChildCount(); j++) {
-                        View row = card.getChildAt(j);
-                        TextView title = Ui.titleOf(row);
-                        TextView sub = Ui.subtitleOf(row);
-                        String words = (title == null ? "" : title.getText()) + " " + (sub == null ? "" : sub.getText());
-                        boolean match = group || VideoScreen.normalize(words).contains(q);
-                        row.setVisibility(match ? View.VISIBLE : View.GONE);
-                        visible |= match;
-                    }
-                    header.setVisibility(visible ? View.VISIBLE : View.GONE);
-                    card.setVisibility(header.getVisibility());
-                    any |= visible;
-                }
-                empty.setVisibility(any ? View.GONE : View.VISIBLE);
-            }
+            public void afterTextChanged(Editable s) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) { filter(); }
         });
+        page.getViewTreeObserver().addOnWindowFocusChangeListener(focus -> {
+            if (!focus) return;
+            streakValue.setText(StreakScreen.menuSummary());
+            Ui.valueOf(streakMenuRow).setText(StreakScreen.menuSummary());
+        });
+        filter();
+    }
+
+    private TextView tile(int icon, String title, String value, boolean warm, Runnable open) {
+        int from = warm ? (Ui.DARK ? 0xFF542D32 : 0xFFFFDBCB) : (Ui.DARK ? 0xFF273F53 : 0xFFD5EEFA);
+        int to = warm ? (Ui.DARK ? 0xFF302029 : 0xFFFFF0DD) : (Ui.DARK ? 0xFF222A40 : 0xFFEAECFF);
+        int ink = Ui.DARK ? 0xFFFDF4EF : 0xFF252432;
+        LinearLayout tile = new LinearLayout(act);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setPadding(ui.dp(16), ui.dp(15), ui.dp(12), ui.dp(16));
+        tile.setBackground(ui.wash(from, to));
+        tile.setClipToOutline(true);
+        tile.setForeground(ui.ripple());
+        tile.setFocusable(true);
+        tile.setOnClickListener(v -> open.run());
+        int tint = warm ? (Ui.DARK ? 0xFFFFB584 : 0xFF964123) : (Ui.DARK ? 0xFFA7DCFF : 0xFF285378);
+        tile.addView(ui.icon(icon, tint, 27));
+        TextView heading = ui.text(title, 19, ink, true);
+        heading.setPadding(0, ui.dp(12), 0, ui.dp(2));
+        tile.addView(heading);
+        TextView detail = ui.text(value, 13, tint, false);
+        tile.addView(detail);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+        if (!warm) lp.setMarginStart(ui.dp(8));
+        shortcuts.addView(tile, lp);
+        return detail;
     }
 
     private LinearLayout section(LinearLayout page, String title) {
-        TextView heading = ui.header(title);
-        page.addView(heading);
-        LinearLayout card = new LinearLayout(act);
-        card.setTag(heading);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(ui.round(Ui.DARK ? Ui.CARD : Ui.FIELD, 18));
-        card.setClipToOutline(true);
-        LinearLayout.LayoutParams lp = ui.matchWrap();
-        lp.setMargins(ui.dp(12), 0, ui.dp(12), ui.dp(2));
-        page.addView(card, lp);
+        int index = sections.size();
+        TextView chip = ui.medium(title, 14, Ui.INK);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(ui.dp(14), 0, ui.dp(14), 0);
+        chip.setMinimumHeight(ui.dp(44));
+        chip.setFocusable(true);
+        chip.setOnClickListener(v -> {
+            selected = index;
+            filter();
+            tabScroll.smoothScrollTo(chip.getLeft() - ui.dp(14), 0);
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMarginEnd(ui.dp(6));
+        tabs.addView(chip, lp);
+        labels.add(chip);
+        LinearLayout card = ui.panel(page);
+        sections.add(card);
         return card;
+    }
+
+    private void filter() {
+        String q = VideoScreen.normalize(search.getText().toString());
+        boolean browsing = q.isEmpty();
+        shortcuts.setVisibility(browsing ? View.VISIBLE : View.GONE);
+        tabScroll.setVisibility(browsing ? View.VISIBLE : View.GONE);
+        boolean any = false;
+        for (int i = 0; i < sections.size(); i++) {
+            LinearLayout card = sections.get(i);
+            TextView chip = labels.get(i);
+            boolean current = i == selected;
+            chip.setSelected(current);
+            chip.setBackground(ui.round(current ? Ui.INK : Ui.FIELD, 22));
+            chip.setTextColor(current ? Ui.BG : Ui.INK);
+            boolean matchGroup = VideoScreen.normalize(chip.getText().toString()).contains(q);
+            boolean visible = false;
+            for (int j = 0; j < card.getChildCount(); j++) {
+                View row = card.getChildAt(j);
+                TextView title = Ui.titleOf(row);
+                TextView sub = Ui.subtitleOf(row);
+                String words = (title == null ? "" : title.getText()) + " " + (sub == null ? "" : sub.getText());
+                boolean match = browsing ? current : matchGroup || VideoScreen.normalize(words).contains(q);
+                row.setVisibility(match ? View.VISIBLE : View.GONE);
+                visible |= match;
+            }
+            card.setVisibility(visible ? View.VISIBLE : View.GONE);
+            any |= visible;
+        }
+        empty.setVisibility(any ? View.GONE : View.VISIBLE);
     }
 
     private static String regionSummary() {
