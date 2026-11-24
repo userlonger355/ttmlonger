@@ -1,0 +1,52 @@
+name: ARM64 Android host capability
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/navigation-metadata-20261124
+    paths:
+      - .github/workflows/arm64-capability.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - name: Check native architecture and emulator prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "Host architecture: $arch"
+          [[ "$arch" == aarch64 ]]
+          echo "### ARM64 host capability" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Native architecture: $arch" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -c /dev/kvm ]]; then
+            echo "KVM device present"
+            echo "- KVM: present (access and acceleration still need checking)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::No KVM device; native Android VM not ready on this host"
+            echo "- KVM: unavailable" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -d /dev/binderfs ]] || modinfo binder_linux >/dev/null 2>&1; then
+            echo "- Binder kernel support: candidate; not validated" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Binder kernel support: not found" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -n "$sdk" && -x "$sdk/emulator/emulator" ]]; then
+            file "$sdk/emulator/emulator"
+            if file "$sdk/emulator/emulator" | grep -qi 'ARM aarch64'; then
+              echo "- Native Android emulator binary: found" >> "$GITHUB_STEP_SUMMARY"
+              "$sdk/emulator/emulator" -accel-check || true
+            else
+              echo "- Native Android emulator binary: unavailable" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "- Android emulator: not installed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "This is a capability probe, not an application test."
