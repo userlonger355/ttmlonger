@@ -48,9 +48,12 @@ public final class StreakChecks {
         expect(reopened.minute("35") == 440, "restored time");
         expect(reopened.last("35", 440, conversation) == 10000, "persistent receipt");
         expect(reopened.last("21", 440, conversation) == 0, "other account receipt");
-        expect(reopened.last("35", 441, conversation) == 0, "other time");
-        expect(reopened.last("35", -1, conversation) == 0, "manual and grey ledger");
+        expect(reopened.last("35", 441, conversation) == 10000, "changing time preserves daily receipt");
+        expect(reopened.last("35", -1, conversation) == 10000, "manual and grey share daily receipt");
         expect(reopened.lastAny("35", conversation) == 10000, "summary receipt");
+        reopened.submitted("35", -1, conversation, 20000);
+        expect(reopened.last("35", 440, conversation) == 20000, "manual receipt prevents scheduled duplicate");
+        expect(reopened.last("21", -1, conversation) == 0, "manual receipt remains account scoped");
         Prefs.streakDaily = old;
         context.getSharedPreferences("ttmlonger_streak_schedule", 0).edit().clear().commit();
     }
