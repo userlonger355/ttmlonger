@@ -116,6 +116,18 @@ final class RuntimeUiChecks {
             result("menu_footer_equal_color",version instanceof TextView&&author instanceof TextView&&((TextView)version).getCurrentTextColor()==((TextView)author).getCurrentTextColor()&&((TextView)version).getTextSize()==((TextView)author).getTextSize());
             result("menu_card_title_preserved",text(menu.getWindow().getDecorView(),"Регион")!=null&&text(menu.getWindow().getDecorView(),"Нижняя панель")!=null);
             metadataChecks();
+            result("comment_wallpaper_scope",CommentWallpaper.panelName("X.0h10")&&CommentWallpaper.panelName("host.CommentListPanel")&&!CommentWallpaper.panelName("android.widget.LinearLayout"));
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(16,16,android.graphics.Bitmap.Config.ARGB_8888);
+            bitmap.eraseColor(0xff202020);bitmap.setPixel(8,8,0xffffffff);
+            android.graphics.Bitmap softened=CommentWallpaper.blurred(bitmap,60);
+            result("comment_wallpaper_blur",softened.getPixel(8,8)!=0xffffffff&&softened.getWidth()==16);
+            View wallpaperFixture=new View(activity);android.graphics.drawable.ColorDrawable original=new android.graphics.drawable.ColorDrawable(0xff000000);
+            wallpaperFixture.setBackground(original);wallpaperFixture.setPadding(2,3,4,5);
+            CommentWallpaper.applyBackground(wallpaperFixture,CommentWallpaper.drawable(softened,40,true,0));
+            result("comment_wallpaper_preserve_padding",wallpaperFixture.getPaddingTop()==3&&wallpaperFixture.getPaddingBottom()==5);
+            CommentWallpaper.restore(wallpaperFixture);
+            result("comment_wallpaper_restore",wallpaperFixture.getBackground()==original);
+            softened.recycle();
             TextView saveOffer=TtStyle.saveOffer(activity);
             saveOffer.measure(View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
             result("save_offer_single_icon",saveOffer.getText().length()==0&&saveOffer.getForeground()!=null&&saveOffer.getCompoundDrawablesRelative()[0]==null);

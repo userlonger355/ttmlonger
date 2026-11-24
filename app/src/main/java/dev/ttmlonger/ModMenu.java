@@ -361,7 +361,7 @@ final class ModMenu extends Screen {
             case "Дополнительные возможности": return new String[]{"Доп. функции","Возможности TikTok"};
             case "Резервная копия настроек": return new String[]{"Резервная копия","Импорт и экспорт"};
             case "Настройки разработчика TikTok": return new String[]{"Разработчик","Флаги A/B"};
-            case "Внешний вид": return new String[]{title,"Тема и акцент"};
+            case "Внешний вид": return new String[]{title,"Тема и фон"};
             case "Нижняя панель": return new String[]{title,"Liquid Glass"};
             case "Возможности": return new String[]{title,"Функции TikTok"};
             case "Бейджики": return new String[]{title,"Значки аккаунтов"};

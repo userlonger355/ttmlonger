@@ -85,6 +85,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
         try {
             ActivityResults.install();
+            try{CommentWallpaper.install(ctx);}catch(Throwable t){FlagStore.log(t);}
         } catch (Throwable t) {
             FlagStore.log(t);
         }
