@@ -225,7 +225,7 @@ final class StoryShare {
         if(row.getWidth()<step*3){soundFallback(root,s,music);return;}
         Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor(),size=Math.min(dp(c,56),Math.round(step*.72f));
         LinearLayout tile=new LinearLayout(c);tile.setTag(ACTION,Boolean.TRUE);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
-        ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);icon.setBackground(bg);int pad=Math.round(size*.27f);icon.setPadding(pad,pad,pad,pad);tile.addView(icon,new LinearLayout.LayoutParams(size,size));
+        ImageView icon=new ImageView(c);icon.setImageDrawable(Icons.of(Icons.MUSIC,ink));GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);icon.setBackground(bg);int pad=Math.round(size*.27f);icon.setPadding(pad,pad,pad,pad);tile.addView(icon,new LinearLayout.LayoutParams(size,size));
         TextView label=new TextView(c);label.setText("Сохранить звук");label.setGravity(Gravity.CENTER);label.setTextColor(ink);label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,s.soundReport.getTextSize());label.setTypeface(s.soundReport.getTypeface());label.setMaxLines(2);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(c,8);tile.addView(label,lp);
         tile.setContentDescription("Сохранить звук");tile.setOnClickListener(v->AudioSaver.startMusic(c,music));
         if(row instanceof LinearLayout){int occupied=0;for(int i=0;i<row.getChildCount();i++)if(row.getChildAt(i).getVisibility()!=View.GONE)occupied+=row.getChildAt(i).getWidth();if(occupied+step>row.getWidth()+dp(c,4)){soundFallback(root,s,music);return;}row.addView(tile,new LinearLayout.LayoutParams(step,-2));}
@@ -238,7 +238,7 @@ final class StoryShare {
             if(host==root||host.getOrientation()!=LinearLayout.VERTICAL||host.getWidth()<root.getWidth()*.6f)continue;
             View a=childOf(s.soundReport,host),b=childOf(s.qr,host);if(a==null||a!=b||a.getWidth()<host.getWidth()*.65f)continue;
             Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor();LinearLayout action=new LinearLayout(c);action.setTag(ACTION,Boolean.TRUE);action.setGravity(Gravity.CENTER_VERTICAL);action.setPadding(dp(c,16),dp(c,8),dp(c,16),dp(c,8));action.setMinimumHeight(dp(c,44));
-            ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));action.addView(icon,new LinearLayout.LayoutParams(dp(c,20),dp(c,20)));
+            ImageView icon=new ImageView(c);icon.setImageDrawable(Icons.of(Icons.MUSIC,ink));action.addView(icon,new LinearLayout.LayoutParams(dp(c,20),dp(c,20)));
             TextView label=new TextView(c);label.setText("Сохранить звук");label.setTextColor(ink);label.setTextSize(14);label.setPadding(dp(c,12),0,0,0);action.addView(label,new LinearLayout.LayoutParams(0,-2,1));
             action.setOnClickListener(v->AudioSaver.startMusic(c,music));host.addView(action,host.indexOfChild(a)+1,new LinearLayout.LayoutParams(-1,-2));buttons.put(root,action);return;
         }
@@ -275,7 +275,7 @@ final class StoryShare {
         int ink=sample.getCurrentTextColor();
         LinearLayout col=new LinearLayout(c);
         col.setTag(ACTION, Boolean.TRUE); col.setOrientation(LinearLayout.VERTICAL);col.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
-        ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));
+        ImageView icon=new ImageView(c);icon.setImageDrawable(audio?Icons.of(Icons.MUSIC,ink):Glyph.download(ink));
         GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);
         bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);
         icon.setBackground(bg); int pad=Math.round(diameter*.27f);icon.setPadding(pad,pad,pad,pad);
@@ -305,7 +305,8 @@ final class StoryShare {
         r.setClickable(true);r.setFocusable(true);r.setContentDescription("Скачать через мод, открыть варианты");
         r.setOnClickListener(v->{
             android.widget.PopupMenu menu=new android.widget.PopupMenu(c,r,Gravity.END);
-            menu.getMenu().add(0,1,0,"Скачать видео");menu.getMenu().add(0,2,1,"Скачать звук");
+            menu.getMenu().add(0,1,0,"Скачать видео").setIcon(Icons.of(Icons.DOWNLOAD,ink));menu.getMenu().add(0,2,1,"Скачать звук").setIcon(Icons.of(Icons.MUSIC,ink));
+            if(android.os.Build.VERSION.SDK_INT>=29)menu.setForceShowIcon(true);
             menu.setOnMenuItemClickListener(item->{try{Context app=c.getApplicationContext();if(item.getItemId()==1)VideoSaver.start(app==null?c:app,e);else AudioSaver.start(app==null?c:app,e);}catch(Throwable t){FlagStore.log(t);Toasts.show(c,"Не удалось сохранить");}return true;});
             menu.show();
         });return r;

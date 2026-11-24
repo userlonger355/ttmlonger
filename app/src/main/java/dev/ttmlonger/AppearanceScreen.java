@@ -73,7 +73,7 @@ final class AppearanceScreen extends Screen {
         body.addView(restartCard, rp);
 
         body.addView(ui.menuRow(Icons.IMAGE,"Фон комментариев","Своя картинка · размытие",null,v -> CommentWallpaperScreen.show(act)));
-        body.addView(ui.menuRow(Icons.IMAGE,"Форма аватарок","12 форм · Material You · вращение",null,v -> AvatarContours.editor(act)));
+        body.addView(ui.menuRow(Icons.IMAGE,"Форма аватарок","12 форм · конструктор · вращение",null,v -> AvatarContours.editor(act)));
         body.addView(ui.toggleRow(-1,"Вращение аватарок","Плавное вращение формы, фото неподвижно",AvatarContours.rotating(),on -> AvatarContours.setRotation(act,on)));
         body.addView(ui.toggleRow(-1,"Системная яркость","Не разрешать TikTok принудительно повышать яркость окна",BrightnessLock.enabled(act),on -> BrightnessLock.set(act,on)));
         buildAccentCard(body);

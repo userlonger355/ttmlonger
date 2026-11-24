@@ -21,7 +21,16 @@ import de.robv.android.xposed.XposedHelpers;
 /** Runtime adaptation of the round-loader integration points documented by MargyT.
  * Original circles remain untouched; only known circle draw/clip calls are substituted. */
 final class AvatarContours {
-    static final String[] LABELS={"Круг","Скруглённый","Скверкл","Печенье","Клевер","Вспышка","Волна","Ромб","Шестигранник","Сердечко","Цветок","Арка"};
+    static final String[] LABELS={"Круг","Скруглённый","Скверкл","Печенье","Клевер","Вспышка","Волна","Ромб","Шестигранник","Сердечко","Цветок","Арка","Своя форма"};
+    static final int CUSTOM=12;
+    private static volatile AvatarShape custom=AvatarShape.initial();
+    static AvatarShape customShape(){return custom;}
+    static boolean isCustom(){return shape==CUSTOM;}
+    static int speed(){return spinSeconds;}
+    static void saveCustom(Context c,AvatarShape value,boolean rotate,int seconds){
+        custom=value;shape=CUSTOM;spin=rotate;spinSeconds=Math.max(3,Math.min(20,seconds));spinStart=SystemClock.uptimeMillis();
+        prefs(c).edit().putString("avatar_custom_shape",value.encode()).putInt("avatar_contour",CUSTOM).putBoolean("avatar_contour_spin",rotate).putInt("avatar_contour_seconds",spinSeconds).apply();refreshVisible();
+    }
     private static final String[] OWNERS={"X.1Fnt","X.1Fnu","X.0HEe","X.0GvU","com.facebook.drawee.drawable.RoundedBitmapDrawable","com.facebook.drawee.drawable.RoundedDrawable","com.facebook.drawee.drawable.RoundedNinePatchDrawable","com.facebook.drawee.drawable.RoundedCornersDrawable","com.facebook.drawee.drawable.RoundedColorDrawable"};
     private static final WeakHashMap<Path,float[]> circles=new WeakHashMap<>();
     private static final java.util.Set<String> BUILDERS=new java.util.HashSet<>(java.util.Arrays.asList("X.1Fnt","X.0HEe","X.0GvU"));
@@ -46,6 +55,7 @@ final class AvatarContours {
     static Path contour(int id,float cx,float cy,float radius,float angle){
         Path path=new Path();
         id=clamp(id);
+        if(id==CUSTOM)return custom.path(cx,cy,radius,angle);
         if(id==0){makingContour.set(true);try{path.addCircle(cx,cy,radius,Path.Direction.CW);}finally{makingContour.remove();}return path;}
         if(id==1){
             float side=radius*.96f;
@@ -93,6 +103,7 @@ final class AvatarContours {
     private static boolean animates(){return spin&&shape!=0&&(android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled());}
     private static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences("ttmlonger_interface",0);}
     static void install(ClassLoader cl,Context c){
+        custom=AvatarShape.decode(prefs(c).getString("avatar_custom_shape",null));
         shape=clamp(prefs(c).getInt("avatar_contour",0));spin=prefs(c).getBoolean("avatar_contour_spin",false);spinSeconds=Math.max(3,Math.min(20,prefs(c).getInt("avatar_contour_seconds",9)));
         installAvatarViews();
         try{
@@ -149,8 +160,10 @@ final class AvatarContours {
                         boolean empty=path.isEmpty();
                         // Fresco's rounded drawing also serves non-avatar icons. Only change its paths in a recognized avatar scope; otherwise wait for bitmap rendering.
                         if(building.get()!=null&&drawing.get()!=null&&drawing.get().getClass().getName().startsWith("com.facebook.")&&avatarRender.get()==null)return;
-                        if(empty)synchronized(circles){circles.put(path,new float[]{x,y,r,shape});}
-                        if(shape==0)return;
+                        if(empty)synchronized(circles){circles.put(path,new float[]{x,y,r,shape==CUSTOM?0:shape});}
+                        // Keep a canonical native circle for custom contours, so subsequent edits
+                        // are regenerated at draw time rather than freezing the first custom path.
+                        if(shape==0||shape==CUSTOM)return;
                         addMask(path,shape,x,y,r);
                         p.setResult(null);
                         if(substitutions.getAndIncrement()==0)android.util.Log.i("TTMLonger","AVATAR_NATIVE_MASK_REPLACED");
@@ -178,7 +191,7 @@ final class AvatarContours {
                         // Static shape was already inserted at construction. Rotate only a pure mask
                         // with the same bounds; preserve composite border paths.
                         if(drawing.get()!=null&&Looper.myLooper()==Looper.getMainLooper())knownDrawables.put(drawing.get(),true);
-                        if(!animates()&&(int)at[3]==shape)return;
+                        if(!animates()&&(int)at[3]==shape&&shape!=CUSTOM)return;
                         Path unturned=contour((int)at[3],at[0],at[1],at[2],0);
                         RectF originalBounds=new RectF(),maskBounds=new RectF();
                         original.computeBounds(originalBounds,true);unturned.computeBounds(maskBounds,true);
@@ -311,6 +324,9 @@ final class AvatarContours {
             }
             body.addView(row,new LinearLayout.LayoutParams(-1,-2));
         }
+        body.addView(ui.header("Конструктор"));
+        LinearLayout customRow=ui.row(Icons.PALETTE,"Своя форма",isCustom()?"Выбрана · изменить контур":"Создать собственный контур",null,true,v->{sheet.dialog.dismiss();AvatarDesigner.show(act);});
+        MaskSample customSample=new MaskSample(act,CUSTOM,rotating);customRow.addView(customSample,0,new LinearLayout.LayoutParams(ui.dp(50),ui.dp(50)));samples.add(customSample);body.addView(customRow);
         body.addView(ui.toggleRow(-1,"Вращать контур","Фотография остаётся неподвижной",rotating[0],on->{rotating[0]=on;setRotation(act,on);for(MaskSample sample:samples)sample.invalidate();}));
         TextView speed=ui.text("Один оборот: "+spinSeconds+" с",14,Ui.INK,true);speed.setPadding(ui.dp(12),ui.dp(8),ui.dp(12),0);body.addView(speed);
         android.widget.SeekBar slider=new android.widget.SeekBar(act);slider.setMax(17);slider.setProgress(spinSeconds-3);slider.setContentDescription("Скорость вращения");body.addView(slider,ui.matchWrap());

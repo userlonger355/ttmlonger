@@ -288,6 +288,7 @@ final class VideoScreen extends Screen {
         actions.setOrientation(LinearLayout.VERTICAL);
         actions.addView(row.button);
         TextView audio = TtStyle.neutral(act, "Скачать звук", 36f, 13f);
+        android.graphics.drawable.Drawable note=Icons.of(Icons.MUSIC,Ui.INK);note.setBounds(0,0,ui.dp(16),ui.dp(16));audio.setCompoundDrawablesRelative(note,null,null,null);audio.setCompoundDrawablePadding(ui.dp(5));
         audio.setOnClickListener(v -> AudioSaver.start(app, row.entry));
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1,-2);
         ap.topMargin=ui.dp(5);
