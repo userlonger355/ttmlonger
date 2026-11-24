@@ -20,7 +20,8 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 
 final class ProfileFacts {
-    private static final LruCache<String, WeakReference<Object>> users = new LruCache<>(128);
+    private static final LruCache<String, Object> users = new LruCache<>(64);
+    private static final ThreadLocal<Boolean> remembering=new ThreadLocal<>();
     private TextView extras;
     private TextView dateAction;
     private TextView anchor;
@@ -31,16 +32,15 @@ final class ProfileFacts {
         for (String name : new String[]{AvatarHooks.USER, BadgeHooks.PROFILE}) {
             try {
                 Class<?> user = Class.forName(name, false, cl);
-                XposedBridge.hookMethod(user.getMethod("getUniqueId"), new XC_MethodHook() {
-                    @Override protected void afterHookedMethod(MethodHookParam p) {
-                        if (!(p.getResult() instanceof String)) return;
-                        String key = ((String) p.getResult()).toLowerCase(Locale.ROOT);
-                        if (key.isEmpty()) return;
-                        WeakReference<Object> old = users.get(key);
-                        if (old == null || old.get() != p.thisObject) users.put(key, new WeakReference<>(p.thisObject));
-                    }
-                });
-            } catch (ReflectiveOperationException | LinkageError ignored) { }
+                XC_MethodHook observe=new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){
+                    if(p.hasThrowable()||remembering.get()!=null)return;remembering.set(true);
+                    try{Object raw=RepostTimes.readField(p.thisObject,"unique_id");if(raw==null)return;String key=raw.toString().toLowerCase(Locale.ROOT);
+                        if(!key.matches("[a-z0-9_.]{1,64}"))return;
+                        Object old=users.get(key);if(old==null||richness(p.thisObject)>=richness(old))users.put(key,p.thisObject);
+                    }catch(Throwable ignored){}finally{remembering.remove();}
+                }};
+                for(String method:new String[]{"getUniqueId","getNickname","getFollowerCount","getFollowingCount","getSignature","getFollowerStatus","setUniqueId"})try{XposedBridge.hookAllMethods(user,method,observe);}catch(Throwable ignored){}
+            }catch(Throwable ignored){}
         }
         XposedBridge.hookAllMethods(View.class, "performLongClick", new XC_MethodHook() {
             @Override protected void beforeHookedMethod(MethodHookParam p) {
@@ -57,7 +57,9 @@ final class ProfileFacts {
         });
     }
 
+    private static int richness(Object o){int n=0;for(String k:new String[]{"nickname","signature","follower_count","following_count","total_favorited","follower_status"})if(RepostTimes.readField(o,k)!=null)n++;return n;}
     private static String date(Object model) {
+        long explicit=VideoInfo.parseEventTime(RepostTimes.readField(model,"create_time"));if(explicit>=1262304000L&&explicit<=System.currentTimeMillis()/1000L)return DateFormat.getDateInstance(DateFormat.LONG).format(new Date(explicit*1000L));
         String id = BadgeHooks.uidOf(model);
         try {
             long seconds = Long.parseLong(id) >>> 32;
@@ -72,8 +74,8 @@ final class ProfileFacts {
     }
 
     private static Object model(String key) {
-        WeakReference<Object> weak = users.get(key.toLowerCase(Locale.ROOT));
-        return weak == null ? null : weak.get();
+        Object hit=users.get(key.toLowerCase(Locale.ROOT));
+        return hit!=null&&key.equalsIgnoreCase(String.valueOf(RepostTimes.readField(hit,"unique_id")))?hit:null;
     }
 
     private static void show(Activity a, String key) {
@@ -109,7 +111,7 @@ final class ProfileFacts {
         }
         anchor = view;
         if (view == null) { remove(); return; }
-        String key = view.getText().toString().trim().substring(1);
+        String raw=view.getText().toString().trim();if(!raw.matches("@[A-Za-z0-9_.]{1,64}")){remove();return;}String key=raw.substring(1);
         if (InterfaceHooks.on("profile_copy")||InterfaceHooks.on("profile_date_jump")) {
             if (!handles.containsKey(view)) wasLongClickable = view.isLongClickable();
             handles.put(view, key);
@@ -118,15 +120,14 @@ final class ProfileFacts {
         Object user = model(key);
         String created = user != null && InterfaceHooks.on("profile_date") ? date(user) : null;
         Object follower = user != null && InterfaceHooks.on("profile_follow")
-                ? DownloadHooks.call(user, "getFollowerStatus") : null;
-        boolean follows = follower instanceof Number && ((Number) follower).intValue() == 1;
+                ? RepostTimes.readField(user, "follower_status") : null;
+        boolean follows = Boolean.TRUE.equals(follower)||follower instanceof Number && ((Number) follower).intValue() == 1;
         String info = follows ? "Подписан(-а) на вас" : "";
         if (created != null) info += (info.isEmpty() ? "" : "  ·  ") + "В TikTok с " + created;
         if(user!=null && InterfaceHooks.on("profile_repost")) {
-            for(String getter:new String[]{"getLastRepostTime","getLastRepostTimestamp"}) {
-                Object value=DownloadHooks.call(user,getter);
-                if(!(value instanceof Number))continue;
-                long ts=((Number)value).longValue();if(ts>100000000000L)ts/=1000;
+            for(String getter:new String[]{"last_repost_time","last_repost_timestamp","last_upvote_time"}) {
+                Object value=RepostTimes.readField(user,getter);
+                long ts=VideoInfo.parseEventTime(value);
                 if(ts>=1262304000L && ts<=System.currentTimeMillis()/1000L) {
                     info+=(info.isEmpty()?"":"\n")+"Последний репост: "+DateFormat.getDateTimeInstance().format(new Date(ts*1000L));break;
                 }
@@ -134,25 +135,28 @@ final class ProfileFacts {
         }
         if (user != null && InterfaceHooks.on("profile_counts")) {
             List<String> counts = new ArrayList<>();
-            String[] getters = {"getFollowingCount", "getFollowerCount", "getTotalFavorited"};
+            String[] getters = {"following_count", "follower_count", "total_favorited"};
             String[] titles = {"Подписки", "Подписчики", "Лайки"};
             java.text.NumberFormat format = java.text.NumberFormat.getIntegerInstance();
             for (int i = 0; i < getters.length; i++) {
-                Object number = DownloadHooks.call(user, getters[i]);
+                Object number = RepostTimes.readField(user, getters[i]);
                 if (number instanceof Number && ((Number) number).longValue() >= 0)
                     counts.add(titles[i] + " " + format.format(((Number) number).longValue()));
             }
             if (!counts.isEmpty()) info += (info.isEmpty() ? "" : "\n") + android.text.TextUtils.join(" · ", counts);
         }
-        if (!(view.getParent() instanceof LinearLayout)) { remove(); return; }
-        LinearLayout parent = (LinearLayout) view.getParent();
-        if (parent.getOrientation() != LinearLayout.VERTICAL) { remove(); return; }
+        LinearLayout parent=null;View slot=view;
+        for(android.view.ViewParent q=view.getParent();q instanceof ViewGroup;q=q.getParent()){
+            ViewGroup g=(ViewGroup)q;if(g==view.getRootView()||g.getHeight()>view.getRootView().getHeight()*.65f)break;
+            if(g instanceof LinearLayout&&((LinearLayout)g).getOrientation()==LinearLayout.VERTICAL){parent=(LinearLayout)g;break;}slot=g;
+        }
+        if(parent==null){remove();return;}
         if (extras == null || extras.getParent() != parent) {
             remove();
             extras = new TextView(view.getContext());
             extras.setTag(Ui.OWN_TAG);
             extras.setTextSize(12);
-            parent.addView(extras, parent.indexOfChild(view) + 1);
+            parent.addView(extras, parent.indexOfChild(slot) + 1);
         }
         extras.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
         if(InterfaceHooks.on("profile_date_jump")){

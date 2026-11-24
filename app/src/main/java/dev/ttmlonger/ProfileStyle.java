@@ -15,15 +15,19 @@ final class ProfileStyle {
         }
         if(profile)walk(root,0,new int[]{2500});
     }
+    private static int kind(String s){
+        if(s.equals("просмотры профиля")||s.equals("кто смотрел профиль")||s.equals("profile views")||s.equals("profile view history"))return 0;
+        if(s.equals("добавить друзей")||s.equals("найти друзей")||s.equals("add friends")||s.equals("find friends"))return 1;
+        if(s.equals("баланс")||s.equals("balance"))return 2;
+        if(s.equals("minis")||s.equals("tiktok minis"))return 3;
+        return -1;
+    }
     private static boolean shouldHide(View v){
-        String s=norm(v.getContentDescription());
-        if(v instanceof TextView)s+=" "+norm(((TextView)v).getText());
-        s=s.trim();
-        if(s.equals("просмотры профиля")||s.equals("profile views")||s.equals("profile view history"))return InterfaceHooks.on(KEYS[0]);
-        if(s.equals("добавить друзей")||s.equals("add friends")||s.equals("find friends"))return InterfaceHooks.on(KEYS[1]);
-        if(s.equals("баланс")||s.equals("balance"))return InterfaceHooks.on(KEYS[2]);
-        if(s.equals("minis")||s.equals("tiktok minis"))return InterfaceHooks.on(KEYS[3]);
-        return false;
+        int k=kind(norm(v.getContentDescription()));if(k<0&&v instanceof TextView)k=kind(norm(((TextView)v).getText()));
+        if(k<0&&v.getId()!=View.NO_ID)try{String n=v.getResources().getResourceEntryName(v.getId()).toLowerCase(Locale.ROOT);
+            if(n.contains("profile_view")||n.contains("profile_visitor"))k=0;else if(n.contains("profile_add_friend")||n.contains("profile_find_friend"))k=1;else if(n.contains("profile_balance"))k=2;else if(n.contains("profile_minis"))k=3;
+        }catch(Throwable ignored){}
+        return k>=0&&InterfaceHooks.on(KEYS[k]);
     }
     private static void walk(View v,int depth,int[] budget){
         if(--budget[0]<0||depth>35||v.getVisibility()!=View.VISIBLE||Ui.OWN_TAG.equals(v.getTag()))return;

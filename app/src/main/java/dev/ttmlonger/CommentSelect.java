@@ -150,7 +150,7 @@ final class CommentSelect {
         }));return row;
     }
     static String body(Object model){
-        Object text=DownloadHooks.call(model,"getText");
+        Object text=RepostTimes.readField(model,"text");
         if(!(text instanceof CharSequence)&&isComment(model))try{Field f=DownloadHooks.findField(model.getClass(),"text");if(f!=null)text=f.get(model);}catch(Throwable ignored){}
         return text instanceof CharSequence&&((CharSequence)text).length()<=20000?text.toString():null;
     }

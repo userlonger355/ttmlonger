@@ -182,7 +182,7 @@ final class CommentTools {
     static void touch(View root,MotionEvent event){
         if(CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
         int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action)return;lastEvent=stamp;lastAction=action;
-        if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null){Rect r=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});for(TextView t:cells)if(bound.containsKey(t)&&t.getGlobalVisibleRect(r)&&r.contains((int)downX,(int)downY)){recent=bound.get(t);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());break;}}return;}
+        if(action==MotionEvent.ACTION_DOWN){View currentPanel=CommentWallpaper.panel(root);if(currentPanel!=null){recent=null;recentAt=0;}downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null){Rect r=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});for(TextView t:cells)if(bound.containsKey(t)&&t.getGlobalVisibleRect(r)&&r.contains((int)downX,(int)downY)){recent=bound.get(t);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());break;}}return;}
         if(!InterfaceHooks.on("comment_double"))return;
         if(action!=MotionEvent.ACTION_UP||event.getEventTime()-downAt>300||Math.abs(event.getRawX()-downX)>20||Math.abs(event.getRawY()-downY)>20)return;
         View panel=CommentWallpaper.panel(root);if(panel==null)return;

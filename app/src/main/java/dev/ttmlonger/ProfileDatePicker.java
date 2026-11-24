@@ -17,6 +17,7 @@ final class ProfileDatePicker {
         Post(String a,String u,String d,long t){aid=a;user=u;desc=d;seconds=t;}
     }
     static void install(ClassLoader cl){
+        Class<?> post=XposedHelpers.findClassIfExists(DownloadHooks.AWEME,cl);if(post!=null){XC_MethodHook hook=new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable())remember(p.thisObject);}};for(String g:new String[]{"getAuthor","getCreateTime","getDesc"})try{XposedBridge.hookAllMethods(post,g,hook);}catch(Throwable ignored){}}
         for(String n:new String[]{"com.ss.android.ugc.aweme.profile.model.AwemeList","com.ss.android.ugc.aweme.profile.model.ProfileAwemeList","com.ss.android.ugc.aweme.profile.model.UserAwemeList","com.ss.android.ugc.aweme.profile.model.ProfilePostList","com.ss.android.ugc.aweme.feed.model.AwemeList"}){
             Class<?> c=XposedHelpers.findClassIfExists(n,cl);if(c==null)continue;
             for(String getter:new String[]{"getItems","getAwemeList"})try{XposedBridge.hookAllMethods(c,getter,new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable()&&p.getResult() instanceof List&&InterfaceHooks.on("profile_date_jump")){List<?> list=(List<?>)p.getResult();if(list.size()<=300)for(Object o:list)remember(o);}}});}catch(Throwable ignored){}
