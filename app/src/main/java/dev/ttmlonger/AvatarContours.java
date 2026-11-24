@@ -325,6 +325,7 @@ final class AvatarContours {
             body.addView(row,new LinearLayout.LayoutParams(-1,-2));
         }
         body.addView(ui.header("Конструктор"));
+        body.addView(ui.row(Icons.IMAGE,"Мои формы","Сохранённые контуры · "+AvatarLibrary.list(act).size(),null,true,v->{sheet.dialog.dismiss();AvatarLibrary.show(act);}));
         LinearLayout customRow=ui.row(Icons.PALETTE,"Своя форма",isCustom()?"Выбрана · изменить контур":"Создать собственный контур",null,true,v->{sheet.dialog.dismiss();AvatarDesigner.show(act);});
         MaskSample customSample=new MaskSample(act,CUSTOM,rotating);customRow.addView(customSample,0,new LinearLayout.LayoutParams(ui.dp(50),ui.dp(50)));samples.add(customSample);body.addView(customRow);
         body.addView(ui.toggleRow(-1,"Вращать контур","Фотография остаётся неподвижной",rotating[0],on->{rotating[0]=on;setRotation(act,on);for(MaskSample sample:samples)sample.invalidate();}));

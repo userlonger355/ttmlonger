@@ -11,7 +11,8 @@ final class StreakScreen extends Screen {
     private final StreakSchedule schedule;
     private TextView summary;
     private TextView caption;
-    private TextView result;
+    private TextView result,overviewTime;
+    private final TextView[] metrics=new TextView[4];
     private LinearLayout timeRow;
     private LinearLayout stickerRow;
     private LinearLayout peopleRow;
@@ -66,6 +67,11 @@ final class StreakScreen extends Screen {
         caption = ui.text("", 14, ink, false);
         hero.addView(caption);
 
+        body.addView(ui.header("Состояние серий"));
+        LinearLayout dashboard=ui.panel(body);dashboard.setPadding(ui.dp(10),ui.dp(8),ui.dp(10),ui.dp(10));
+        String[] labels={"Активные","Серые","Отправлено сегодня","К отправке"};
+        for(int r=0;r<2;r++){LinearLayout line=new LinearLayout(act);for(int c=0;c<2;c++){int i=r*2+c;LinearLayout cell=new LinearLayout(act);cell.setOrientation(1);cell.setPadding(ui.dp(10),ui.dp(8),ui.dp(10),ui.dp(8));cell.setBackground(ui.round(Ui.FIELD,15));metrics[i]=ui.text("—",24,i==1?Ui.MUTED:Ui.INK,true);cell.addView(metrics[i]);cell.addView(ui.text(labels[i],12,Ui.MUTED,false));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(ui.dp(3),ui.dp(3),ui.dp(3),ui.dp(3));line.addView(cell,lp);}dashboard.addView(line,ui.matchWrap());}
+        overviewTime=ui.note("Нажмите «Проверить огоньки» для получения данных.");dashboard.addView(overviewTime);
         body.addView(ui.header("Правила продления"));
         LinearLayout rules = ui.panel(body);
         timeRow = ui.row(Icons.CLOCK, "Время отправки", "", null, true, v -> pickTime());
@@ -115,6 +121,7 @@ final class StreakScreen extends Screen {
                 ? "Только отмеченные · " + StreakStore.pickedCount() : "Все чаты с действующей серией");
         forgetRow.setVisibility(chosen || StreakSticker.armed() ? View.VISIBLE : View.GONE);
         if(chatPreview!=null)chatPreview.update(Prefs.streakAuto,minute);
+        StreakRunner.Overview o=StreakRunner.overview(StreakHooks.liveOwner());if(overviewTime!=null){int[] nums=o==null?null:new int[]{o.active,o.grey,o.sent,o.due};for(int i=0;i<metrics.length;i++)if(metrics[i]!=null)metrics[i].setText(nums==null?"—":String.valueOf(nums[i]));String status=o==null?"Нажмите «Проверить огоньки»":("Последняя проверка: "+new java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(o.at))+(o.unknown>0?" · не прочитано: "+o.unknown:""));if(StreakRunner.holdRemaining()>0)status+=" · пауза после ошибок";overviewTime.setText(status);}
     }
 
     private void pickTime() {

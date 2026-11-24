@@ -11,24 +11,31 @@ final class AvatarDesigner {
     final Activity act;final StreakSheet sheet;final Ui ui;
     AvatarShape draft;boolean rotate;int seconds;
     final CanvasSample edit,small;
-    TextView stats;SeekBar nodes,round,speed;
+    TextView stats;SeekBar nodes,round,speed;EditText title;
+    final String id;final String initialName;
+    final java.util.ArrayDeque<AvatarShape> history=new java.util.ArrayDeque<>();
+    void remember(){if(history.size()>=30)history.removeFirst();history.addLast(draft);}
     boolean syncing;
-    static void show(Activity a){new AvatarDesigner(a).open();}
-    private AvatarDesigner(Activity a){
+    static void show(Activity a){AvatarLibrary.Saved s=AvatarLibrary.find(a,AvatarLibrary.active(a));new AvatarDesigner(a,s,false).open();}
+    static void edit(Activity a,AvatarLibrary.Saved s){new AvatarDesigner(a,s,false).open();}
+    static void create(Activity a){new AvatarDesigner(a,null,true).open();}
+    private AvatarDesigner(Activity a,AvatarLibrary.Saved saved,boolean fresh){
         act=a;sheet=new StreakSheet(a,"Конструктор формы");ui=sheet.ui;
-        draft=AvatarContours.customShape();rotate=AvatarContours.rotating();seconds=AvatarContours.speed();
+        id=saved==null?"":saved.id;initialName=saved==null?(fresh?"":"Моя форма"):saved.name;
+        draft=saved!=null?saved.shape:fresh?AvatarShape.initial():AvatarContours.customShape();rotate=saved!=null?saved.rotate:AvatarContours.rotating();seconds=saved!=null?saved.seconds:AvatarContours.speed();
         edit=new CanvasSample(true);small=new CanvasSample(false);
     }
     private void open(){
         ScrollView scroll=new ScrollView(act);scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout content=new LinearLayout(act);content.setOrientation(1);content.setPadding(ui.dp(14),0,ui.dp(14),ui.dp(8));scroll.addView(content);
+        content.addView(ui.header("Название"));title=new EditText(act);title.setSingleLine(true);title.setText(initialName);title.setHint("Например, Лунная звезда");title.setTextColor(Ui.INK);title.setHintTextColor(Ui.MUTED);title.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(40)});title.setTextSize(16);title.setPadding(ui.dp(14),ui.dp(10),ui.dp(14),ui.dp(10));title.setBackground(ui.round(Ui.FIELD,16));content.addView(title,ui.matchWrap());content.setFocusableInTouchMode(true);content.requestFocus();
         LinearLayout preview=new LinearLayout(act);preview.setOrientation(1);preview.setGravity(Gravity.CENTER_HORIZONTAL);preview.setPadding(ui.dp(10),ui.dp(8),ui.dp(10),ui.dp(12));preview.setBackground(ui.round(Ui.FIELD,22));
-        preview.addView(ui.text("Потяните точки контура",14,Ui.INK,true));preview.addView(edit,new LinearLayout.LayoutParams(-1,ui.dp(166)));
+        preview.addView(ui.text("Перетаскивайте точки в любом направлении",14,Ui.INK,true));preview.addView(edit,new LinearLayout.LayoutParams(-1,ui.dp(212)));
         LinearLayout bottom=new LinearLayout(act);bottom.setGravity(Gravity.CENTER_VERTICAL);bottom.addView(small,new LinearLayout.LayoutParams(ui.dp(54),ui.dp(54)));
         LinearLayout info=new LinearLayout(act);info.setOrientation(1);info.setPadding(ui.dp(10),0,0,0);info.addView(ui.medium("В ленте и чатах",14,Ui.INK));stats=ui.text("",12,Ui.MUTED,false);info.addView(stats);bottom.addView(info,new LinearLayout.LayoutParams(0,-2,1));preview.addView(bottom,ui.matchWrap());content.addView(preview,ui.matchWrap());
         content.addView(ui.header("Основа контура"));
         LinearLayout presets=new LinearLayout(act);String[] titles={"Звезда","Волна","Многоугольник"};int[] count={10,12,6},depth={45,18,0},r={20,90,15};
-        for(int i=0;i<titles.length;i++){final int n=i;TextView b=TtStyle.neutral(act,titles[i],40,12);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(40),1);lp.setMargins(ui.dp(2),0,ui.dp(2),0);presets.addView(b,lp);b.setOnClickListener(v->{draft=AvatarShape.preset(count[n],depth[n],r[n]);sync();});}
+        for(int i=0;i<titles.length;i++){final int n=i;TextView b=TtStyle.neutral(act,titles[i],40,12);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(40),1);lp.setMargins(ui.dp(2),0,ui.dp(2),0);presets.addView(b,lp);b.setOnClickListener(v->{remember();draft=AvatarShape.preset(count[n],depth[n],r[n]);sync();});}
         content.addView(presets,ui.matchWrap());
         nodes=slider(content,"Количество точек",3,16,draft.count,v->{draft=draft.resized(v);redraw();});
         round=slider(content,"Скругление",0,100,draft.rounding,v->{draft=draft.withRounding(v);redraw();});
@@ -36,8 +43,8 @@ final class AvatarDesigner {
         content.addView(ui.toggleRow(-1,"Вращать контур","Фото остаётся неподвижным",rotate,on->{rotate=on;redraw();}));
         speed=slider(content,"Оборот, сек.",3,20,seconds,v->{seconds=v;redraw();});
         sheet.root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(545),(int)(act.getResources().getDisplayMetrics().heightPixels*.67f))));
-        sheet.button("Сбросить форму",false,()->{draft=AvatarShape.initial();sync();});
-        sheet.button("Сохранить и применить",true,()->{AvatarContours.saveCustom(act,draft,rotate,seconds);sheet.dialog.dismiss();Restart.offer(act);});
+        LinearLayout undo=new LinearLayout(act);TextView back=TtStyle.neutral(act,"Отменить изменение",40,13),reset=TtStyle.neutral(act,"Сбросить",40,13);undo.addView(back,new LinearLayout.LayoutParams(0,ui.dp(40),1));undo.addView(reset,new LinearLayout.LayoutParams(0,ui.dp(40),1));content.addView(undo);back.setOnClickListener(v->{if(!history.isEmpty()){draft=history.removeLast();sync();}});reset.setOnClickListener(v->{remember();draft=AvatarShape.initial();sync();});
+        sheet.button("Сохранить и применить",true,()->{String name=title.getText().toString().trim();if(name.isEmpty()){title.setError("Введите название");title.requestFocus();return;}AvatarLibrary.Saved saved=AvatarLibrary.save(act,id,name,draft,rotate,seconds);if(saved==null){Toasts.show(act,"Не удалось сохранить: проверьте название и лимит 32 форм");return;}AvatarLibrary.apply(act,saved);sheet.dialog.dismiss();Restart.offer(act);});
         sync();sheet.show();
     }
     interface Change{void value(int v);}
@@ -45,7 +52,7 @@ final class AvatarDesigner {
         LinearLayout row=new LinearLayout(act);row.setOrientation(1);row.setPadding(ui.dp(8),ui.dp(5),ui.dp(8),ui.dp(2));
         TextView label=ui.text(name+" · "+initial,14,Ui.INK,true);row.addView(label);SeekBar bar=new SeekBar(act);bar.setMax(max-min);bar.setProgress(initial-min);bar.setContentDescription(name);bar.setProgressTintList(ColorStateList.valueOf(Theme.accent()));bar.setThumbTintList(ColorStateList.valueOf(Theme.accent()));row.addView(bar,ui.matchWrap());host.addView(row,ui.matchWrap());
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onStartTrackingTouch(SeekBar b){}
+            public void onStartTrackingTouch(SeekBar b){if(b==nodes||b==round)remember();}
             public void onStopTrackingTouch(SeekBar b){}
             public void onProgressChanged(SeekBar b,int p,boolean user){label.setText(name+" · "+(p+min));if(user&&!syncing)fn.value(p+min);}
         });return bar;
@@ -73,8 +80,8 @@ final class AvatarDesigner {
             if(!controls)return false;float x=e.getX()-getWidth()/2f,y=e.getY()-getHeight()/2f,r=radius();if(r<=0)return false;
             switch(e.getActionMasked()){
                 case MotionEvent.ACTION_DOWN:float best=ui.dp(27);active=-1;for(int i=0;i<draft.count;i++){float d=(float)Math.hypot(x-draft.x(i,r,0),y-draft.y(i,r,0));if(d<best){best=d;active=i;}}
-                    if(active<0)return false;getParent().requestDisallowInterceptTouchEvent(true);invalidate();return true;
-                case MotionEvent.ACTION_MOVE:if(active<0)return false;double theta=Math.PI*2*active/draft.count-Math.PI/2;draft=draft.withRadius(active,(float)((x*Math.cos(theta)+y*Math.sin(theta))/r));redraw();return true;
+                    if(active<0)return false;remember();getParent().requestDisallowInterceptTouchEvent(true);invalidate();return true;
+                case MotionEvent.ACTION_MOVE:if(active<0)return false;draft=draft.withPoint(active,x/r,y/r);redraw();return true;
                 case MotionEvent.ACTION_UP:case MotionEvent.ACTION_CANCEL:active=-1;getParent().requestDisallowInterceptTouchEvent(false);invalidate();if(e.getActionMasked()==MotionEvent.ACTION_UP)performClick();return true;
             }return active>=0;
         }

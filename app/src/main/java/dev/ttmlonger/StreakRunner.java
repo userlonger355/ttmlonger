@@ -59,6 +59,14 @@ final class StreakRunner {
     private static volatile int rounds;
     private static volatile int sends;
     private static volatile int fails;
+    private static volatile long autoHoldUntil;
+    static final class Overview {
+        final String owner;final int active,grey,sent,unknown,due;final long at;
+        Overview(String o,int a,int g,int s,int u,int d,long t){owner=o;active=a;grey=g;sent=s;unknown=u;due=d;at=t;}
+    }
+    private static volatile Overview overview;
+    static Overview overview(String owner){Overview o=overview;return owner!=null&&o!=null&&owner.equals(o.owner)?o:null;}
+    static long holdRemaining(){return Math.max(0,autoHoldUntil-SystemClock.elapsedRealtime());}
 
     private StreakRunner() {
     }
@@ -296,6 +304,7 @@ final class StreakRunner {
      */
     static void round(boolean dry) {
         if (CrashGuard.tripped || (!dry && !Prefs.streakAuto)) return;
+        if(!dry&&holdRemaining()>0){hint="Автоотправка временно приостановлена после ошибок";return;}
         if (schedule == null) {
             hint = "Мод ещё подключается к TikTok. Повторите проверку.";
             return;
@@ -340,6 +349,8 @@ final class StreakRunner {
         int unreadable = 0;
         Map<String, Integer> statuses = new TreeMap<>();
         List<String> due = new ArrayList<>();
+        Map<String,StreakHooks.Info> priorities=new java.util.HashMap<>();
+        int activeCount=0,greyCount=0;
         for (String conv : convs) {
             StreakHooks.Info i = StreakHooks.read(conv, true);
             if (i == null || i.streak < 0) {
@@ -347,6 +358,7 @@ final class StreakRunner {
                 continue;
             }
             if (i.streak >= StreakLogic.FLAME_FROM) {
+                if(StreakLogic.ACTIVE.equals(i.status))activeCount++;else if(StreakLogic.isGrey(i.status))greyCount++;
                 String key = i.status == null ? "?" : i.status;
                 Integer c = statuses.get(key);
                 statuses.put(key, c == null ? 1 : c + 1);
@@ -354,9 +366,11 @@ final class StreakRunner {
             StreakLogic.Verdict v = StreakLogic.decide(minute >= 0, minute, i.status, i.streak,
                     schedule.last(owner, minute, conv), StreakStore.lastFail(conv), now, tz);
             by[v.ordinal()]++;
-            if (v == StreakLogic.Verdict.SEND) due.add(conv);
+            if (v == StreakLogic.Verdict.SEND){due.add(conv);priorities.put(conv,i);}
         }
 
+        due.sort((a,b)->{StreakHooks.Info x=priorities.get(a),y=priorities.get(b);return StreakLogic.order(x.status,x.streak,a,y.status,y.streak,b);});
+        overview=new Overview(owner,activeCount,greyCount,by[StreakLogic.Verdict.SENT_TODAY.ordinal()],unreadable+by[StreakLogic.Verdict.UNKNOWN.ordinal()],due.size(),System.currentTimeMillis());
         String head = "чатов " + convs.size() + (convs.size() != known ? " из " + known + " (выбранные)" : "")
                 + ": к отправке " + due.size()
                 + ", сегодня уже " + by[StreakLogic.Verdict.SENT_TODAY.ordinal()]
@@ -395,9 +409,11 @@ final class StreakRunner {
         int ok = 0;
         int bad = 0;
         java.util.List<String> greySubmitted=new java.util.ArrayList<>();
-        int done = 0;
+        int done = 0,consecutive=0;
         for (String conv : due) {
             if (done++ >= StreakLogic.MAX_PER_ROUND) break;
+            if(!online())break;
+            hint="Автопродление: "+done+" из "+Math.min(due.size(),StreakLogic.MAX_PER_ROUND);
             if (!Prefs.streakAuto || !owner.equals(StreakHooks.liveOwner()) || schedule.minute(owner) != minute) break;
             if (Prefs.streakOnlyPicked && !StreakStore.isPicked(conv)) continue;
             // Перед отправкой читаем огонёк заново: серый из кэша стикер вызывать не должен.
@@ -415,19 +431,23 @@ final class StreakRunner {
                 if(StreakLogic.isGrey(fresh.status))greySubmitted.add(conv);
                 ok++;
                 sends++;
+                consecutive=0;
             } else {
                 StreakStore.markFail(conv, at);
                 bad++;
                 fails++;
+                if(++consecutive>=STOP_AFTER_FAILS){autoHoldUntil=SystemClock.elapsedRealtime()+30*60_000L;break;}
             }
             StreakStore.flush();
+            try{Thread.sleep(650L);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
         }
         StreakStore.flush();
         int confirmed=verifyGrey(owner,greySubmitted);
         last = "передано " + ok + ", подтверждено " + confirmed + ", ошибок " + bad + "; " + head;
         hint = "Передано TikTok: " + ok + " · серые огоньки стали активными: "+confirmed
                 + " из "+greySubmitted.size()+(bad > 0 ? " · ошибок: " + bad : "");
-        if (bad > 0 || due.size() > StreakLogic.MAX_PER_ROUND) request(StreakLogic.FAIL_BACKOFF_MS);
+        if(holdRemaining()>0){hint+=" · пауза 30 минут после трёх ошибок подряд";request(holdRemaining());}
+        else if (bad > 0 || due.size() > StreakLogic.MAX_PER_ROUND) request(StreakLogic.FAIL_BACKOFF_MS);
     }
 
     /** Read-only verification, at most two passes; never resubmit on unconfirmed result. */
