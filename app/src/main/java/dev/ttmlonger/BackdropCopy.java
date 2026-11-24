@@ -6,6 +6,9 @@ import android.graphics.Rect;
 import android.os.Handler;
 import android.view.PixelCopy;
 import android.view.Window;
+import android.view.SurfaceView;
+import android.view.View;
+import android.view.ViewGroup;
 
 /**
  * Снимает полосу окна над панелью в маленький снимок через PixelCopy (Android 8+). Копирование идёт в отдельный
@@ -61,7 +64,51 @@ final class BackdropCopy {
      * Запрашивает снимок полосы pl (см. {@link GlassBackdrop#plan}); onChange вызывается, когда картинка обновилась.
      * sigmaPx — сила размытия в пикселях холста: снимок размывается здесь, до показа.
      */
+    static SurfaceView findSurface(View root, int[] pl) {
+        if (root == null || pl == null) return null;
+        return findSurface(root, pl, new int[]{2000}, 0);
+    }
+
+    private static SurfaceView findSurface(View v, int[] pl, int[] budget, int depth) {
+        if (v == null || --budget[0] < 0 || depth > 40 || !v.isShown()) return null;
+        if (v instanceof SurfaceView) {
+            SurfaceView s = (SurfaceView) v;
+            return sourceRect(s, pl) != null ? s : null;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = g.getChildCount() - 1; i >= 0; i--) {
+                SurfaceView s = findSurface(g.getChildAt(i), pl, budget, depth + 1);
+                if (s != null) return s;
+            }
+        }
+        return null;
+    }
+
+    /** Координаты полосы в буфере видео, только если вся полоса помещается в видимой поверхности. */
+    private static Rect sourceRect(SurfaceView s, int[] pl) {
+        if (s == null || !s.isShown() || s.getWidth() <= 0 || s.getHeight() <= 0
+                || !s.getHolder().getSurface().isValid()) return null;
+        int[] xy = new int[2];
+        s.getLocationInWindow(xy);
+        int left = pl[0] - xy[0], top = pl[1] - xy[1];
+        int right = pl[2] - xy[0], bottom = pl[3] - xy[1];
+        if (left < 0 || top < 0 || right > s.getWidth() || bottom > s.getHeight()) return null;
+        Rect visible = new Rect();
+        if (!s.getLocalVisibleRect(visible) || !visible.contains(left, top, right, bottom)) return null;
+        Rect frame = s.getHolder().getSurfaceFrame();
+        if (frame.width() <= 0 || frame.height() <= 0) return null;
+        double sx = (double) frame.width() / s.getWidth(), sy = (double) frame.height() / s.getHeight();
+        return new Rect((int) Math.floor(left * sx), (int) Math.floor(top * sy),
+                Math.min(frame.width(), (int) Math.ceil(right * sx)),
+                Math.min(frame.height(), (int) Math.ceil(bottom * sy)));
+    }
+
     void request(int[] pl, double sigmaPx, final Runnable onChange) {
+        request(pl, sigmaPx, onChange, null);
+    }
+
+    void request(int[] pl, double sigmaPx, final Runnable onChange, SurfaceView surface) {
         if (busy || pl == null || win == null) return;
         sigmaTex = sigmaPx / Math.max(1, pl[6]);
         int dw = pl[4];
@@ -80,14 +127,18 @@ final class BackdropCopy {
         final int g = gen;
         busy = true;
         try {
-            PixelCopy.request(win, new Rect(pl[0], pl[1], pl[2], pl[3]), dst, new PixelCopy.OnPixelCopyFinishedListener() {
+            PixelCopy.OnPixelCopyFinishedListener listener = new PixelCopy.OnPixelCopyFinishedListener() {
                 @Override
                 public void onPixelCopyFinished(int result) {
                     if (g != gen) return;
                     busy = false;
                     done(dst, result, onChange);
                 }
-            }, h);
+            };
+            Rect src = sourceRect(surface, pl);
+            // Штатный PixelCopy: защищённые/недоступные поверхности не обходятся.
+            if (src != null) PixelCopy.request(surface, src, dst, listener, h);
+            else PixelCopy.request(win, new Rect(pl[0], pl[1], pl[2], pl[3]), dst, listener, h);
         } catch (Throwable t) {
             busy = false;
             fails++;
