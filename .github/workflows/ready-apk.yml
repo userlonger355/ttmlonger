@@ -8,6 +8,8 @@ on:
       - fix/navigation-metadata-20261124
     paths:
       - .github/workflows/ready-apk.yml
+      - app/src/main/**
+      - app/build.gradle.kts
 
 permissions:
   contents: read

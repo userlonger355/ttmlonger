@@ -86,7 +86,6 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
         try {
             ActivityResults.install();
-            try{CommentWallpaper.install(ctx);}catch(Throwable t){FlagStore.log(t);}
         } catch (Throwable t) {
             FlagStore.log(t);
         }
@@ -126,6 +125,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         if (ctx == null || !booted.compareAndSet(false, true)) return;
         try {
             FlagStore.init(ctx);
+            try{CommentWallpaper.install(ctx);}catch(Throwable t){FlagStore.log(t);}
             try { MessageClock.install(cl); } catch(Throwable t){FlagStore.log(t);}
             try { CommentSelect.install(cl); } catch(Throwable t){FlagStore.log(t);}
             try { FeedMute.install(ctx,cl); } catch(Throwable t){FlagStore.log(t);}      // внутри читаются и Prefs

@@ -51,11 +51,11 @@ final class AdsScreen extends Screen {
         if(!SponsorSegments.available())body.addView(ui.note("Нативный обработчик прогресса плеера не найден. Пропуск отрезков в этой версии не подтверждён."));
         body.addView(ui.header("Фильтры рекламы"));
         body.addView(toggleRow(-1, "Рекламные видео", "Посты с явной отметкой рекламы",
-                Prefs.hideAdVideos, on -> { Prefs.setAdVideos(on); changed(); }));
+                Prefs.hideAdVideos, on -> { Prefs.setAdVideos(on); }));
         body.addView(toggleRow(-1, "Рекламные карточки", "Карточки PreciseAd, в том числе без видео",
-                Prefs.hideAdCards, on -> { Prefs.setAdCards(on); changed(); }));
+                Prefs.hideAdCards, on -> { Prefs.setAdCards(on); }));
         body.addView(toggleRow(-1, "AI-реклама", "Карточки AiAdCard, если они присутствуют в ленте",
-                Prefs.hideAdAiCards, on -> { Prefs.setAdAiCards(on); changed(); }));
+                Prefs.hideAdAiCards, on -> { Prefs.setAdAiCards(on); }));
         body.addView(ui.note("Фильтры работают при включённом общем переключателе рекламы. Обновите ленту после изменения."));
 
         body.addView(ui.header("LIVE"));
