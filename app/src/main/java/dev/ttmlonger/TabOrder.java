@@ -159,7 +159,8 @@ final class TabOrder {
         List<String> base = top ? TOP : BASE;
         String[] labels = top ? TOP_LABELS : LABELS;
         String pref = top ? "top_tabs" : "tabs";
-        Ui ui=new Ui(a);
+        StreakSheet sheet=new StreakSheet(a,top?"Верхние вкладки":"Нижние вкладки");Ui ui=sheet.ui;
+        sheet.root.addView(sheet.note("Перетащите вкладку за ручку или нажмите, чтобы изменить порядок."));
         LinearLayout box=new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(ui.dp(14),ui.dp(6),ui.dp(14),ui.dp(12));
@@ -169,8 +170,8 @@ final class TabOrder {
         LinearLayout demo=new LinearLayout(a);
         demo.setOrientation(LinearLayout.VERTICAL);
         demo.setPadding(ui.dp(12),ui.dp(10),ui.dp(12),ui.dp(12));
-        demo.setBackground(ui.glassCard(0xff9064cf,18));
-        demo.addView(ui.text("Как будет выглядеть",14,Ui.INK,true));
+        demo.setBackground(ui.round(0xff08090c,18));
+        demo.addView(ui.text("Предпросмотр",14,0xffeeeeee,true));
         android.widget.HorizontalScrollView sc=new android.widget.HorizontalScrollView(a);
         sc.setHorizontalScrollBarEnabled(false);
         LinearLayout rail=new LinearLayout(a);
@@ -184,17 +185,17 @@ final class TabOrder {
             @Override public void run() {
                 list.removeAllViews();
                 rail.removeAllViews();
-                if(!top) rail.addView(previewTab(ui,"Главная",true));
+                if(!top) rail.addView(previewTab(a,ui,"Главная",true,false));
                 for (String key : items) {
                     Button b = new Button(a);
                     b.setAllCaps(false);
-                    b.setText("≡   "+labels[base.indexOf(key)]);
+                    b.setText("☰    "+labels[base.indexOf(key)]);b.setTextSize(15);b.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));b.setStateListAnimator(null);
                     b.setTextColor(Ui.INK);
                     b.setGravity(android.view.Gravity.CENTER_VERTICAL);
                     b.setPadding(ui.dp(14),0,ui.dp(14),0);
-                    b.setBackground(ui.glassCard(0xff8c72c0,14));
+                    b.setBackground(ui.round(Ui.FIELD,14));
                     b.setForeground(ui.ripple());
-                    rail.addView(previewTab(ui,labels[base.indexOf(key)],false));
+                    rail.addView(previewTab(a,ui,labels[base.indexOf(key)],false,top));
                     b.setOnLongClickListener(v -> v.startDragAndDrop(null, new View.DragShadowBuilder(v), key, 0));
                     b.setOnDragListener((v, event) -> {
                         if (event.getAction() == DragEvent.ACTION_DROP && items.contains(event.getLocalState())) {
@@ -217,31 +218,30 @@ final class TabOrder {
                     lp.bottomMargin=ui.dp(6);
                     list.addView(b,lp);
                 }
-                if(top) rail.addView(previewTab(ui,"Рекомендации",true));
+                if(top) rail.addView(previewTab(a,ui,"Рекомендации",true,true));
             }
         };
         draw.run();
         android.widget.ScrollView scroll=new android.widget.ScrollView(a);
         scroll.addView(box);
-        AlertDialog dlg = new AlertDialog.Builder(a, Ui.dialogTheme()).setTitle(top ? "Верхние вкладки" : "Нижние вкладки")
-                .setMessage("Удерживайте и перетащите вкладку. Нажатие меняет её местами со следующей.")
-                .setView(scroll).setPositiveButton("Сохранить", (d, w) -> {
-                    if(reset[0]) prefs(a).edit().remove(pref).apply();
-                    else prefs(a).edit().putString(pref, android.text.TextUtils.join(",", items)).apply();
-                    InterfaceHooks.labels(a);
-                }).setNeutralButton("Как в TikTok", null).setNegativeButton("Отмена", null).create();
-        Screen.markOwn(dlg);
-        dlg.show();
-        Ui.style(dlg);
-        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{
-            items.clear(); items.addAll(base); reset[0]=true; draw.run();
-        });
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        sheet.root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(390),(int)(a.getResources().getDisplayMetrics().heightPixels*.48f))));
+        sheet.button("Как в TikTok",false,()->{items.clear();items.addAll(base);reset[0]=true;draw.run();});
+        sheet.button("Сохранить",true,()->{
+            if(reset[0])prefs(a).edit().remove(pref).apply();
+            else prefs(a).edit().putString(pref,android.text.TextUtils.join(",",items)).apply();
+            InterfaceHooks.labels(a);sheet.dialog.dismiss();
+        });sheet.show();
     }
-    private static TextView previewTab(Ui ui,String text,boolean selected) {
-        TextView v=ui.medium(text,12,selected?Ui.INK:Ui.MUTED);
-        v.setGravity(android.view.Gravity.CENTER);
-        v.setPadding(ui.dp(8),ui.dp(8),ui.dp(8),ui.dp(8));
-        if(selected) v.setBackground(ui.glassCard(0xff9064cf,12));
-        return v;
+    private static View previewTab(Activity a,Ui ui,String text,boolean selected,boolean top){
+        LinearLayout col=new LinearLayout(a);col.setOrientation(LinearLayout.VERTICAL);col.setGravity(android.view.Gravity.CENTER);
+        col.setPadding(ui.dp(top?5:6),ui.dp(8),ui.dp(top?5:6),ui.dp(8));
+        if(!top){
+            PreviewGlyph icon=new PreviewGlyph(a,text.equals("Главная")?5:text.equals("Друзья")?6:text.equals("Создать")?7:text.equals("Входящие")?8:0,0xffffffff);
+            col.addView(icon,new LinearLayout.LayoutParams(ui.dp(24),ui.dp(24)));
+        }
+        TextView label=ui.medium(text,top?11:10,selected?0xffffffff:0xffaaaaaa);label.setGravity(android.view.Gravity.CENTER);label.setSingleLine(true);col.addView(label);
+        if(top&&selected){View underline=new View(a);underline.setBackground(ui.round(0xffffffff,2));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(22),ui.dp(2));lp.topMargin=ui.dp(4);col.addView(underline,lp);}
+        return col;
     }
 }

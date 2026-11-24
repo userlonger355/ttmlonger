@@ -46,8 +46,6 @@ final class ProfileStyleScreen extends Screen {
         preview.setText(text);
     }
     private void sort(){
-        AlertDialog d=new AlertDialog.Builder(act,Ui.dialogTheme()).setTitle("Порядок видео в профиле")
-            .setSingleChoiceItems(ProfileGrid.MODES,ProfileGrid.mode(),(dlg,i)->{ProfileGrid.set(i);sortValue.setText(ProfileGrid.MODES[i]);dlg.dismiss();})
-            .setNegativeButton("Закрыть",null).create();Screen.markOwn(d);d.show();Ui.style(d);
+        ChoiceSheet.show(act,"Порядок видео в профиле",ProfileGrid.MODES,ProfileGrid.mode(),i->{ProfileGrid.set(i);sortValue.setText(ProfileGrid.MODES[i]);});
     }
 }

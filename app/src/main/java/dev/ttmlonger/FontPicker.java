@@ -29,6 +29,6 @@ final class FontPicker {
         rows.addView(ui.menuRow(Icons.SLIDERS,"Выбрать файл шрифта","TTF / OTF",null,v->{d.dismiss();custom.run();}));
         TextView close=TtStyle.accent(a,"Закрыть",48,16);close.setOnClickListener(v->d.dismiss());box.addView(close,ui.matchWrap());
         d.setContentView(box);Window w=d.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.BOTTOM);}
-        d.show();if(w!=null)w.setLayout(-1,Math.min(a.getResources().getDisplayMetrics().heightPixels*4/5,ui.dp(650)));
+        d.show();if(w!=null){w.setLayout(-1,Math.min(a.getResources().getDisplayMetrics().heightPixels*4/5,ui.dp(650)));Ui.blurBehind(w,ui.dp(32));}
     }
 }

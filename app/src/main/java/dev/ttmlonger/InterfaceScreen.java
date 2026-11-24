@@ -55,21 +55,20 @@ final class InterfaceScreen extends Screen {
                 (android.graphics.drawable.GradientDrawable) preview.getBackground();
         gradient.setCornerRadius(ui.dp(18));
         preview.setPadding(ui.dp(18), ui.dp(14), ui.dp(12), ui.dp(14));
-        preview.addView(ui.text("Предпросмотр ленты", 15, 0xFFFFFFFF, true),
-                new LinearLayout.LayoutParams(0, -2, 1));
-        LinearLayout rail = new LinearLayout(act);
-        rail.setOrientation(LinearLayout.VERTICAL);
-        preview.addView(rail);
-        String[] symbols = {"●", "♥", "●●●", "★", "➜"};
-        for (FeedButtons.Button button : FeedButtons.Button.values()) {
-            android.widget.TextView icon = ui.text(symbols[button.ordinal()], 19, 0xFFFFFFFF, true);
-            icon.setGravity(android.view.Gravity.CENTER);
-            icon.setContentDescription(button.label);
-            rail.addView(icon, new LinearLayout.LayoutParams(ui.dp(38), ui.dp(28)));
-            samples.put(button, icon);
+        LinearLayout details=new LinearLayout(act);details.setOrientation(LinearLayout.VERTICAL);
+        details.addView(ui.medium("@tiktok",14,0xffffffff));details.addView(ui.text("Новые видео каждый день",12,0xffeeeeee,false));details.addView(ui.text("♫  original sound",11,0xffdddddd,false));
+        preview.addView(details,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout rail=new LinearLayout(act);rail.setOrientation(LinearLayout.VERTICAL);rail.setGravity(android.view.Gravity.CENTER_HORIZONTAL);preview.addView(rail);
+        String[] counts={"","12,4K","1 209","854","326"};
+        for(FeedButtons.Button button:FeedButtons.Button.values()){
+            LinearLayout item=new LinearLayout(act);item.setOrientation(LinearLayout.VERTICAL);item.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            int n=button.ordinal();PreviewGlyph glyph=new PreviewGlyph(act,n,0xffffffff);
+            item.addView(glyph,new LinearLayout.LayoutParams(ui.dp(25),ui.dp(25)));
+            if(!counts[n].isEmpty()){android.widget.TextView number=ui.medium(counts[n],10,0xffffffff);number.setGravity(android.view.Gravity.CENTER);item.addView(number);}
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(44),-2);lp.bottomMargin=ui.dp(5);rail.addView(item,lp);item.setContentDescription(button.label);samples.put(button,item);
         }
         LinearLayout.LayoutParams box = ui.matchWrap();
-        box.height = ui.dp(172);
+        box.height = ui.dp(258);
         box.setMargins(ui.dp(14), 0, ui.dp(14), ui.dp(8));
         body.addView(preview, box);
         refreshPreview();

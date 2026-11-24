@@ -52,11 +52,11 @@ final class StreakSheet {
         if(w!=null){
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));w.setGravity(Gravity.BOTTOM);
             w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            w.setDimAmount(.60f);w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            Ui.blurBehind(w,ui.dp(32));w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         }
         boolean animate=android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled();
         if(animate){if(w!=null)w.setWindowAnimations(0);root.setAlpha(0f);root.setTranslationY(ui.dp(40));}
-        dialog.show();if(w!=null)w.setLayout(-1,-2);
+        dialog.show();if(w!=null){w.setLayout(-1,-2);Ui.blurBehind(w,ui.dp(32));}
         if(animate)root.animate().translationY(0f).alpha(1f).setDuration(260)
             .setInterpolator(new android.view.animation.PathInterpolator(.18f,.82f,.22f,1f)).start();
     }

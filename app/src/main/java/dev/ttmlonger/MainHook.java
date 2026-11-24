@@ -75,6 +75,8 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
         try {
             StoryShare.install();
+            try{SoundPage.install(cl);}catch(Throwable t){FlagStore.log(t);}
+            ModDialogStyle.install();
             StickerSaver.install();
         } catch (Throwable t) {
             FlagStore.log(t);

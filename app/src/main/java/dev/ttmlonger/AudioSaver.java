@@ -20,7 +20,10 @@ final class AudioSaver {
 
     static void start(Context context, VideoTracker.Entry entry) {
         if(entry==null){Toasts.show(context,"Звук не найден");return;}
-        Object key=entry.aweme!=null?entry.aweme:entry.video;
+        start(context,DownloadHooks.call(entry.aweme,"getMusic"),entry.video!=null?entry.video:DownloadHooks.call(entry.aweme,"getVideo"),entry.aweme!=null?entry.aweme:entry.video);
+    }
+    static void startMusic(Context context,Object music){start(context,music,null,music);}
+    private static void start(Context context,Object music,Object video,Object key){
         if(key==null){Toasts.show(context,"Звук не найден");return;}
         synchronized(running) {
             if(!running.add(key)){Toasts.show(context,"Звук уже скачивается");return;}
@@ -36,7 +39,6 @@ final class AudioSaver {
                 String base="ttm_sound_"+stamp;
                 long deadline=System.currentTimeMillis()+240000L;
                 LinkedHashSet<String> urls=new LinkedHashSet<>();
-                Object music=DownloadHooks.call(entry.aweme,"getMusic");
                 for(String getter:new String[]{"getPlayUrl","getPlayUrlModel","getAudioUrl","getMusicUrl"}) {
                     Object value=DownloadHooks.call(music,getter);
                     urls.addAll(VideoSaver.urlsOf(value));
@@ -44,8 +46,7 @@ final class AudioSaver {
                         String u=AvatarHooks.secure((String)value);if(u!=null)urls.add(u);
                     }
                 }
-                Object video=entry.video!=null?entry.video:DownloadHooks.call(entry.aweme,"getVideo");
-                urls.addAll(VideoSaver.videoCandidates(video));
+                if(video!=null)urls.addAll(VideoSaver.videoCandidates(video));
                 int tries=0;
                 Exception last=null;
                 for(String url:urls) {

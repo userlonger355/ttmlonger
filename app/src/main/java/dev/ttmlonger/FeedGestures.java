@@ -28,16 +28,10 @@ final class FeedGestures {
             final int index = i;
             LinearLayout row = screen.ui.menuRow(-1, TITLES[i], null, ACTIONS[setting(i)], null);
             row.setOnClickListener(v -> {
-                AlertDialog d = new AlertDialog.Builder(screen.act, Ui.dialogTheme()).setTitle(TITLES[index])
-                        .setSingleChoiceItems(ACTIONS, setting(index), (dlg, which) -> {
-                            InterfaceHooks.prefs.edit().putInt("gesture_" + KEYS[index], which).apply();
-                            TextView value = Ui.valueOf(row);
-                            if (value != null) value.setText(ACTIONS[which]);
-                            dlg.dismiss();
-                        }).setNegativeButton("Отмена", null).create();
-                Screen.markOwn(d);
-                d.show();
-                Ui.style(d);
+                ChoiceSheet.show(screen.act,TITLES[index],ACTIONS,setting(index),which->{
+                    InterfaceHooks.prefs.edit().putInt("gesture_"+KEYS[index],which).apply();
+                    TextView value=Ui.valueOf(row);if(value!=null)value.setText(ACTIONS[which]);
+                });
             });
             body.addView(row);
         }

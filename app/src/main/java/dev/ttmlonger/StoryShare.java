@@ -52,11 +52,11 @@ final class StoryShare {
     }
 
     private static final class Scan {
-        TextView report, mute, save, notInterested, favorite, link;
+        TextView report, mute, save, notInterested, favorite, link, soundReport, qr;
         boolean send, storyMarker, reply;
         final List<String> labels = new ArrayList<>();
         final List<View> downloads = new ArrayList<>();
-        boolean sheet() { return report != null && (mute != null || send || link != null || notInterested != null || save != null); }
+        boolean sheet() { return soundReport!=null&&send || report != null && (mute != null || send || link != null || notInterested != null || save != null); }
     }
     private static String norm(CharSequence s) {
         return s==null?"":s.toString().trim().toLowerCase(Locale.ROOT).replaceAll("\\s+"," ");
@@ -80,6 +80,8 @@ final class StoryShare {
             String a=norm(t.getText()), hint=norm(t.getHint());
             if(!a.isEmpty() && a.length()<600) s.labels.add(a);
             if(a.equals("жалоба") || a.equals("пожаловаться") || a.equals("report")) s.report=t;
+            String joined=a.replace(" ","");if(joined.equals("пожаловатьсяназвук")||joined.equals("reportsound"))s.soundReport=t;
+            if(a.equals("qr-код")||a.equals("qr code"))s.qr=t;
             if(a.contains("отключить уведомления") || a.equals("mute notifications") || a.equals("mute")) s.mute=t;
             if(a.equals("отправить") || a.equals("send to") || a.equals("share to") || a.equals("send") || a.equals("поделиться") || a.equals("share")) s.send=true;
             if(a.equals("не интересно") || a.equals("неинтересно") || a.equals("not interested")) s.notInterested=t;
@@ -163,6 +165,7 @@ final class StoryShare {
             if(Screen.isOwnDecor(root)) return;
             Scan s=scan(root);
             if(s.sheet()) {
+                if(s.soundReport!=null){soundAction(root,s,act);return;}
                 show(root,s,activeActivity.get()==act?active:null);
                 return;
             }
@@ -199,6 +202,7 @@ final class StoryShare {
             Scan s=scan(root);
             if(!s.sheet()) { remove(root); return; }
             Activity a=ScreenWatcher.top();
+            if(s.soundReport!=null){soundAction(root,s,a);return;}
             if(a!=null) {
                 View decor=a.getWindow().getDecorView();
                 Scan behind=scan(decor);
@@ -209,6 +213,24 @@ final class StoryShare {
             }
             show(root,s,activeActivity.get()==a?active:null);
         } catch(Throwable ignored) {}
+    }
+    private static void soundAction(View root,Scan s,Activity act){
+        if(CrashGuard.tripped||!Prefs.dlAlways){remove(root);return;}
+        View old=buttons.get(root);if(old!=null&&old.isAttachedToWindow())return;
+        Object music=SoundPage.find(act);if(music==null||s.qr==null||s.soundReport==null)return;
+        ViewGroup row=sharedRow(s.qr,s.soundReport);
+        if(row==null)return;
+        View sample=childOf(s.soundReport,row);if(sample==null)return;
+        int step=Math.abs(rect(s.soundReport).centerX()-rect(s.qr).centerX());if(step<dp(root.getContext(),40))return;
+        if(row.getWidth()<step*3)return;
+        Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor(),size=Math.min(dp(c,56),Math.round(step*.72f));
+        LinearLayout tile=new LinearLayout(c);tile.setTag(ACTION,Boolean.TRUE);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+        ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);icon.setBackground(bg);int pad=Math.round(size*.27f);icon.setPadding(pad,pad,pad,pad);tile.addView(icon,new LinearLayout.LayoutParams(size,size));
+        TextView label=new TextView(c);label.setText("Сохранить звук");label.setGravity(Gravity.CENTER);label.setTextColor(ink);label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,s.soundReport.getTextSize());label.setTypeface(s.soundReport.getTypeface());label.setMaxLines(2);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(c,8);tile.addView(label,lp);
+        tile.setContentDescription("Сохранить звук");tile.setOnClickListener(v->AudioSaver.startMusic(c,music));
+        if(row instanceof LinearLayout){int occupied=0;for(int i=0;i<row.getChildCount();i++)if(row.getChildAt(i).getVisibility()!=View.GONE)occupied+=row.getChildAt(i).getWidth();if(occupied+step>row.getWidth()+dp(c,4))return;row.addView(tile,new LinearLayout.LayoutParams(step,-2));}
+        else if(row instanceof GridLayout){GridLayout.LayoutParams gp=new GridLayout.LayoutParams();gp.width=step;gp.height=-2;row.addView(tile,gp);}else return;
+        buttons.put(root,tile);
     }
     private static void remove(View root) {
         View button=buttons.remove(root); bound.remove(root);

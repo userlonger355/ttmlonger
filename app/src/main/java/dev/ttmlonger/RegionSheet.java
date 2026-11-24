@@ -188,7 +188,7 @@ final class RegionSheet {
             w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         }
-        dialog.show();
+        dialog.show();Ui.blurBehind(w,ui.dp(32));
     }
 
     private void filter(String query) {
