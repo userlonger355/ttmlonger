@@ -411,6 +411,26 @@ final class VideoInfo {
         return m;
     }
 
+    /** Только явно названная метка репоста; время публикации не является её заменой. */
+    static long repostTimeOf(Object aweme) {
+        Object raw = get(aweme, "getRepostTime", "repostTime", "repost_time");
+        long time = parseEventTime(raw);
+        if (time == 0) {
+            raw = get(aweme, "getRepostTimestamp", "repostTimestamp", "repost_timestamp");
+            time = parseEventTime(raw);
+        }
+        return time > System.currentTimeMillis() / 1000L + 300L ? 0 : time;
+    }
+
+    static long parseEventTime(Object raw) {
+        if (raw instanceof Number) return toSeconds(((Number) raw).longValue());
+        if (raw instanceof String) {
+            try { return toSeconds(Long.parseLong(((String) raw).trim())); }
+            catch (NumberFormatException ignored) { return 0; }
+        }
+        return 0;
+    }
+
     private static void addDetail(List<String> rows, String name, Object value) {
         if (value instanceof String && !((String) value).trim().isEmpty()) rows.add(name + " · " + ((String) value).trim());
     }
@@ -419,6 +439,8 @@ final class VideoInfo {
         List<String> rows = new ArrayList<>();
         Object post = entry.aweme;
         Object author = get(post, "getAuthor", "author");
+        long repost = repostTimeOf(post);
+        if (repost > 0) addDetail(rows, "Время репоста", fullTime(repost, Zones.current()));
         addDetail(rows, "Регион публикации", get(post, "getRegion", "region"));
         addDetail(rows, "Регион аккаунта", get(author, "getRegion", "region"));
         addDetail(rows, "Язык аккаунта", get(author, "getLanguage", "language"));
@@ -714,6 +736,7 @@ final class VideoInfo {
         boolean listening;
         boolean attached;
         long created;
+        long reposted;
         String iso;
         VideoTracker.Entry entry;
         // выбранное место относительно левого верхнего угла подписи
@@ -737,8 +760,12 @@ final class VideoInfo {
             timeView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    if (created <= 0) return;
                     TimeZone tz = Zones.current();
+                    if (reposted > 0) {
+                        Toasts.show(act, "Репост: " + fullTime(reposted, tz));
+                        return;
+                    }
+                    if (created <= 0) return;
                     long age = System.currentTimeMillis() / 1000L - created;
                     Toasts.show(act, "Опубликовано " + fullTime(created, tz) + " · " + ageText(age));
                 }
@@ -768,10 +795,13 @@ final class VideoInfo {
             this.anchor = anchor;
             this.anchorText = anchor.getText() == null ? "" : anchor.getText().toString();
             created = m.created;
+            reposted = repostTimeOf(entry.aweme);
             iso = m.region;
             pills.style(Prefs.vtStyle, isNight(act), Prefs.vtOpacity);
             if (wantTime) {
-                timeView.setText(timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
+                timeView.setText(reposted > 0
+                        ? "Репост " + formatTime(reposted, true, Zones.current(), System.currentTimeMillis())
+                        : timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis()));
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
             if (wantRegion) regionView.setText(regionText(m.region, Prefs.vtRegionMode));
@@ -1032,7 +1062,7 @@ final class VideoInfo {
                 return;
             }
             Meta m = metaOf(hit.entry);
-            boolean wantTime = Prefs.vtTime && m.created > 0;
+            boolean wantTime = Prefs.vtTime && (m.created > 0 || repostTimeOf(hit.entry.aweme) > 0);
             boolean wantRegion = Prefs.vtRegion && m.region != null;
             if (!wantTime && !wantRegion) {
                 if (overlay != null) overlay.hide();
