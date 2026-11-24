@@ -141,8 +141,9 @@ final class Trigger {
             final long down = e.getDownTime();
             homeHold = () -> {
                 homeHold = null;
-                if (homeOwner.get() != a || a.isFinishing() || a.isDestroyed()
-                        || !a.hasWindowFocus() || !home.isShown() || !home.isAttachedToWindow()) return;
+                if (homeOwner.get() != a || CrashGuard.tripped || a.isFinishing() || a.isDestroyed()
+                        || !a.hasWindowFocus() || !home.isShown() || !home.isAttachedToWindow()
+                        || !homeLabel(home, 0) || home.getRootView() != a.getWindow().peekDecorView()) return;
                 MotionEvent cancelEvent = MotionEvent.obtain(down, SystemClock.uptimeMillis(),
                         MotionEvent.ACTION_CANCEL, homeX, homeY, 0);
                 cancellingHome = true;

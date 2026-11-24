@@ -222,6 +222,16 @@ final class RuntimeUiChecks {
             },2500);
         } catch(Throwable e) { fail("glass_drag_exception",e); finish(); }
     }
+    private static void multiTouch(long down,float x,float y,float x2,float y2) {
+        MotionEvent.PointerProperties[] pp={new MotionEvent.PointerProperties(),new MotionEvent.PointerProperties()};
+        MotionEvent.PointerCoords[] pc={new MotionEvent.PointerCoords(),new MotionEvent.PointerCoords()};
+        for(int i=0;i<2;i++) { pp[i].id=i; pp[i].toolType=MotionEvent.TOOL_TYPE_FINGER; pc[i].pressure=1; pc[i].size=1; }
+        pc[0].x=x; pc[0].y=y; pc[1].x=x2; pc[1].y=y2;
+        MotionEvent e=MotionEvent.obtain(down,SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_POINTER_DOWN | (1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            2,pp,pc,0,0,1,1,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0);
+        try { session.onTouch(e); } finally { e.recycle(); }
+    }
     private static void cancelDrag() {
         try {
             View from=preview.getChildAt(4), to=preview.getChildAt(0);
@@ -240,6 +250,18 @@ final class RuntimeUiChecks {
             touch(MotionEvent.ACTION_MOVE,down,end,y);
             touch(MotionEvent.ACTION_UP,down,end,y-2*preview.getHeight());
             result("glass_outside_target",!session.ph.drag && session.ph.tgt==3);
+            down=SystemClock.uptimeMillis();
+            touch(MotionEvent.ACTION_DOWN,down,x,y);
+            touch(MotionEvent.ACTION_MOVE,down,end,y);
+            touch(MotionEvent.ACTION_UP,down,end-2*preview.getWidth(),y);
+            result("glass_horizontal_outside_target",!session.ph.drag && session.ph.tgt==3);
+            down=SystemClock.uptimeMillis();
+            touch(MotionEvent.ACTION_DOWN,down,x,y);
+            touch(MotionEvent.ACTION_MOVE,down,end,y);
+            multiTouch(down,x,y,end,y);
+            result("glass_two_finger_cancel",!session.ph.drag && session.ph.tgt==3);
+            touch(MotionEvent.ACTION_UP,down,end,y);
+            result("glass_two_finger_no_retarget",session.ph.tgt==3);
             main.postDelayed(() -> {
                 result("glass_cancel_keeps_tab",from.isSelected() && session.selectedTab()==4);
                 stage("glass-cancel");

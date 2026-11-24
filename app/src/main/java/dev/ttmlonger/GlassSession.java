@@ -941,6 +941,7 @@ final class GlassSession implements Choreographer.FrameCallback {
         if (!attached || !measured || ev == null || synthetic) return;
         int a = ev.getActionMasked();
         if (a == MotionEvent.ACTION_DOWN) {
+            if (ph.drag) restoreDragSelection();
             lastDevice = ev.getDeviceId();
             ++gestureEpoch;
             pendingTab = -1;
@@ -971,6 +972,21 @@ final class GlassSession implements Choreographer.FrameCallback {
             capDirty = true;
             burstUntil = SystemClock.uptimeMillis() + BURST_MS;
             kick();
+        } else if (a == MotionEvent.ACTION_POINTER_DOWN || a == MotionEvent.ACTION_POINTER_UP || ev.getPointerCount() > 1) {
+            // A second finger belongs to a different gesture (including the mod menu shortcut).
+            // Never turn its coordinates into a tab selection.
+            if (track) {
+                track = false;
+                ++gestureEpoch;
+                restoreDragSelection();
+                capDirty = true;
+                kick();
+            }
+            if (sTrack) {
+                sTrack = false;
+                scrolling = false;
+                setCompact(false);
+            }
         } else if (sTrack) {
             if (a == MotionEvent.ACTION_MOVE) {
                 if (!scrolling) {
@@ -1007,7 +1023,9 @@ final class GlassSession implements Choreographer.FrameCallback {
                 int n = ph.up(GlassGeo.xToPos(centers, ev.getRawX() - loc[0] - capL));
                 // отпустили над другой вкладкой: сам TikTok нажатия не увидит (палец лёг на одну, поднят над другой),
                 // поэтому нажимаем на вкладку под линзой сами; если палец увели далеко от панели, это отмена
-                boolean near = y >= capT - 48 * dm && y <= capB + 48 * dm;
+                float x = ev.getRawX() - loc[0];
+                boolean near = y >= capT - 48 * dm && y <= capB + 48 * dm
+                        && x >= capL - 48 * dm && x <= capR + 48 * dm;
                 if (!near) {
                     restoreDragSelection();
                 } else if (n >= 0 && n < eligible.length) {
