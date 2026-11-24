@@ -141,7 +141,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow(Icons.SLIDERS,"Управление репостами","Просмотр собственных репостов и удаление выбранных",null,v -> RepostManager.show(act)));
+        body.addView(ui.menuRow(Icons.TRASH,"Очистка отметок","Репосты · выбор и массовая очистка",null,v -> RepostManager.show(act)));
         body.addView(ui.menuRow(Icons.EYE_OFF,"Скрытые авторы","Локальный список по UID; без блокировки аккаунта",null,v -> FeedMute.show(act)));
         body = section(page, "Личные сообщения");
         body.addView(ui.toggleRow(Icons.CLOCK,"Время каждого сообщения","Часы, минуты и секунды из модели сообщения",InterfaceHooks.on("message_clock"),on->{
@@ -304,7 +304,7 @@ final class ModMenu extends Screen {
         switch(title){
             case "Интерфейс и конфиденциальность": return new String[]{"Интерфейс","Лента и жесты"};
             case "Время и регион видео": return new String[]{"Дата и регион","Время публикации"};
-            case "Управление репостами": return new String[]{"Репосты","Управление"};
+            case "Очистка отметок": return new String[]{"Очистка отметок","Репосты"};
             case "Время каждого сообщения": return new String[]{"Время сообщений","Часы и секунды"};
             case "Голосовые и обои без региона": return new String[]{"Функции чата","Голосовые и обои"};
             case "Голосовые комментарии": return new String[]{"Голосовые","Комментарии"};
