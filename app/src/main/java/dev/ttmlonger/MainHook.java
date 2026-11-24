@@ -137,10 +137,11 @@ public final class MainHook implements IXposedHookLoadPackage {
             try { SponsorSegments.install(ctx,cl); } catch(Throwable t) { FlagStore.log(t); }
             try {
                 InterfaceHooks.install(ctx);
-                CommentTools.install(cl);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
+            try { CommentTools.install(cl); }catch(Throwable t){FlagStore.log(t);}
+            try { RepostTimes.install(cl); }catch(Throwable t){FlagStore.log(t);}
             try {
                 BrowserLinks.install();
             } catch (Throwable t) {
@@ -155,7 +156,6 @@ public final class MainHook implements IXposedHookLoadPackage {
                 ProfileFacts.install(cl);
                 ProfileGrid.install(cl);
                 ProfileDatePicker.install(cl);
-                RepostTimes.install(cl);
                 EmojiFonts.install(ctx);
             } catch (Throwable t) {
                 FlagStore.log(t);

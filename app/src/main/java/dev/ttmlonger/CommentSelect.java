@@ -29,7 +29,7 @@ final class CommentSelect {
                 @Override protected void beforeHookedMethod(MethodHookParam p){
                     if((!InterfaceHooks.on("comment_select")&&!InterfaceHooks.on("comment_copy_body"))||CrashGuard.tripped||!(p.args[0] instanceof List))return;
                     try{
-                        String text=body(resolve(p.thisObject));if(text==null||text.isEmpty())return;
+                        String resolved=body(resolve(p.thisObject));final String text=resolved==null||resolved.isEmpty()?CommentTools.recentBody():resolved;if(text==null||text.isEmpty())return;
                         Activity a=ScreenWatcher.top();if(a==null||a.isFinishing()||a.isDestroyed())return;
                         List<?> old=(List<?>)p.args[0];if(old.isEmpty()||old.size()>80)return;
                         Object first=old.get(0);if(first==null)return;
