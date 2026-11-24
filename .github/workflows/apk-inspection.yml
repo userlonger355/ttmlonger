@@ -7,6 +7,7 @@ on:
       - fix/navigation-metadata-20261124
     paths:
       - .github/workflows/apk-inspection.yml
+      - tools/apk-smoke.sh
 
 permissions:
   contents: read
