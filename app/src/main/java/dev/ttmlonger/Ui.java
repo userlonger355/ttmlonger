@@ -102,7 +102,10 @@ final class Ui {
         try {
             Ui ui = new Ui(d.getContext());
             Window w = d.getWindow();
-            if (w != null) w.setBackgroundDrawable(ui.round(DARK ? CARD : BG, 20));
+            if (w != null) {
+                w.setBackgroundDrawable(ui.glassCard(0xff8562bd,24));
+                blurBehind(w,ui.dp(32));
+            }
             int[] ids = {AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL};
             for (int id : ids) {
                 Button b = d.getButton(id);
@@ -112,6 +115,58 @@ final class Ui {
             }
         } catch (Throwable ignored) {
             // оформление не обязательно
+        }
+    }
+
+    /** System compositor blur, with a readable dim fallback when unavailable. */
+    static void blurBehind(Window w,int radius) {
+        if(w==null) return;
+        w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        w.setDimAmount(0.42f);
+        if(android.os.Build.VERSION.SDK_INT>=31) {
+            try {
+                android.view.WindowManager.LayoutParams p=w.getAttributes();
+                p.flags|=android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                p.setBlurBehindRadius(radius);
+                w.setAttributes(p);
+            } catch(Throwable ignored) { }
+        }
+    }
+    static int blend(int a,int b,float f) {
+        return Color.rgb(Math.round(Color.red(a)*(1-f)+Color.red(b)*f),
+                Math.round(Color.green(a)*(1-f)+Color.green(b)*f),
+                Math.round(Color.blue(a)*(1-f)+Color.blue(b)*f));
+    }
+    GradientDrawable glassCard(int tint,float radius) {
+        int base=DARK?0xff15141e:0xfffaf8ff;
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{blend(base,tint,DARK?.32f:.16f),blend(base,tint,DARK?.12f:.06f),base});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(Math.max(1,dp(0.7f)),blend(base,tint,DARK?.48f:.24f));
+        return d;
+    }
+    int cardTint(int icon) {
+        switch(icon) {
+            case Icons.FLAME: return 0xffdd765b;
+            case Icons.GLOBE: return 0xffd07279;
+            case Icons.SLIDERS: return 0xff569fce;
+            case Icons.PALETTE: return 0xffa583e5;
+            case Icons.DOWNLOAD: return 0xff4aaf9c;
+            case Icons.CLOCK: return 0xffa18add;
+            default: return 0xff8265bb;
+        }
+    }
+    void decorate(LinearLayout r,int tint) {
+        r.setBackground(glassCard(tint,20));
+        r.setClipToOutline(true);
+        r.setForeground(ripple());
+        LinearLayout.LayoutParams lp=matchWrap();
+        lp.setMargins(dp(10),dp(5),dp(10),dp(5));
+        r.setLayoutParams(lp);
+        if(r.getChildCount()>0 && r.getChildAt(0) instanceof ImageView) {
+            ImageView icon=(ImageView)r.getChildAt(0);
+            if(icon.getTag() instanceof Integer) icon.setImageDrawable(Icons.of((Integer)icon.getTag(),
+                    blend(tint,DARK?Color.WHITE:Color.BLACK,DARK?.40f:.30f)));
         }
     }
 
@@ -286,7 +341,9 @@ final class Ui {
 
     /** Строка-пункт меню со значком и шевроном. */
     LinearLayout menuRow(int icon, String title, String sub, String value, View.OnClickListener click) {
-        return row(icon, title, sub, value, true, click);
+        LinearLayout r=row(icon, title, sub, value, true, click);
+        decorate(r,cardTint(icon));
+        return r;
     }
 
     /** Строка с переключателем справа; нажатие в любом месте строки переключает. */
@@ -303,6 +360,7 @@ final class Ui {
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMarginStart(dp(16));
         r.addView(sw, lp);
+        decorate(r,cardTint(icon));
         return r;
     }
 

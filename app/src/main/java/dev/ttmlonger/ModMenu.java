@@ -48,7 +48,7 @@ final class ModMenu extends Screen {
         search.setHint("Поиск по настройкам мода");
         search.setTextColor(Ui.INK);
         search.setHintTextColor(Ui.MUTED);
-        search.setBackground(ui.round(Ui.FIELD, 16));
+        search.setBackground(ui.glassCard(0xff8562bd,18));
         search.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10));
         LinearLayout.LayoutParams inset = ui.matchWrap();
         inset.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), 0);
@@ -290,7 +290,9 @@ final class ModMenu extends Screen {
         lp.setMarginEnd(ui.dp(6));
         tabs.addView(chip, lp);
         labels.add(chip);
-        LinearLayout card = ui.panel(page);
+        LinearLayout card = new LinearLayout(act);
+        card.setOrientation(LinearLayout.VERTICAL);
+        page.addView(card,ui.matchWrap());
         sections.add(card);
         return card;
     }
@@ -306,7 +308,7 @@ final class ModMenu extends Screen {
             TextView chip = labels.get(i);
             boolean current = i == selected;
             chip.setSelected(current);
-            chip.setBackground(ui.round(current ? Ui.INK : Ui.FIELD, 22));
+            chip.setBackground(current ? ui.round(Ui.INK,22) : ui.glassCard(0xff8562bd,22));
             chip.setTextColor(current ? Ui.BG : Ui.INK);
             boolean matchGroup = VideoScreen.normalize(chip.getText().toString()).contains(q);
             boolean visible = false;

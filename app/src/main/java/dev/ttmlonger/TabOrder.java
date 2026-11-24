@@ -159,22 +159,50 @@ final class TabOrder {
         List<String> base = top ? TOP : BASE;
         String[] labels = top ? TOP_LABELS : LABELS;
         String pref = top ? "top_tabs" : "tabs";
+        Ui ui=new Ui(a);
+        LinearLayout box=new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(ui.dp(14),ui.dp(6),ui.dp(14),ui.dp(12));
         LinearLayout list = new LinearLayout(a);
         list.setOrientation(LinearLayout.VERTICAL);
+        box.addView(list,ui.matchWrap());
+        LinearLayout demo=new LinearLayout(a);
+        demo.setOrientation(LinearLayout.VERTICAL);
+        demo.setPadding(ui.dp(12),ui.dp(10),ui.dp(12),ui.dp(12));
+        demo.setBackground(ui.glassCard(0xff9064cf,18));
+        demo.addView(ui.text("Как будет выглядеть",14,Ui.INK,true));
+        android.widget.HorizontalScrollView sc=new android.widget.HorizontalScrollView(a);
+        sc.setHorizontalScrollBarEnabled(false);
+        LinearLayout rail=new LinearLayout(a);
+        rail.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        sc.addView(rail);
+        demo.addView(sc,ui.matchWrap());
+        box.addView(ui.space(10));
+        box.addView(demo,ui.matchWrap());
+        final boolean[] reset={false};
         Runnable draw = new Runnable() {
             @Override public void run() {
                 list.removeAllViews();
+                rail.removeAllViews();
+                if(!top) rail.addView(previewTab(ui,"Главная",true));
                 for (String key : items) {
                     Button b = new Button(a);
                     b.setAllCaps(false);
-                    b.setText(labels[base.indexOf(key)]);
+                    b.setText("≡   "+labels[base.indexOf(key)]);
+                    b.setTextColor(Ui.INK);
+                    b.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    b.setPadding(ui.dp(14),0,ui.dp(14),0);
+                    b.setBackground(ui.glassCard(0xff8c72c0,14));
+                    b.setForeground(ui.ripple());
+                    rail.addView(previewTab(ui,labels[base.indexOf(key)],false));
                     b.setOnLongClickListener(v -> v.startDragAndDrop(null, new View.DragShadowBuilder(v), key, 0));
                     b.setOnDragListener((v, event) -> {
                         if (event.getAction() == DragEvent.ACTION_DROP && items.contains(event.getLocalState())) {
                             int to = items.indexOf(key);
                             String moving = (String) event.getLocalState();
                             items.remove(moving);
-                            items.add(to, moving);
+                            items.add(Math.min(to,items.size()), moving);
+                            reset[0]=false;
                             list.post(this);
                         }
                         return true;
@@ -182,24 +210,38 @@ final class TabOrder {
                     b.setOnClickListener(v -> {
                         int i = items.indexOf(key);
                         java.util.Collections.swap(items, i, (i + 1) % items.size());
+                        reset[0]=false;
                         run();
                     });
-                    list.addView(b);
+                    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,ui.dp(48));
+                    lp.bottomMargin=ui.dp(6);
+                    list.addView(b,lp);
                 }
+                if(top) rail.addView(previewTab(ui,"Рекомендации",true));
             }
         };
         draw.run();
+        android.widget.ScrollView scroll=new android.widget.ScrollView(a);
+        scroll.addView(box);
         AlertDialog dlg = new AlertDialog.Builder(a, Ui.dialogTheme()).setTitle(top ? "Верхние вкладки" : "Нижние вкладки")
                 .setMessage("Удерживайте и перетащите вкладку. Нажатие меняет её местами со следующей.")
-                .setView(list).setPositiveButton("Сохранить", (d, w) -> {
-                    prefs(a).edit().putString(pref, android.text.TextUtils.join(",", items)).apply();
+                .setView(scroll).setPositiveButton("Сохранить", (d, w) -> {
+                    if(reset[0]) prefs(a).edit().remove(pref).apply();
+                    else prefs(a).edit().putString(pref, android.text.TextUtils.join(",", items)).apply();
                     InterfaceHooks.labels(a);
-                }).setNeutralButton("Как в TikTok", (d, w) -> {
-                    prefs(a).edit().remove(pref).apply();
-                    InterfaceHooks.labels(a);
-                }).setNegativeButton("Отмена", null).create();
+                }).setNeutralButton("Как в TikTok", null).setNegativeButton("Отмена", null).create();
         Screen.markOwn(dlg);
         dlg.show();
         Ui.style(dlg);
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{
+            items.clear(); items.addAll(base); reset[0]=true; draw.run();
+        });
+    }
+    private static TextView previewTab(Ui ui,String text,boolean selected) {
+        TextView v=ui.medium(text,12,selected?Ui.INK:Ui.MUTED);
+        v.setGravity(android.view.Gravity.CENTER);
+        v.setPadding(ui.dp(8),ui.dp(8),ui.dp(8),ui.dp(8));
+        if(selected) v.setBackground(ui.glassCard(0xff9064cf,12));
+        return v;
     }
 }
