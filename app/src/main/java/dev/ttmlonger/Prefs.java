@@ -52,6 +52,7 @@ final class Prefs {
 
     /** Плашка с точным временем публикации над именем автора в ленте. */
     static volatile boolean vtTime = true;
+    static volatile boolean vtRepost = true;
     /** Показывать в плашке секунды (только для точного времени). */
     static volatile boolean vtSeconds = true;
     /** Перехват запросов лайков/избранного/репостов (ApiTap): запись настоящих вызовов TikTok для будущего удаления. */
@@ -137,6 +138,7 @@ final class Prefs {
             streakMinute = Math.max(0, Math.min(1439, o.optInt("streakMinute", 20 * 60)));
             streakOnlyPicked = o.optBoolean("streakOnlyPicked", false);
             vtTime = o.optBoolean("vtTime", true);
+            vtRepost = o.optBoolean("vtRepost", true);
             vtSeconds = o.optBoolean("vtSeconds", true);
             vtFormat = Math.max(0, Math.min(1, o.optInt("vtFormat", 1)));
             apiTapOn = o.optBoolean("apiTap", true);
@@ -252,6 +254,8 @@ final class Prefs {
         save();
     }
 
+    static void setVtRepost(boolean v) { vtRepost=v; save(); }
+
     static void setVtTime(boolean v) {
         vtTime = v;
         save();
@@ -289,7 +293,7 @@ final class Prefs {
 
     /** Нужны ли вообще плашки времени и региона. */
     static boolean vtMaster() {
-        return vtTime || vtRegion;
+        return vtTime || vtRegion || vtRepost;
     }
 
     static void setVtStyle(int v) {
@@ -391,6 +395,7 @@ final class Prefs {
             o.put("streakMinute", streakMinute);
             o.put("streakOnlyPicked", streakOnlyPicked);
             o.put("vtTime", vtTime);
+            o.put("vtRepost", vtRepost);
             o.put("vtSeconds", vtSeconds);
             o.put("vtFormat", vtFormat);
             o.put("apiTap", apiTapOn);

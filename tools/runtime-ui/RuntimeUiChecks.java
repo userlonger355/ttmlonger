@@ -193,11 +193,17 @@ final class RuntimeUiChecks {
         public String aid="one";
         public long createTime=1700000000L, repostTime=4102444800L, repostTimestamp=1700000123000L;
         public String region="KZ";
+        public FakeUpvote upvoteInfo;
+        public FakeUpvote getUpvoteInfo(){return upvoteInfo;}
         public String getAid(){return aid;}
         public long getCreateTime(){return createTime;}
         public long getRepostTime(){return repostTime;}
         public long getRepostTimestamp(){return repostTimestamp;}
         public String getRegion(){return region;}
+    }
+    public static final class FakeUpvote {
+        public String itemId="one",upvoteId="123";
+        public long createTime=1700000222L;
     }
     private static void extraFeatureChecks() {
         long now=System.currentTimeMillis(), sec=now/1000L;
@@ -218,6 +224,15 @@ final class RuntimeUiChecks {
             result("metadata_repost_ms_fallback",VideoInfo.repostTimeOf(f)==1700000123L);
             f.repostTimestamp=0;
             result("metadata_no_fake_repost",VideoInfo.repostTimeOf(f)==0);
+            f.upvoteInfo=new FakeUpvote();
+            result("repost_nested_event",VideoInfo.repostTimeOf(f)==1700000222L);
+            f.upvoteInfo.itemId="other";
+            result("repost_wrong_item",VideoInfo.repostTimeOf(f)==0);
+            f.upvoteInfo.itemId="one"; f.upvoteInfo.createTime=1699999999L;
+            result("repost_before_publication",VideoInfo.repostTimeOf(f)==0);
+            f.upvoteInfo.createTime=1700000222L; f.repostTimestamp=1700000123000L;
+            result("repost_conflicting_times",VideoInfo.repostTimeOf(f)==0);
+            f.repostTimestamp=0; f.upvoteInfo=null;
             result("metadata_first_bind",VideoInfo.metaOf(e).created==1700000000L);
             f.aid="two"; f.createTime=1700000300L; f.region="US";
             result("metadata_reused_model",VideoInfo.metaOf(e).created==1700000300L && "US".equals(VideoInfo.metaOf(e).region));

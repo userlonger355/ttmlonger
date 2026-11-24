@@ -13,7 +13,7 @@ import java.util.Map;
 /** Allow-listed appearance/interface backup. Never export account, message, token, or A/B data. */
 final class SettingsBackup {
     private static final String[] BOOL={"clean","labels","like","follow","repost","share","profile_copy","profile_counts","profile_date","profile_follow","details","message_clock","comment_select","own_brightness","avatar_contour_spin"};
-    private static final String[] CORE_BOOL={"vtTime","vtSeconds","vtRegion","amoled","keepLanguage","saveStickers","hideAds","hideLiveButton","hideLiveRooms"};
+    private static final String[] CORE_BOOL={"vtTime","vtRepost","vtSeconds","vtRegion","amoled","keepLanguage","saveStickers","hideAds","hideLiveButton","hideLiveRooms"};
     private static final String[] CORE_INT={"accent","vtFormat","vtRegionMode","vtStyle","vtPos","vtOpacity"};
     private static final int MAX=32768;
     private static boolean has(String[] keys,String key){for(String x:keys)if(x.equals(key))return true;return false;}

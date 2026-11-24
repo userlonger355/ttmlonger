@@ -15,8 +15,8 @@ final class RepostManager {
     private static final int PAGE=50,MAX_PAGES=3,MAX_DELETE=20;
     private static final AtomicBoolean BUSY=new AtomicBoolean();
     private static final class Item {
-        final String aid,id,label; final int carrier;
-        Item(String a,String i,String l,int c){aid=a;id=i;label=l;carrier=c;}
+        final String aid,id,label; final int carrier; final long reposted;
+        Item(String a,String i,String l,int c,long time){aid=a;id=i;label=l;carrier=c;reposted=time;}
     }
     private static final class Batch {
         final List<Item> items=new ArrayList<>();
@@ -82,7 +82,7 @@ final class RepostManager {
                 Object raw=DownloadHooks.call(post,"getDesc");
                 String label=raw instanceof String?((String)raw).replace('\n',' ').trim():"";
                 if(label.length()>64)label=label.substring(0,64)+"…";
-                unique.putIfAbsent(aid+"/"+repost,new Item(aid,repost,label.isEmpty()?"Видео "+aid:label,((Number)carrier).intValue()));
+                unique.putIfAbsent(aid+"/"+repost,new Item(aid,repost,label.isEmpty()?"Видео "+aid:label,((Number)carrier).intValue(),VideoInfo.repostTimeOf(post)));
                 if(unique.size()>=PAGE*MAX_PAGES)break;
             }
             more=(Boolean)hasMore;
@@ -94,7 +94,7 @@ final class RepostManager {
     }
     private static void select(Activity a,String owner,Batch b){
         String[] labels=new String[b.items.size()];
-        for(int i=0;i<labels.length;i++)labels[i]=b.items.get(i).label;
+        for(int i=0;i<labels.length;i++){Item item=b.items.get(i);labels[i]=item.label+"\n"+(item.reposted>0?VideoInfo.fullTime(item.reposted,Zones.current()):"Время репоста не передано");}
         boolean[] picked=new boolean[labels.length];
         AlertDialog dialog=new AlertDialog.Builder(a,Ui.dialogTheme()).setTitle("Репосты · "+labels.length+(b.partial?"+":""))
                 .setMultiChoiceItems(labels,picked,(d,which,checked)->picked[which]=checked)

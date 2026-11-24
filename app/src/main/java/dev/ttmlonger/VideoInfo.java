@@ -413,16 +413,40 @@ final class VideoInfo {
 
     /** Только явно названная метка репоста; время публикации не является её заменой. */
     static long repostTimeOf(Object aweme) {
-        long now = System.currentTimeMillis() / 1000L;
-        for (String getter : new String[]{"getRepostTime", "getRepostTimestamp"}) {
-            long time = parseEventTime(DownloadHooks.call(aweme, getter));
-            if (time > 0 && time <= now + 300L) return time;
+        if(aweme==null)return 0;
+        long now=System.currentTimeMillis()/1000L;
+        long published=parseEventTime(get(aweme,"getCreateTime","createTime","create_time","mCreateTime"));
+        long direct=repostFields(aweme,published,now,false);
+        if(direct<0)return 0;
+        Object info=get(aweme,"getUpvoteInfo","upvoteInfo","upvote_info");
+        long nested=0;
+        if(info!=null){
+            Object aid=get(aweme,"getAid","aid");
+            Object item=get(info,"getItemId","itemId","item_id");
+            Object rid=get(info,"getUpvoteId","upvoteId","upvote_id");
+            if(aid!=null && item!=null && aid.toString().equals(item.toString()) && rid!=null && rid.toString().matches("[1-9][0-9]{0,23}")){
+                nested=repostFields(info,published,now,true);
+                if(nested<0)return 0;
+            }
         }
-        for (String field : new String[]{"repostTime","repost_time","repostTimestamp","repost_timestamp"}) {
-            long time = parseEventTime(fieldOf(aweme, field));
-            if (time > 0 && time <= now + 300L) return time;
+        if(direct>0&&nested>0&&direct!=nested)return 0;
+        return direct>0?direct:nested;
+    }
+    /** Reject ambiguous or impossible event times; never decode an ID as a timestamp. */
+    private static long repostFields(Object model,long published,long now,boolean upvote){
+        String[] names=upvote?new String[]{"repostTime","repostTimestamp","upvoteTime","upvoteTimestamp","repost_time","repost_timestamp","upvote_time","upvote_timestamp","createTime","create_time"}
+            :new String[]{"repostTime","repostTimestamp","repost_time","repost_timestamp"};
+        long result=0;
+        for(String name:names){
+            String getter="get"+Character.toUpperCase(name.charAt(0))+name.substring(1);
+            for(Object value:new Object[]{DownloadHooks.call(model,getter),fieldOf(model,name)}){
+                long time=parseEventTime(value);
+                if(time<=0||time>now+300L||published>0&&time<published)continue;
+                if(result!=0&&result!=time)return -1;
+                result=time;
+            }
         }
-        return 0;
+        return result;
     }
 
     static long parseEventTime(Object raw) {
@@ -449,7 +473,10 @@ final class VideoInfo {
             addDetail(rows,"Давность",ageText(System.currentTimeMillis()/1000L-published));
         }
         long repost = repostTimeOf(post);
-        if (repost > 0) addDetail(rows, "Время репоста", fullTime(repost, Zones.current()));
+        if (repost > 0) {
+            addDetail(rows, "Время репоста", fullTime(repost, Zones.current()));
+            addDetail(rows, "Репост в UTC", fullTime(repost, TimeZone.getTimeZone("UTC")));
+        }
         addDetail(rows, "Регион публикации", get(post, "getRegion", "region"));
         addDetail(rows, "Регион аккаунта", get(author, "getRegion", "region"));
         addDetail(rows, "Язык аккаунта", get(author, "getLanguage", "language"));
@@ -671,6 +698,7 @@ final class VideoInfo {
         final LinearLayout box;
         final TextView timeView;
         final TextView regionView;
+        final TextView repostView;
         private int appliedKey = Integer.MIN_VALUE;
 
         Pills(Context ctx) {
@@ -681,12 +709,17 @@ final class VideoInfo {
             box.setTag(Ui.OWN_TAG);
             timeView = pill();
             regionView = pill();
+            repostView = pill();
+            repostView.setVisibility(View.GONE);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
 
             box.addView(regionView, lp);
-            box.addView(timeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout dates=new LinearLayout(ctx);
+            dates.setOrientation(LinearLayout.VERTICAL);
+            dates.addView(timeView,new LinearLayout.LayoutParams(-2,-2));
+            dates.addView(repostView,new LinearLayout.LayoutParams(-2,-2));
+            box.addView(dates,new LinearLayout.LayoutParams(-2,-2));
         }
 
         int dp(float v) {
@@ -721,6 +754,8 @@ final class VideoInfo {
             int ink=style==STYLE_LIGHT?0xff25252b:0xffeeeeee;
             timeView.setTextColor(ink);
             regionView.setTextColor(ink);
+            repostView.setTextColor(ink);
+            repostView.setShadowLayer(dp(1.5f),0,dp(1),style==STYLE_LIGHT?0x88ffffff:0x99000000);
             timeView.setShadowLayer(dp(1.5f),0,dp(1),style==STYLE_LIGHT?0x88ffffff:0x99000000);
             regionView.setShadowLayer(dp(1.5f),0,dp(1),style==STYLE_LIGHT?0x88ffffff:0x99000000);
             box.setAlpha(op / 100f);
@@ -744,6 +779,9 @@ final class VideoInfo {
         p.regionView.setVisibility(Prefs.vtRegion ? View.VISIBLE : View.GONE);
         p.timeView.setClickable(false);
         p.regionView.setClickable(false);
+        p.repostView.setText("Репост · "+formatTime(sample+3600L,true,Zones.current(),System.currentTimeMillis()));
+        p.repostView.setVisibility(Prefs.vtRepost?View.VISIBLE:View.GONE);
+        p.repostView.setClickable(false);
         return p.box;
     }
 
@@ -785,14 +823,11 @@ final class VideoInfo {
             box = pills.box;
             timeView = pills.timeView;
             regionView = pills.regionView;
+            pills.repostView.setOnClickListener(view->{if(entry!=null)showPostDetails(act,entry);});
             timeView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     TimeZone tz = Zones.current();
-                    if (reposted > 0) {
-                        Toasts.show(act, "Репост: " + fullTime(reposted, tz));
-                        return;
-                    }
                     if (created <= 0) return;
                     long age = System.currentTimeMillis() / 1000L - created;
                     if(entry!=null) showPostDetails(act,entry);
@@ -831,12 +866,14 @@ final class VideoInfo {
             iso = m.region;
             pills.style(Prefs.vtStyle, isNight(act), Prefs.vtOpacity);
             if (wantTime) {
-                String time = reposted > 0
-                        ? "Репост " + formatTime(reposted, true, Zones.current(), System.currentTimeMillis())
-                        : timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis());
+                String time = timeText(m.created, Prefs.vtFormat, Prefs.vtSeconds, Zones.current(), System.currentTimeMillis());
                 if (!TextUtils.equals(timeView.getText(),time)) timeView.setText(time);
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
+            boolean showRepost=Prefs.vtRepost&&reposted>0;
+            if(showRepost){String label="Репост · "+formatTime(reposted,true,Zones.current(),System.currentTimeMillis());
+                if(!TextUtils.equals(pills.repostView.getText(),label))pills.repostView.setText(label);}
+            pills.repostView.setVisibility(showRepost?View.VISIBLE:View.GONE);
             if (wantRegion) {
                 String region=regionText(m.region, Prefs.vtRegionMode);
                 if (!TextUtils.equals(regionView.getText(),region)) regionView.setText(region);
@@ -1041,7 +1078,7 @@ final class VideoInfo {
     private static WeakReference<Activity> overlayAct;
 
     static boolean enabled() {
-        return (Prefs.vtTime || Prefs.vtRegion) && !CrashGuard.tripped;
+        return (Prefs.vtTime || Prefs.vtRegion || Prefs.vtRepost) && !CrashGuard.tripped;
     }
 
     /** Запустить (или сразу повторить) поиск на экране: при показе экрана и при смене настроек. Главный поток. */
@@ -1098,9 +1135,10 @@ final class VideoInfo {
                 return;
             }
             Meta m = metaOf(hit.entry);
-            boolean wantTime = Prefs.vtTime && (m.created > 0 || repostTimeOf(hit.entry.aweme) > 0);
+            boolean wantTime = Prefs.vtTime && m.created > 0;
+            boolean wantRepost=Prefs.vtRepost&&repostTimeOf(hit.entry.aweme)>0;
             boolean wantRegion = Prefs.vtRegion && m.region != null;
-            if (!wantTime && !wantRegion) {
+            if (!wantTime && !wantRegion && !wantRepost) {
                 if (overlay != null) overlay.hide();
                 return;
             }
