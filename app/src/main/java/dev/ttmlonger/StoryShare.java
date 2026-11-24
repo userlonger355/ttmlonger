@@ -238,7 +238,7 @@ final class StoryShare {
         int[] p=new int[2];v.getLocationOnScreen(p);
         return new Rect(p[0],p[1],p[0]+v.getWidth(),p[1]+v.getHeight());
     }
-    private static View tile(Context c,TextView sample,int diameter,VideoTracker.Entry e) {
+    private static View tile(Context c,TextView sample,int diameter,VideoTracker.Entry e,boolean audio) {
         int ink=sample.getCurrentTextColor();
         LinearLayout col=new LinearLayout(c);
         col.setTag(ACTION, Boolean.TRUE); col.setOrientation(LinearLayout.VERTICAL);col.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
@@ -247,7 +247,7 @@ final class StoryShare {
         bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);
         icon.setBackground(bg); int pad=Math.round(diameter*.27f);icon.setPadding(pad,pad,pad,pad);
         col.addView(icon,new LinearLayout.LayoutParams(diameter,diameter));
-        String title=e.isStory()?"Скачать":"Сохранить через мод";
+        String title=audio?"Скачать звук":e.isStory()?"Скачать":"Сохранить через мод";
         TextView label=new TextView(c);label.setText(title);label.setTextColor(ink);
         label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,sample.getTextSize());label.setGravity(Gravity.CENTER);
         label.setTypeface(sample.getTypeface());label.setMaxLines(2);
@@ -255,7 +255,9 @@ final class StoryShare {
         col.setContentDescription(title);col.setClickable(true);col.setFocusable(true);
         col.setOnClickListener(v -> {
             try {
-                Context app=c.getApplicationContext(); VideoSaver.start(app==null?c:app,e);
+                Context app=c.getApplicationContext();
+                if(audio) AudioSaver.start(app==null?c:app,e);
+                else VideoSaver.start(app==null?c:app,e);
             } catch(Throwable t){FlagStore.log(t);Toasts.show(c,"Не удалось сохранить");}
         });
         return col;
@@ -291,7 +293,14 @@ final class StoryShare {
         int step=Math.abs(b.centerX()-a.centerX());
         if(step<dp(root.getContext(),45))return;
         int size=Math.min(dp(root.getContext(),56),Math.round(step*.72f));
-        View mine=tile(root.getContext(),first,size,e);
+        View mine=tile(root.getContext(),first,size,e,false);
+        if(!e.isStory()) {
+            LinearLayout pair=new LinearLayout(root.getContext());
+            pair.setTag(ACTION,Boolean.TRUE);pair.setOrientation(LinearLayout.HORIZONTAL);
+            pair.addView(mine,new LinearLayout.LayoutParams(0,-2,1));
+            pair.addView(tile(root.getContext(),first,size,e,true),new LinearLayout.LayoutParams(0,-2,1));
+            mine=pair;
+        }
         if(row instanceof LinearLayout) {
             View template=childOf(second,row);
             int w=template==null?step:template.getWidth();
@@ -301,7 +310,7 @@ final class StoryShare {
                 View child=row.getChildAt(i);
                 if(child.getVisibility()!=View.GONE) occupied+=child.getWidth();
             }
-            if(!e.isStory() && occupied+w>row.getWidth()) {
+            if(!e.isStory() && occupied+w*2>row.getWidth()) {
                 // A full native action row stays unchanged; append an additional in-sheet row.
                 if(!(row.getParent() instanceof LinearLayout))return;
                 LinearLayout parent=(LinearLayout)row.getParent();
@@ -309,7 +318,7 @@ final class StoryShare {
                 LinearLayout extra=new LinearLayout(root.getContext());
                 extra.setTag(ACTION,Boolean.TRUE);extra.setOrientation(LinearLayout.HORIZONTAL);
                 extra.setPadding(row.getPaddingLeft(),dp(root.getContext(),8),row.getPaddingRight(),0);
-                extra.addView(mine,new LinearLayout.LayoutParams(Math.max(w,dp(root.getContext(),84)),-2));
+                extra.addView(mine,new LinearLayout.LayoutParams(Math.max(w*2,dp(root.getContext(),168)),-2));
                 parent.addView(extra,parent.indexOfChild(row)+1,new LinearLayout.LayoutParams(-1,-2));
                 buttons.put(root,extra);bound.put(root,e);videoActions++;return;
             }
@@ -319,9 +328,11 @@ final class StoryShare {
                 LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();
                 lp=new LinearLayout.LayoutParams(src); lp.height=-2;
             }
+            if(!e.isStory()) {lp.width=w*2;lp.weight=0;}
             row.addView(mine,row.indexOfChild(template)+1,lp);
         } else if(row instanceof GridLayout && ((GridLayout)row).getColumnCount()>=3) {
-            GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=step;lp.height=-2;
+            GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=e.isStory()?step:step*2;lp.height=-2;
+            if(!e.isStory()) lp.columnSpec=GridLayout.spec(GridLayout.UNDEFINED,2);
             row.addView(mine,lp);
         } else {
             // Recycler/obfuscated row: attach a normal clickable child to the sheet window's
@@ -342,7 +353,7 @@ final class StoryShare {
                     extra.setTag(ACTION,Boolean.TRUE);
                     extra.setOrientation(LinearLayout.HORIZONTAL);
                     extra.setPadding(dp(root.getContext(),8),dp(root.getContext(),8),0,0);
-                    extra.addView(mine,new LinearLayout.LayoutParams(Math.max(step,dp(root.getContext(),84)),-2));
+                    extra.addView(mine,new LinearLayout.LayoutParams(Math.max(step*2,dp(root.getContext(),168)),-2));
                     host.addView(extra,host.indexOfChild(aChild)+1,new LinearLayout.LayoutParams(-1,-2));
                     buttons.put(root,extra);bound.put(root,e);videoActions++;return;
                 }

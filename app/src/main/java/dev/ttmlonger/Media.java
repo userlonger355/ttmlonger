@@ -91,7 +91,8 @@ final class Media {
 
     private static String save(Context ctx, String name, String mime, Sink sink) throws Exception {
         boolean video = mime != null && mime.startsWith("video/");
-        String dirType = video ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_PICTURES;
+        boolean audio = mime != null && mime.startsWith("audio/");
+        String dirType = audio ? Environment.DIRECTORY_MUSIC : video ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_PICTURES;
         if (Build.VERSION.SDK_INT >= 29) {
             ContentResolver cr = ctx.getContentResolver();
             ContentValues cv = new ContentValues();
@@ -99,7 +100,7 @@ final class Media {
             cv.put(MediaStore.MediaColumns.MIME_TYPE, mime);
             cv.put(MediaStore.MediaColumns.RELATIVE_PATH, dirType + "/TTMLonger");
             cv.put(MediaStore.MediaColumns.IS_PENDING, 1);
-            Uri collection = video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            Uri collection = audio ? MediaStore.Audio.Media.EXTERNAL_CONTENT_URI : video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                     : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
             Uri uri = cr.insert(collection, cv);
             if (uri == null) throw new IllegalStateException("MediaStore вернул null");
