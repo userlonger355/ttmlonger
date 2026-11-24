@@ -36,6 +36,7 @@ final class StreakSticker {
     static void setup(Class<?> cls, String key) {
         itemClass = cls;
         appKey = key == null ? "" : key;
+        StickerLibrary.observeModel(cls);
     }
 
     static Class<?> itemClass() {
@@ -71,6 +72,7 @@ final class StreakSticker {
         if (cur != null && cur.isInstance(o)) return true;
         if (!isStickerClass(k)) return false;
         itemClass = k;
+        StickerLibrary.observeModel(k);
         adopted = true;
         return true;
     }
@@ -79,6 +81,7 @@ final class StreakSticker {
     static boolean adoptClass(Class<?> k) {
         if (itemClass != null || !isStickerClass(k)) return itemClass != null;
         itemClass = k;
+        StickerLibrary.observeModel(k);
         adopted = true;
         return true;
     }

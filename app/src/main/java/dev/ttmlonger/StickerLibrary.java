@@ -52,7 +52,10 @@ final class StickerLibrary {
         }
     }
 
-    private static final int MAX = 200;
+    private static final int MAX = 400;
+    private static final Set<Class<?>> modelHooks=new HashSet<>();
+    private static final java.util.concurrent.atomic.AtomicInteger captures=new java.util.concurrent.atomic.AtomicInteger();
+    private static final Set<String> queued=new HashSet<>();
     private static final int THUMB_PX = 160;
     private static final String FLOW = "getFavouriteStickersFlow";
     private static final String REFRESH = "refreshFavouriteStickers";
@@ -97,6 +100,30 @@ final class StickerLibrary {
         }
     }
 
+    // Observe only the actual StickerItem model, including ordinary sticker packs.
+    static void observeModel(Class<?> type){
+        if(type==null)return;synchronized(modelHooks){if(!modelHooks.add(type))return;}
+        XC_MethodHook hook=new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable())capture(p.thisObject);}};
+        try{XposedBridge.hookAllMethods(type,"getStickerBase",hook);}catch(Throwable ignored){}
+        try{XposedBridge.hookAllMethods(type,"setStickerBase",hook);}catch(Throwable ignored){}
+        try{XposedBridge.hookAllConstructors(type,hook);}catch(Throwable ignored){}
+    }
+    private static void capture(Object item){
+        if(item==null||CrashGuard.tripped)return;
+        Object base=field(item,"stickerBase"),raw=field(base,"id");if(raw==null)return;
+        String id=raw.toString();if(id.isEmpty()||id.equals("0")||byId(id)!=null)return;
+        synchronized(queued){if(queued.size()>=64||!queued.add(id))return;}
+        THUMBS.execute(()->{try{if(thumbUrlOf(item)!=null)add(item,false);}catch(Throwable ignored){}finally{synchronized(queued){queued.remove(id);}}});
+    }
+    static String motionUrl(Object item){
+        Object base=field(item,"stickerBase");
+        for(Object o:new Object[]{base,item})if(o!=null){
+            for(String name:new String[]{"video","videoUrl","video_url","mp4","animatedImage","animated_image","animation","image"}){
+                Object part=field(o,name);if(part==null)continue;String url=part instanceof String?(String)part:StickerSaver.modelUrl(part);url=AvatarHooks.secure(url);if(url!=null)return url;
+            }
+        }
+        return null;
+    }
     /** Идентификатор стикера: id из stickerBase, иначе адрес картинки, иначе хэш адреса. */
     static String idOf(Object item) {
         Object base = field(item, "stickerBase");

@@ -11,13 +11,14 @@ final class StreakChatPreview extends LinearLayout {
     private final int ink,muted,incoming,surface;
     private final LinearLayout header,avatarSlot,messages,planned;
     private final TextView name,flame,empty,caption,stickerState,next;
-    private final ImageView sticker;
+    private final StickerMotionView sticker;
+    private final StreakSchedule schedule;
     private final List<StreakRunner.Person> people=new ArrayList<>();
     private int index,generation,minute=-1;private boolean auto,loading,attached;
     private String owner,selected="",signature="";
     private final Runnable poll=new Runnable(){public void run(){if(!attached)return;renderMessages();renderSticker();postDelayed(this,1200);}};
     StreakChatPreview(Activity a){
-        super(a);act=a;ui=new Ui(a);ink=Ui.INK;muted=Ui.MUTED;incoming=Ui.DARK?0xff28282a:0xffeeeeef;surface=Ui.DARK?0xff191919:0xffffffff;
+        super(a);act=a;ui=new Ui(a);schedule=new StreakSchedule(a);ink=Ui.INK;muted=Ui.MUTED;incoming=Ui.DARK?0xff28282a:0xffeeeeef;surface=Ui.DARK?0xff191919:0xffffffff;
         setOrientation(VERTICAL);setBackground(ui.round(surface,18));setPadding(ui.dp(14),ui.dp(12),ui.dp(14),ui.dp(12));
         header=new LinearLayout(a);header.setGravity(Gravity.CENTER_VERTICAL);
         avatarSlot=new LinearLayout(a);LayoutParams av=new LayoutParams(ui.dp(38),ui.dp(38));av.rightMargin=ui.dp(9);header.addView(avatarSlot,av);
@@ -30,7 +31,7 @@ final class StreakChatPreview extends LinearLayout {
         empty=ui.text("Загружаю огоньки…",13,muted,false);empty.setPadding(0,ui.dp(12),0,ui.dp(12));addView(empty);
         planned=new LinearLayout(a);planned.setOrientation(VERTICAL);planned.setGravity(Gravity.END);
         LayoutParams pp=new LayoutParams(-1,-2);pp.topMargin=ui.dp(5);addView(planned,pp);
-        sticker=new ImageView(a);sticker.setScaleType(ImageView.ScaleType.FIT_CENTER);planned.addView(sticker,new LayoutParams(ui.dp(74),ui.dp(74)));
+        sticker=new StickerMotionView(a);planned.addView(sticker,new LayoutParams(ui.dp(74),ui.dp(74)));
         stickerState=ui.text("",11,muted,false);stickerState.setGravity(Gravity.END);planned.addView(stickerState,new LayoutParams(-1,-2));
         line();caption=ui.text("",12,muted,false);caption.setPadding(0,ui.dp(8),0,0);addView(caption,new LayoutParams(-1,-2));
     }
@@ -78,13 +79,13 @@ final class StreakChatPreview extends LinearLayout {
         if(people.isEmpty()){planned.setVisibility(GONE);return;}
         planned.setVisibility(VISIBLE);
         String id=StreakSticker.chosenId();boolean chosen=!id.isEmpty();
-        if(!id.equals(selected)){selected=id;sticker.setImageDrawable(null);}
-        set(stickerState,!auto?"Автопродление выключено":!chosen?"Выберите стикер":("Будущая отправка · "+(minute>=0?StreakLogic.formatMinute(minute):"когда огонёк серый")));
+        if(!id.equals(selected)){selected=id;sticker.clear();}
+        int effective=schedule.effective(owner,people.get(index).conv);
+        set(stickerState,!auto?"Автопродление выключено":!chosen?"Выберите стикер":("Будущая отправка · "+StreakSchedule.label(effective)));
         sticker.setVisibility(chosen?VISIBLE:GONE);if(!chosen)return;
         StickerLibrary.Entry e=StickerLibrary.byId(id);
         if(e==null){Object model=StreakSticker.get();if(model!=null){StickerLibrary.add(model,false);e=StickerLibrary.byId(id);}}
-        if(e==null){sticker.setImageDrawable(Icons.of(Icons.STICKER,muted));return;}
-        if(e.thumb!=null){if(sticker.getDrawable()==null||!(sticker.getDrawable() instanceof android.graphics.drawable.BitmapDrawable)||((android.graphics.drawable.BitmapDrawable)sticker.getDrawable()).getBitmap()!=e.thumb)sticker.setImageBitmap(e.thumb);return;}
-        sticker.setImageDrawable(Icons.of(Icons.STICKER,muted));StickerLibrary.thumb(e,null);
+        if(e==null){sticker.clear();return;}
+        sticker.bind(e);
     }
 }

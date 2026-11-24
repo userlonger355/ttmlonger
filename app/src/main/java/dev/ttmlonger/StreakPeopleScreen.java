@@ -19,6 +19,8 @@ import java.util.List;
  */
 final class StreakPeopleScreen extends Screen {
     private final Runnable onChanged;
+    private final StreakSchedule schedule;
+    private final String owner;
     private TextView summary;
     private TextView status;
     private LinearLayout list;
@@ -27,7 +29,7 @@ final class StreakPeopleScreen extends Screen {
 
     private StreakPeopleScreen(Activity act, Runnable onChanged) {
         super(act);
-        this.onChanged = onChanged;
+        this.onChanged = onChanged;this.schedule=new StreakSchedule(act);this.owner=StreakHooks.liveOwner();
     }
 
     static void show(Activity act, Runnable onChanged) {
@@ -92,6 +94,7 @@ final class StreakPeopleScreen extends Screen {
     }
 
     private void changed() {
+        StreakRunner.async(()->{StreakRunner.reschedule();StreakRunner.request(0);});
         if (onChanged != null) onChanged.run();
     }
 
@@ -150,6 +153,7 @@ final class StreakPeopleScreen extends Screen {
         TextView sub = ui.text(subtitle(person), 13.5f, Ui.MUTED, false);
         sub.setPadding(0, ui.dp(2), 0, 0);
         col.addView(sub);
+        TextView time=ui.text(timeLabel(person.conv),12,Theme.accent(),true);time.setPadding(0,ui.dp(8),0,ui.dp(5));time.setContentDescription("Изменить время для "+person.name);time.setOnClickListener(v->pickTime(person,time));col.addView(time);
         card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         final FrameLayout box = new FrameLayout(act);
@@ -171,6 +175,12 @@ final class StreakPeopleScreen extends Screen {
         });
         card.setLayoutParams(ui.matchWrap());
         return card;
+    }
+
+    private String timeLabel(String conv){int m=schedule.override(owner,conv);return "◷ "+(m==StreakSchedule.INHERIT?"Общее · "+StreakSchedule.label(schedule.minute(owner)):StreakSchedule.label(m))+" ›";}
+    private void pickTime(StreakRunner.Person person,TextView label){
+        if(owner==null||!owner.equals(StreakHooks.liveOwner())){Toasts.show(act,"Аккаунт изменился. Откройте список заново.");return;}
+        int m=schedule.effective(owner,person.conv);StreakTimeSheet.personal(act,person.name,m>=0?m:Prefs.streakMinute,schedule.override(owner,person.conv),v->{if(!owner.equals(StreakHooks.liveOwner())||!schedule.setOverride(owner,person.conv,v)){Toasts.show(act,"Не удалось сохранить время");return;}label.setText(timeLabel(person.conv));changed();});
     }
 
     /** Галочка: заполненный круг цвета акцента с белой галочкой или пустой круг. */

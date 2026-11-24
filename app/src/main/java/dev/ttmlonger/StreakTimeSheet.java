@@ -13,7 +13,12 @@ import java.util.Locale;
 final class StreakTimeSheet {
     interface Chosen {void time(int value);}
     static void show(Activity a,int initial,Chosen callback){
-        StreakSheet sh=new StreakSheet(a,"Время отправки");Ui ui=sh.ui;
+        open(a,"Время отправки",initial,false,0,callback);
+    }
+    static void personal(Activity a,String name,int initial,int mode,Chosen callback){open(a,"Время · "+name,initial,true,mode,callback);}
+    private static void open(Activity a,String title,int initial,boolean personal,int mode,Chosen callback){
+        StreakSheet sh=new StreakSheet(a,title);Ui ui=sh.ui;
+        if(personal)sh.root.addView(sh.note("Сейчас: "+StreakSchedule.label(mode)+". Настройка применяется только к этому чату."));
         LinearLayout row=new LinearLayout(a);row.setGravity(Gravity.CENTER);
         NumberPicker hours=wheel(a,ui,23,initial/60,"Часы");
         NumberPicker minutes=wheel(a,ui,59,initial%60,"Минуты");
@@ -23,7 +28,8 @@ final class StreakTimeSheet {
         row.addView(minutes,new LinearLayout.LayoutParams(ui.dp(76),wheelHeight));
         sh.root.addView(row,new LinearLayout.LayoutParams(-1,-2));
         sh.root.addView(sh.note("Без времени огоньки проверяются раз в несколько часов"));
-        sh.button("Без времени",false,()->{sh.dialog.dismiss();callback.time(-1);});
+        if(personal)sh.button("Общее время",false,()->{sh.dialog.dismiss();callback.time(StreakSchedule.INHERIT);});
+        sh.button("Когда огонёк серый",false,()->{sh.dialog.dismiss();callback.time(-1);});
         sh.button("Готово",true,()->{hours.clearFocus();minutes.clearFocus();int value=hours.getValue()*60+minutes.getValue();sh.dialog.dismiss();callback.time(value);});
         sh.show();
     }

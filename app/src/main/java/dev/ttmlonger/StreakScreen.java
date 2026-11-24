@@ -112,10 +112,11 @@ final class StreakScreen extends Screen {
         summary.setText(!Prefs.streakAuto ? "Выключено" : !chosen ? "Выберите стикер"
                 : minute >= 0 ? "Ежедневно в " + StreakLogic.formatMinute(minute) : "Когда огонёк сереет");
         caption.setText(!Prefs.streakAuto ? "Можно проверить чаты или отправить стикер вручную."
-                : !chosen ? "Откройте избранные или выберите стикер отправкой в чате."
+                : !chosen ? "Откройте обычные или избранные стикеры в чате."
                 : minute >= 0 ? "Действующим сериям с третьего дня, по времени телефона."
                 : "Стикер уйдёт, когда серия с третьего дня ждёт продления.");
-        Ui.subtitleOf(timeRow).setText(minute >= 0 ? "Каждый день в " + StreakLogic.formatMinute(minute) : "Когда огонёк станет серым");
+        int custom=schedule.count(StreakHooks.liveOwner());
+        Ui.subtitleOf(timeRow).setText((minute >= 0 ? "Каждый день в " + StreakLogic.formatMinute(minute) : "Когда огонёк станет серым")+(custom>0?" · личных: "+custom:""));
         Ui.subtitleOf(stickerRow).setText(chosen?"Стикер выбран":StreakSticker.armed()?"Ожидание стикера из чата":"Не выбран");
         Ui.subtitleOf(peopleRow).setText(Prefs.streakOnlyPicked
                 ? "Только отмеченные · " + StreakStore.pickedCount() : "Все чаты с действующей серией");

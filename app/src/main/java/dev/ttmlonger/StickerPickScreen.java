@@ -16,11 +16,12 @@ final class StickerPickScreen {
     private String pending;private StickerLibrary.Entry choice;
     private final Map<String,LinearLayout> tiles=new LinkedHashMap<>();
     private final Map<String,TextView> labels=new LinkedHashMap<>();
-    private boolean loading;
+    private boolean loading;private int filter;private int limit=60;private TextView[] tabs=new TextView[3];
     static void show(Activity a,Runnable onChosen){new StickerPickScreen(a,onChosen).open();}
     private StickerPickScreen(Activity a,Runnable cb){
         act=a;onChosen=cb;sheet=new StreakSheet(a,"Чем продлевать");ui=sheet.ui;pending=StreakSticker.chosenId();
-        sheet.root.addView(sheet.note("Избранное и стикеры из чатов. Новые появятся, когда вы откроете панель стикеров в любом чате."));
+        sheet.root.addView(sheet.note("Обычные наборы, реакции и избранное. Откройте панель стикеров в чате, чтобы загрузить новые модели TikTok."));
+        LinearLayout nav=new LinearLayout(a);nav.setPadding(ui.dp(14),0,ui.dp(14),ui.dp(6));String[] categories={"Все","Обычные","Избранное"};for(int i=0;i<3;i++){final int n=i;TextView t=ui.medium(categories[i],13,Ui.INK);t.setGravity(Gravity.CENTER);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(38),1);lp.setMargins(ui.dp(3),0,ui.dp(3),0);nav.addView(t,lp);tabs[i]=t;t.setOnClickListener(v->{filter=n;limit=60;fill();});}sheet.root.addView(nav);
         ScrollView scroll=new ScrollView(a);scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);scroll.setFillViewport(false);
         grid=new LinearLayout(a);grid.setOrientation(LinearLayout.VERTICAL);
         grid.setPadding(ui.dp(14),ui.dp(4),ui.dp(14),ui.dp(6));scroll.addView(grid);
@@ -31,6 +32,7 @@ final class StickerPickScreen {
         TextView capture=ui.text("Выбрать из чата",13,Ui.MUTED,true);capture.setGravity(Gravity.CENTER);capture.setPadding(ui.dp(10),ui.dp(8),ui.dp(10),ui.dp(8));
         capture.setOnClickListener(v->{StreakSticker.arm();sheet.dialog.dismiss();Toasts.show(a,"Отправьте стикер в чате: мод запомнит его");if(onChosen!=null)onChosen.run();});
         tools.addView(refresh);tools.addView(capture);sheet.root.addView(tools);
+        TextView more=ui.text("Показать ещё",13,Theme.accent(),true);more.setGravity(Gravity.CENTER);more.setPadding(0,ui.dp(8),0,ui.dp(8));more.setOnClickListener(v->{limit+=60;fill();});sheet.root.addView(more);
         save=sheet.button("Сохранить",true,()->{
             if(choice==null){if(pending.equals(StreakSticker.chosenId())&&!pending.isEmpty())sheet.dialog.dismiss();return;}
             StreakSticker.choose(choice.item,choice.fav?"из избранных":"из списка");
@@ -49,16 +51,18 @@ final class StickerPickScreen {
         if(!pending.isEmpty()&&StickerLibrary.byId(pending)==null&&pending.equals(StreakSticker.chosenId())){
             Object chosen=StreakSticker.get();if(chosen!=null){StickerLibrary.add(chosen,false);all=StickerLibrary.list();}
         }
+        for(int i=0;i<tabs.length;i++){tabs[i].setBackground(ui.round(i==filter?Theme.accent():Ui.FIELD,13));tabs[i].setTextColor(i==filter?Theme.onColor(Theme.accent()):Ui.INK);}
+        final int mode=filter;all.removeIf(e->mode==1&&e.fav||mode==2&&!e.fav);
         grid.removeAllViews();tiles.clear();labels.clear();
         int available=Math.round(act.getResources().getDisplayMetrics().widthPixels/act.getResources().getDisplayMetrics().density);
-        int cols=Math.max(2,Math.min(5,(available-28)/86)),count=Math.min(60,all.size());
+        int cols=Math.max(2,Math.min(5,(available-28)/86)),count=Math.min(limit,all.size());
         LinearLayout line=null;
         for(int i=0;i<count;i++){
             if(i%cols==0){line=new LinearLayout(act);line.setGravity(Gravity.START);grid.addView(line,new LinearLayout.LayoutParams(-1,-2));}
             StickerLibrary.Entry e=all.get(i);if(e.id.equals(pending))choice=e;
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp((available-28)/cols-8),ui.dp(88));lp.setMargins(ui.dp(4),ui.dp(4),ui.dp(4),ui.dp(4));line.addView(tile(e),lp);
         }
-        String message=count==0?"Стикеры ещё не загружены":all.size()>count?"Показано "+count+" из "+all.size():"";
+        String message=count==0?"В этой категории ещё нет загруженных стикеров":all.size()>count?"Показано "+count+" из "+all.size():"";
         status.setText(message);status.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);
         ScrollView scroll=(ScrollView)grid.getParent();
         int rows=(count+cols-1)/cols;

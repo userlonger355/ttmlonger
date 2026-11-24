@@ -103,10 +103,9 @@ final class StreakRunner {
         Handler h = handler;
         if (h == null) return;
         h.removeCallbacks(DAILY);
-        int minute = Prefs.streakAuto ? schedule.minute(StreakHooks.liveOwner()) : -1;
-        if (minute >= 0) {
-            long now = System.currentTimeMillis();
-            long wait = StreakLogic.millisUntil(now, minute, Zones.current());
+        long now=System.currentTimeMillis();
+        long wait=Prefs.streakAuto?schedule.nextWait(StreakHooks.liveOwner(),now,Zones.current()):Long.MAX_VALUE;
+        if(wait!=Long.MAX_VALUE){
             // Задержка Handler считается по времени работы процессора и во сне не идёт: сам по себе он
             // сработает позже срока. Поэтому рядом ставится будильник по настоящему времени, а на включение
             // экрана и смену времени или пояса проход запрашивается заново (registerWake).
@@ -314,12 +313,7 @@ final class StreakRunner {
             hint = "Откройте входящие TikTok, чтобы определить текущий аккаунт.";
             return;
         }
-        int minute = schedule.minute(owner);
         long t0 = System.currentTimeMillis();
-        if (!dry && minute >= 0 && StreakLogic.minuteOfDay(t0, Zones.current()) < minute) {
-            reschedule();
-            return;
-        }
         StreakHooks.discover(dry);
         StreakHooks.prepareSender();
 
@@ -352,6 +346,7 @@ final class StreakRunner {
         Map<String,StreakHooks.Info> priorities=new java.util.HashMap<>();
         int activeCount=0,greyCount=0;
         for (String conv : convs) {
+            int minute=schedule.effective(owner,conv);
             StreakHooks.Info i = StreakHooks.read(conv, true);
             if (i == null || i.streak < 0) {
                 unreadable++;
@@ -414,7 +409,8 @@ final class StreakRunner {
             if (done++ >= StreakLogic.MAX_PER_ROUND) break;
             if(!online())break;
             hint="Автопродление: "+done+" из "+Math.min(due.size(),StreakLogic.MAX_PER_ROUND);
-            if (!Prefs.streakAuto || !owner.equals(StreakHooks.liveOwner()) || schedule.minute(owner) != minute) break;
+            if (!Prefs.streakAuto || !owner.equals(StreakHooks.liveOwner())) break;
+            int minute=schedule.effective(owner,conv);
             if (Prefs.streakOnlyPicked && !StreakStore.isPicked(conv)) continue;
             // Перед отправкой читаем огонёк заново: серый из кэша стикер вызывать не должен.
             StreakHooks.Info fresh = StreakHooks.read(conv, true);
@@ -425,7 +421,7 @@ final class StreakRunner {
             }
             StreakLogic.Verdict again = StreakLogic.decide(minute >= 0, minute, fresh.status,
                     fresh.streak, schedule.last(owner, minute, conv), StreakStore.lastFail(conv), at, tz);
-            if (again != StreakLogic.Verdict.SEND) continue;
+            if (again != StreakLogic.Verdict.SEND||schedule.effective(owner,conv)!=minute) continue;
             if (StreakHooks.send(app, sticker, conv, owner, true)) {
                 schedule.submitted(owner, minute, conv, at);
                 if(StreakLogic.isGrey(fresh.status))greySubmitted.add(conv);
