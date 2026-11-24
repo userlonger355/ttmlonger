@@ -60,7 +60,26 @@ final class RefSet {
     static FlagStore.Patch active(String key) {
         Unlocks.Group g = Unlocks.groupOf(key);
         if (g != null) return Unlocks.on(g.id) ? Unlocks.patchOf(key) : null;
+        // Не оставляем рекламные флаги выключенными, когда пользователь отключил скрытие рекламы.
+        // Явные пользовательские подмены по-прежнему имеют приоритет (FlagStore).
+        if (!Prefs.hideAds && isAdSuppression(key)) return null;
         return Prefs.refSet ? base(key) : null;
+    }
+
+    static boolean isAdSuppression(String key) {
+        if (key == null) return false;
+        switch (key) {
+            case "ad_banner_enable":
+            case "enable_normal_splash_ad":
+            case "enable_normal_splash_ad_ab":
+            case "mini_drama_ad_single_mode_client":
+            case "profile_ad_experiment":
+            case "search_ad_refactor_enable":
+            case "splash_ad_enable":
+                return true;
+            default:
+                return false;
+        }
     }
 
     /** Ключи набора и «Возможностей» вместе. */
