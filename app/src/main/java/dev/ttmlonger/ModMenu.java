@@ -91,14 +91,6 @@ final class ModMenu extends Screen {
                         VideoInfoScreen.show(act);
                     }
                 }));
-        body.addView(ui.menuRow(Icons.CHECK, "Возможности",
-                "Голосовые в ЛС, длинные репосты, хештеги без лимита, 9 фото, телесуфлёр",
-                UnlocksScreen.menuSummary(), new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        UnlocksScreen.show(act);
-                    }
-                }));
         body.addView(ui.menuRow(Icons.FLAG, "Бейджики",
                 "Картинка после имени аккаунта: в профиле, комментариях, ленте", BadgesScreen.menuSummary(),
                 new View.OnClickListener() {
@@ -158,48 +150,6 @@ final class ModMenu extends Screen {
         streakMenuRow = ui.menuRow(Icons.FLAME, "Огоньки", "Автопродление серии в чатах", StreakScreen.menuSummary(),
                 v -> StreakScreen.show(act));
         body.addView(streakMenuRow);
-        body.addView(toggleRow(Icons.MIC, "Голосовые и обои без региона",
-                "Пробует включить функции чата, которые сервер скрывает по региону аккаунта. Экспериментально. "
-                        + "Нужен перезапуск TikTok",
-                Prefs.dmGate, new ModSwitch.Listener() {
-                    @Override
-                    public void onChanged(boolean on) {
-                        Prefs.setDmGate(on);
-                        Restart.offer(act);
-                    }
-                }));
-
-        body = section(page, "Функции TikTok");
-        body.addView(toggleRow(Icons.IMAGE, "Баннер профиля",
-                "Отображение баннеров своего и чужих профилей включено по умолчанию. Анимация зависит от формата баннера и поддержки TikTok. После изменения перезапустите приложение.",
-                FlagStore.allOn(Targets.BANNER_FLAGS), new ModSwitch.Listener() {
-                    @Override
-                    public void onChanged(boolean on) {
-                        FlagStore.setAll(Targets.BANNER_FLAGS, on);
-                        Restart.offer(act);
-                    }
-                }));
-
-        body.addView(toggleRow(Icons.MIC, "Голосовые комментарии",
-                "Запись голосового комментария. Нужен перезапуск TikTok",
-                FlagStore.allOn(Targets.VOICE_COMMENT_FLAGS), new ModSwitch.Listener() {
-                    @Override
-                    public void onChanged(boolean on) {
-                        FlagStore.setAll(Targets.VOICE_COMMENT_FLAGS, on);
-                        Restart.offer(act);
-                    }
-                }));
-
-        body.addView(toggleRow(Icons.FLAG, "Дополнительные возможности",
-                "Дополнительные функции TikTok. Доступность зависит от аккаунта. Нужен перезапуск TikTok",
-                Prefs.refSet, new ModSwitch.Listener() {
-                    @Override
-                    public void onChanged(boolean on) {
-                        Prefs.setRefSet(on);
-                        Restart.offer(act);
-                    }
-                }));
-
         body.addView(ui.menuRow(Icons.DOWNLOAD,"Резервная копия настроек","Экспорт и импорт JSON без данных аккаунта",null,v -> SettingsBackup.show(act)));
         body.addView(ui.menuRow(Icons.SLIDERS,"Плагины","Локальные JSON-команды · установка и управление",null,v -> CommandPlugins.show(act)));
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",

@@ -341,6 +341,7 @@ final class FlagsScreen {
         });
         updateSetRow();
         h.addView(setRow);
+        h.addView(action(Icons.FLAG,"Группы флагов TikTok",false,v->FlagGroupsScreen.show(act)));
         h.addView(action(Icons.DOWNLOAD, "Экспорт всех флагов в JSON", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) {

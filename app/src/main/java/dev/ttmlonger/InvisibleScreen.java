@@ -44,8 +44,7 @@ final class InvisibleScreen extends Screen {
             if(ReadPrivacy.replyReady()) body.addView(toggleRow(-1,"Отмечать прочитанным при ответе",
                     "Разрешает следующий запрос прочтения того же чата после распознанной ручной отправки. Не воспроизводит старые запросы. Автоогоньки исключены на две минуты.",
                     InterfaceHooks.on("read_reply"),on->{InterfaceHooks.set("read_reply",on);refresh();}));
-            else body.addView(ui.note("Разрешение прочтения при ответе: тело отправки сообщения не распознано."));
-        } else body.addView(ui.note("Статус прочтения: классы запроса не распознаны в этой версии TikTok. Блокировка не включается."));
+        }
         body.addView(toggleRow(-1,"Галочки прочтения","В распознанном чате заменяет «Прочитано» на ✔️✔️ и «Отправлено» на ✔️. Статус сообщения не меняется.",
                 InterfaceHooks.on("chat_ticks"),on->{InterfaceHooks.set("chat_ticks",on);refresh();}));
         body.addView(toggleRow(Icons.EYE_OFF, "Не показывать «печатает…»",
@@ -84,12 +83,6 @@ final class InvisibleScreen extends Screen {
             }
         }));
 
-        body.addView(ui.header("Просмотры и истории"));
-        body.addView(ui.note("Спрятать их модом нельзя: в коде TikTok нет отдельного отчёта о просмотре профиля, "
-                + "сервер узнаёт о нём из самого запроса страницы. Это настройка самого TikTok («Просмотры профиля»: "
-                + "по описанию TikTok, если выключить её, вас не покажут в чужих списках гостей, а свой список "
-                + "вы тоже не увидите)."));
-        body.addView(ui.note("Для историй, подборок, LIVE и просмотров подписок подтверждённого отдельного запроса пока нет. Не считаются анонимными."));
         body.addView(ui.header("Огоньки"));
         body.addView(ui.menuRow(Icons.FLAME,"Автопродление огоньков","Расписание, стикер и список чатов",StreakScreen.menuSummary(),v -> StreakScreen.show(act)));
     }

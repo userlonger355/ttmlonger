@@ -19,10 +19,14 @@ final class ProfileStyleScreen extends Screen {
         body.addView(ui.menuRow(Icons.SLIDERS,"Управление бейджиками","Персональные значки и общий список",null,v->BadgesScreen.show(act)));
         body.addView(ui.header("Кнопки профиля"));
         for(int i=0;i<ProfileStyle.KEYS.length;i++)opt(body,ProfileStyle.KEYS[i],"Скрыть: "+ProfileStyle.TITLES[i],"При распознавании штатной кнопки");
-        body.addView(ui.header("Видео в профиле"));
-        LinearLayout row=ui.menuRow(Icons.SLIDERS,"Порядок видео","Локальная сортировка загруженной страницы; закреплённые первыми",ProfileGrid.MODES[ProfileGrid.mode()],v->sort());
-        sortValue=Ui.valueOf(row);body.addView(row);
-        body.addView(ui.note(ProfileGrid.hooks>0?"Распознано методов профиля: "+ProfileGrid.hooks+". Обновите профиль.":"В этой версии класс списка профиля пока не распознан; сортировка не применяется."));
+        if(ProfileGrid.hooks>0){
+            body.addView(ui.header("Видео в профиле"));
+            LinearLayout row=ui.menuRow(Icons.SLIDERS,"Порядок видео","Локальная сортировка загруженной страницы; закреплённые первыми",ProfileGrid.MODES[ProfileGrid.mode()],v->sort());
+            sortValue=Ui.valueOf(row);body.addView(row);
+        }
+        body.addView(ui.header("Заблокированные профили"));
+        body.addView(toggleRow(Icons.EYE_OFF,"Просмотр заблокированного профиля","Только профили, заблокированные вами; серверные ограничения сохраняются",Prefs.viewBlocked,on->Prefs.setViewBlocked(on)));
+        body.addView(toggleRow(-1,"Прятать блокировку везде","Расширить локальную обработку за пределы профиля",Prefs.viewBlockedEverywhere,on->Prefs.setViewBlockedEverywhere(on)));
         body.addView(ui.header("Жидкое стекло"));
         body.addView(toggleRow(-1,"Жидкое стекло",null,GlassCfg.glass(),on->GlassCfg.setStyle(on?GlassCfg.GLASS:GlassCfg.ORIGINAL)));
         body.addView(toggleRow(-1,"Тонированное стекло",null,GlassCfg.glassPreset()==1,on->GlassCfg.applyGlassPreset(on?1:0)));

@@ -78,9 +78,7 @@ final class InterfaceScreen extends Screen {
                     : "Может быть недоступно в этой версии TikTok");
         }
         body.addView(ui.header("Комментарии"));
-        body.addView(ui.menuRow(Icons.IMAGE,"Фон комментариев","Из галереи · размытие",null,v->CommentWallpaperScreen.show(act)));
-        option(body,"comment_copy_body","Копировать комментарий без юзернейма","Штатная кнопка «Копировать» сохраняет только текст комментария");
-        option(body,"comment_select","Выделение текста комментария","Дополнительный пункт в штатном меню удержания");
+        body.addView(ui.menuRow(Icons.SLIDERS,"Настройки комментариев","Копирование, выделение и оформление",null,v->CommentToolsScreen.show(act)));
         body.addView(ui.header("Жесты на видео"));
         FeedGestures.settings(this, body);
         body.addView(ui.header("Подтверждение действий"));
