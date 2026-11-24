@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: patched-runtime-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -131,7 +131,16 @@ jobs:
       - name: Run patched TikTok in native Android 14 ARM64
         env:
           PATCHED_APK: ${{ steps.patch.outputs.apk }}
+          TTM_MEDIA_DIR: ${{ runner.temp }}/ttmlonger-media
         run: bash "$GITHUB_WORKSPACE/tools/native-arm64-smoke.sh" "$PATCHED_APK" 127.0.0.1:5555
+      - name: Upload screen captures and startup video
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ttmlonger-runtime-media
+          path: ${{ runner.temp }}/ttmlonger-media/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Clean up isolated container
         if: always()
         run: docker rm -f native-android || true
