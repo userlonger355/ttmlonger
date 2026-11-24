@@ -41,7 +41,7 @@ final class NativeOffer {
                     if (act == null) return;
                     final Context app = act.getApplicationContext() != null ? act.getApplicationContext() : act;
                     shown++;
-                    Pill.show(act, "↓  Сохранить через мод", 0.40f, SHOW_MS, new Runnable() {
+                    Pill.showSave(act, 0.40f, SHOW_MS, new Runnable() {
                         @Override
                         public void run() {
                             VideoTracker.Entry e = VideoTracker.entryFor(video);

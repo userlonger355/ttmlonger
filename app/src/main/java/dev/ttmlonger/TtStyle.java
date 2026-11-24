@@ -110,6 +110,36 @@ final class TtStyle {
         return pill(ctx, text, FLOAT, Color.WHITE, 40f, 14.5f, true);
     }
 
+    /** Compact, neutral video save action, distinct from other temporary prompts. */
+    static TextView saveOffer(Context ctx){
+        float d=ctx.getResources().getDisplayMetrics().density;
+        TextView t=new TextView(ctx);
+        t.setText("Сохранить");
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP,13);
+        t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        t.setIncludeFontPadding(false);
+        t.setSingleLine(true);
+        t.setGravity(Gravity.CENTER_VERTICAL|Gravity.CENTER_HORIZONTAL);
+        t.setPadding(Math.round(12*d),Math.round(10*d),Math.round(14*d),Math.round(10*d));
+        t.setMinHeight(Math.round(44*d));
+        Drawable icon=Glyph.download(Color.WHITE);
+        int size=Math.round(17*d);
+        icon.setBounds(0,0,size,size);
+        t.setCompoundDrawablesRelative(icon,null,null,null);
+        t.setCompoundDrawablePadding(Math.round(7*d));
+        GradientDrawable background=new GradientDrawable();
+        background.setColor(0xE61C1C1C);
+        background.setCornerRadius(22*d);
+        background.setStroke(Math.max(1,Math.round(.65f*d)),0x26FFFFFF);
+        t.setBackground(new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x26FFFFFF),background,null));
+        t.setClickable(true);
+        t.setFocusable(true);
+        t.setContentDescription("Сохранить видео");
+        return t;
+    }
+
     /** Фон: полная «пилюля»; под пальцем светлее. */
     static Drawable ground(int fill, float density) {
         StateListDrawable s = new StateListDrawable();

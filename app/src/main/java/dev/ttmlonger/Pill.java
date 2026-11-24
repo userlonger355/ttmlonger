@@ -27,11 +27,19 @@ final class Pill {
      * @param ms        через сколько закрыть
      */
     static void show(final Activity act, String text, float yFraction, long ms, final Runnable onTap) {
-        if (act == null || act.isFinishing()) return;
+        showInternal(act,text,yFraction,ms,onTap,false);
+    }
+
+    static void showSave(Activity act,float yFraction,long ms,Runnable onTap){
+        showInternal(act,"Сохранить",yFraction,ms,onTap,true);
+    }
+
+    private static void showInternal(final Activity act,String text,float yFraction,long ms,final Runnable onTap,boolean save){
+        if (act == null || act.isFinishing() || act.isDestroyed()) return;
         try {
             dismiss();
             float d = act.getResources().getDisplayMetrics().density;
-            TextView t = TtStyle.floating(act, text);
+            TextView t = save ? TtStyle.saveOffer(act) : TtStyle.floating(act, text);
             t.setTag(Ui.OWN_TAG);
 
             final Dialog dlg = new Dialog(act);
@@ -48,7 +56,9 @@ final class Pill {
             WindowManager.LayoutParams lp = w.getAttributes();
             // Явный размер: иначе диалог растягивается до минимальной ширины темы и невидимая
             // часть окна перехватывала бы нажатия.
-            t.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            int maxWidth=Math.max(1,act.getWindow().getDecorView().getWidth()-Math.round(24*d));
+            if(maxWidth==1)maxWidth=Math.max(1,act.getResources().getDisplayMetrics().widthPixels-Math.round(24*d));
+            t.measure(View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
             lp.width = t.getMeasuredWidth();
             lp.height = t.getMeasuredHeight();
@@ -68,6 +78,7 @@ final class Pill {
                 }
             });
             dlg.show();
+            w.setLayout(lp.width,lp.height);
             current = dlg;
             MAIN.postDelayed(new Runnable() {
                 @Override
