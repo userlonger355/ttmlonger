@@ -72,8 +72,8 @@ final class SettingsHost {
                         if(f==null||s==null||f==s||g.indexOfChild(s)!=g.indexOfChild(f)+1)continue;
                         int h=f.getHeight();if(h<dp(a,36)||h>dp(a,84))continue;
                         boolean dark=ModBlock.luminance(first.getCurrentTextColor())>.5f;
-                        nativeRow=row(a,dark);g.addView(nativeRow,g.indexOfChild(s),new LinearLayout.LayoutParams(-1,h));
-                        state="строка добавлена в группу «Активность»";return;
+                        nativeRow=row(a,dark);g.addView(nativeRow,g.indexOfChild(f),new LinearLayout.LayoutParams(-1,h));
+                        state="первый пункт группы «Активность»";return;
                     }
                 }
                 // Compose: the content remains intact; a visual slot is inserted at a recognized row boundary.
@@ -173,7 +173,7 @@ final class SettingsHost {
                 Rect a=f.first,b=f.second;int[] pos=new int[2];getLocationOnScreen(pos);
                 int h=b.centerY()-a.centerY();
                 if(h<dp(act,36)||h>dp(act,84)||Math.abs(a.centerX()-b.centerX())>dp(act,25)&&a.width()>getWidth()*.6f){hideSlot();return;}
-                int y=(a.centerY()+b.centerY())/2-pos[1];
+                int y=a.centerY()-h/2-pos[1];
                 if(y<dp(act,50)||y+h>getHeight()-dp(act,16)){hideSlot();return;}
                 int l=a.width()>getWidth()*.7f?Math.max(0,a.left-pos[0]):dp(act,8);
                 int w=a.width()>getWidth()*.7f?Math.min(getWidth()-l,a.width()):getWidth()-l*2;
@@ -189,7 +189,7 @@ final class SettingsHost {
                 if(changed||action.getVisibility()!=VISIBLE){
                     FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)action.getLayoutParams();lp.width=w;lp.height=h;lp.leftMargin=l;lp.topMargin=y;action.setLayoutParams(lp);action.setVisibility(VISIBLE);invalidate();
                 }
-                owner.state="строка внутри «Активность» (визуальная вставка Compose)";
+                owner.state="первый пункт «Активность» (визуальная вставка Compose)";
             }catch(Throwable ignored){hideSlot();}
         }
         private void hideSlot(){if(cut<0)return;cut=-1;delta=0;if(action!=null)action.setVisibility(INVISIBLE);invalidate();owner.state="раздел «Активность» не распознан";}
