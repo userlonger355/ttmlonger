@@ -110,6 +110,8 @@ final class RuntimeUiChecks {
             stage("menu");
             View grid=findGrid(menu.getWindow().getDecorView());
             result("menu_card_grid",grid instanceof ModMenu.CardGrid);
+            View version=text(menu.getWindow().getDecorView(),"0.0.1a (dev buld)"),author=text(menu.getWindow().getDecorView(),"Автор: @Ueod5");
+            result("menu_footer_equal_color",version instanceof TextView&&author instanceof TextView&&((TextView)version).getCurrentTextColor()==((TextView)author).getCurrentTextColor()&&((TextView)version).getTextSize()==((TextView)author).getTextSize());
             result("menu_card_title_preserved",text(menu.getWindow().getDecorView(),"Регион")!=null&&text(menu.getWindow().getDecorView(),"Нижняя панель")!=null);
             metadataChecks();
             TextView saveOffer=TtStyle.saveOffer(activity);

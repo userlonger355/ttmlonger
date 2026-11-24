@@ -27,6 +27,7 @@ final class ModMenu extends Screen {
     private final List<LinearLayout> sections = new ArrayList<>();
     private final List<TextView> labels = new ArrayList<>();
     private int selected;
+    private final java.util.Map<TextView,android.animation.ValueAnimator> chipAnimations=new java.util.WeakHashMap<>();
 
     private ModMenu(Activity act) {
         super(act);
@@ -228,10 +229,11 @@ final class ModMenu extends Screen {
         footer.setGravity(Gravity.CENTER);
         footer.setOrientation(LinearLayout.HORIZONTAL);
         footer.setPadding(ui.dp(12),ui.dp(20),ui.dp(12),ui.dp(16));
-        TextView ver=ui.text("0.0.1a (dev buld)",13,Ui.MUTED,false);
+        TextView ver=ui.medium("0.0.1a (dev buld)",13,Ui.INK);
         TextView author=ui.medium("Автор: @Ueod5",13,Ui.INK);
         author.setPadding(ui.dp(12),ui.dp(8),ui.dp(8),ui.dp(8));
         author.setBackground(ui.ripple());
+        Ui.pressMotion(author);
         author.setOnClickListener(v->{
             try{act.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("https://t.me/Ueod5")));}
             catch(android.content.ActivityNotFoundException e){Toasts.show(act,"Не удалось открыть Telegram");}
@@ -274,8 +276,8 @@ final class ModMenu extends Screen {
         row.setGravity(Gravity.TOP|Gravity.START);
         row.setPadding(ui.dp(14),ui.dp(14),ui.dp(14),ui.dp(15));
         row.setMinimumHeight(ui.dp(136));
-        row.setBackground(ui.round(Ui.CARD,24));
-        row.setForeground(ui.ripple());
+        row.setBackground(ui.expressiveSurface(24));
+        row.setForeground(ui.softRipple(24));
         row.setClipToOutline(true);
         LinearLayout top=new LinearLayout(act);top.setGravity(Gravity.CENTER_VERTICAL);
         if(icon!=null){top.addView(icon,new LinearLayout.LayoutParams(ui.dp(26),ui.dp(26)));}
@@ -347,9 +349,9 @@ final class ModMenu extends Screen {
         LinearLayout tile = new LinearLayout(act);
         tile.setOrientation(LinearLayout.VERTICAL);
         tile.setPadding(ui.dp(16), ui.dp(15), ui.dp(12), ui.dp(16));
-        tile.setBackground(ui.round(Ui.CARD,24));
+        tile.setBackground(ui.expressiveSurface(24));
         tile.setClipToOutline(true);
-        tile.setForeground(ui.ripple());
+        tile.setForeground(ui.softRipple(24));
         tile.setFocusable(true);
         Ui.pressMotion(tile);
         tile.setOnClickListener(v -> open.run());
@@ -376,12 +378,10 @@ final class ModMenu extends Screen {
         Ui.pressMotion(chip);
         chip.setOnClickListener(v -> {
             if(selected==index)return;
-            selected = index;
+            int direction=index>selected?1:-1;
+            selected=index;
             filter();
-            if(Ui.motionEnabled()){
-                LinearLayout target=sections.get(index);target.animate().cancel();target.setAlpha(0.65f);target.setTranslationY(ui.dp(7));
-                target.animate().alpha(1f).translationY(0f).setDuration(230).setInterpolator(Ui.motionCurve()).start();
-            }
+            animateSection(sections.get(index),direction);
             tabScroll.smoothScrollTo(chip.getLeft() - ui.dp(14), 0);
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
@@ -404,9 +404,7 @@ final class ModMenu extends Screen {
             LinearLayout card = sections.get(i);
             TextView chip = labels.get(i);
             boolean current = i == selected;
-            chip.setSelected(current);
-            chip.setBackground(current ? ui.round(Ui.INK,16) : ui.round(Ui.CARD,24));
-            chip.setTextColor(current ? Ui.BG : Ui.INK);
+            updateChip(chip,current);
             boolean matchGroup = VideoScreen.normalize(chip.getText().toString()).contains(q);
             boolean visible = false;
             for (int j = 0; j < card.getChildCount(); j++) {
@@ -418,10 +416,53 @@ final class ModMenu extends Screen {
                 row.setVisibility(match ? View.VISIBLE : View.GONE);
                 visible |= match;
             }
+            if(!visible)resetSection(card);
             card.setVisibility(visible ? View.VISIBLE : View.GONE);
             any |= visible;
         }
         empty.setVisibility(any ? View.GONE : View.VISIBLE);
+    }
+
+    private void updateChip(TextView chip,boolean selectedNow){
+        Object saved=chip.getTag();
+        float target=selectedNow?1f:0f;
+        float initial=saved instanceof Float?(Float)saved:target;
+        boolean changed=chip.isSelected()!=selectedNow;
+        chip.setSelected(selectedNow);
+        if(!changed&&saved instanceof Float)return;
+        android.animation.ValueAnimator old=chipAnimations.remove(chip);if(old!=null)old.cancel();
+        android.graphics.drawable.GradientDrawable shape=ui.round(Ui.CARD,24);
+        chip.setBackground(shape);
+        java.util.function.Consumer<Float> render=progress->{
+            chip.setTag(progress);
+            shape.setColor(Ui.blend(Ui.CARD,Ui.INK,progress));
+            shape.setCornerRadius(ui.dp(24-9*progress));
+            chip.setTextColor(Ui.blend(Ui.INK,Ui.BG,progress));
+        };
+        render.accept(initial);
+        if(!Ui.motionEnabled()||initial==target){render.accept(target);return;}
+        android.animation.ValueAnimator a=android.animation.ValueAnimator.ofFloat(initial,target);
+        a.setDuration(330);a.setInterpolator(Ui.motionCurve());
+        a.addUpdateListener(anim->render.accept((Float)anim.getAnimatedValue()));
+        chipAnimations.put(chip,a);a.start();
+    }
+    private void resetSection(LinearLayout grid){
+        grid.animate().cancel();grid.setAlpha(1f);grid.setTranslationX(0);grid.setTranslationY(0);
+        for(int i=0;i<grid.getChildCount();i++){
+            View card=grid.getChildAt(i);card.animate().cancel();card.setAlpha(1f);card.setTranslationX(0);card.setTranslationY(0);
+        }
+    }
+    private void animateSection(LinearLayout grid,int direction){
+        resetSection(grid);
+        if(!Ui.motionEnabled())return;
+        int visible=0;
+        for(int i=0;i<grid.getChildCount();i++){
+            View card=grid.getChildAt(i);if(card.getVisibility()!=View.VISIBLE)continue;
+            card.setAlpha(.68f);card.setTranslationX(direction*ui.dp(7));card.setTranslationY(ui.dp(8));
+            card.animate().alpha(1f).translationX(0).translationY(0)
+                .setStartDelay(Math.min(visible++/2,4)*24L)
+                .setDuration(360).setInterpolator(Ui.motionCurve()).start();
+        }
     }
 
     private static String regionSummary() {

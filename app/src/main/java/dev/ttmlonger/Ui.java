@@ -146,15 +146,22 @@ final class Ui {
     }
     int cardTint(int icon) { return INK; }
     static boolean motionEnabled(){return android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled();}
-    static android.view.animation.Interpolator motionCurve(){return new android.view.animation.PathInterpolator(0.2f,0f,0f,1f);}
+    static android.view.animation.Interpolator motionCurve(){return new android.view.animation.PathInterpolator(0.22f,0.05f,0.10f,1f);}
+    /** Subtle monochrome surface highlights, no coloured gradients or animated blur. */
+    GradientDrawable expressiveSurface(float radius){
+        int edge=DARK?Color.WHITE:Color.BLACK;
+        GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{blend(CARD,edge,DARK?.035f:.018f),CARD,CARD});
+        g.setCornerRadius(dp(radius));g.setStroke(Math.max(1,dp(.5f)),blend(CARD,edge,DARK?.055f:.045f));return g;
+    }
+    Drawable softRipple(float radius){return new RippleDrawable(ColorStateList.valueOf(alpha(INK,0x19)),null,round(Color.WHITE,radius));}
     static void pressMotion(View view){
         if(!motionEnabled())return;
         android.animation.StateListAnimator states=new android.animation.StateListAnimator();
         for(boolean pressed:new boolean[]{true,false}){
             android.animation.AnimatorSet set=new android.animation.AnimatorSet();
-            float scale=pressed?.965f:1f;
+            float scale=pressed?.978f:1f;
             set.playTogether(android.animation.ObjectAnimator.ofFloat(view,View.SCALE_X,scale),android.animation.ObjectAnimator.ofFloat(view,View.SCALE_Y,scale));
-            set.setDuration(pressed?105:230);set.setInterpolator(motionCurve());
+            set.setDuration(pressed?145:340);set.setInterpolator(motionCurve());
             states.addState(pressed?new int[]{android.R.attr.state_pressed,android.R.attr.state_enabled}:new int[]{},set);
         }
         view.setStateListAnimator(states);

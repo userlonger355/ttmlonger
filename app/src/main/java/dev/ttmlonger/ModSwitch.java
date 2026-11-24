@@ -56,7 +56,7 @@ final class ModSwitch extends View {
         if (anim != null) anim.cancel();
         if(!Ui.motionEnabled()){pos=target;invalidate();return;}
         anim = ValueAnimator.ofFloat(pos, target);
-        anim.setDuration(260);
+        anim.setDuration(320);
         anim.setInterpolator(Ui.motionCurve());
         anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override

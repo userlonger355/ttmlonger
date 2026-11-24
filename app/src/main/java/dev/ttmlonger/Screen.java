@@ -148,8 +148,8 @@ abstract class Screen {
         }
         dialog.show();
         if(Ui.motionEnabled()){
-            scroll.setAlpha(.45f);scroll.setTranslationY(ui.dp(12));
-            scroll.animate().alpha(1f).translationY(0f).setDuration(285).setInterpolator(Ui.motionCurve()).start();
+            scroll.setAlpha(.72f);scroll.setTranslationY(ui.dp(10));
+            scroll.animate().alpha(1f).translationY(0f).setDuration(360).setInterpolator(Ui.motionCurve()).start();
         }
     }
 
