@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.XposedBridge;
 
 /** Local wallpaper behind recognized native comment panels. No account or network access. */
 final class CommentWallpaper {
@@ -28,6 +29,7 @@ final class CommentWallpaper {
     private static int blur=20,dim=45;
     private static boolean hasPhoto;
     private static final Map<View,State> painted=new WeakHashMap<>();
+    private static final Map<View,Long> watched=new WeakHashMap<>();
     private static final Set<View> dialogs=Collections.newSetFromMap(new WeakHashMap<View,Boolean>());
     private static final class State {
         final Drawable before,applied;
@@ -55,6 +57,7 @@ final class CommentWallpaper {
                 if(Screen.isOwn(d)||d.getWindow()==null)return;
                 View root=d.getWindow().getDecorView();
                 if(root==null||!dialogs.add(root))return;
+                watch(root);
                 root.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(root.isShown()){CommentTools.apply(root);if(enabled)scan(root);}});
                 root.post(()->{CommentTools.apply(root);if(enabled)scan(root);});
             }
@@ -154,12 +157,12 @@ final class CommentWallpaper {
     /** Original reference identifies X.0h10 and these named panel classes. Never match a plain text hint. */
     static boolean panelName(String type){
         String n=type.toLowerCase(Locale.ROOT);
-        return n.equals("x.0h10")||n.contains("commentlist")||n.contains("commentpanel")||n.contains("commentsheet");
+        return n.equals("x.0h10")||n.contains("commentlist")||n.contains("commentpanel")||n.contains("commentsheet")||n.contains("commentbottomsheet")||n.contains("commentdialog")||n.contains("comment_list")||n.contains("comment_panel");
     }
     private static boolean candidate(View v,View root){
         return v!=root&&v instanceof ViewGroup&&!(v instanceof android.widget.AdapterView)&&
-            (panelName(v.getClass().getName())||Boolean.TRUE.equals(v.getTag(0x5454434D)))&&
-            v.getWidth()>=root.getWidth()*.65f&&v.getHeight()>=root.getHeight()*.20f&&v.getHeight()<root.getHeight()*.98f;
+            (panelName(viewName(v))||Boolean.TRUE.equals(v.getTag(0x5454434D)))&&
+            v.getWidth()>=root.getWidth()*.65f&&v.getHeight()>=root.getHeight()*.20f&&v.getHeight()<=root.getHeight();
     }
     private static View find(View v,View root,int depth,int[] budget){
         if(v==null||!v.isShown()||depth>30||--budget[0]<0)return null;
@@ -167,15 +170,59 @@ final class CommentWallpaper {
         if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View found=find(g.getChildAt(i),root,depth+1,budget);if(found!=null)return found;}}
         return null;
     }
-    static View panel(View root){return find(root,root,0,new int[]{1800});}
-    static void apply(Activity a){if(a!=null&&enabled&&image!=null&&!a.isFinishing()&&!a.isDestroyed())scan(a.getWindow().getDecorView());}
+    private static String viewName(View v){
+        String n=v.getClass().getName();try{if(v.getId()!=View.NO_ID)n+=" "+v.getResources().getResourceEntryName(v.getId());}catch(Throwable ignored){}return n;
+    }
+    private static boolean header(View v){
+        if(!(v instanceof android.widget.TextView)||v instanceof android.widget.EditText)return false;
+        String t=((android.widget.TextView)v).getText().toString().toLowerCase(Locale.ROOT).trim();
+        return t.matches("(?:[0-9.,\\s]+[kmкм]?\\s*)?(?:comments?|комментарии|комментариев|комментария|комментарий)(?:\\s*\\(?[0-9.,\\s]+\\)?)?");
+    }
+    private static View title(View v,int depth,int[] budget){
+        if(v==null||!v.isShown()||depth>30||--budget[0]<0)return null;
+        if(header(v))return v;
+        if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View t=title(g.getChildAt(i),depth+1,budget);if(t!=null)return t;}}return null;
+    }
+    private static boolean hasList(View v,int depth,int[] budget){
+        if(v==null||!v.isShown()||depth>12||--budget[0]<0)return false;
+        if(listSurface(v)&&v.getHeight()>0)return true;
+        if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(hasList(g.getChildAt(i),depth+1,budget))return true;}return false;
+    }
+    static View panel(View root){
+        if(root==null||root.getWidth()==0||root.getHeight()==0||Screen.isOwnDecor(root))return null;
+        View named=find(root,root,0,new int[]{1800});
+        if(named!=null&&hasList(named,0,new int[]{500}))return named;
+        View label=title(root,0,new int[]{2200});
+        if(label==null)return null;
+        // The nearest large container must contain both the comment header and a native list.
+        for(ViewParent q=label.getParent();q instanceof ViewGroup;q=q.getParent()){
+            ViewGroup group=(ViewGroup)q;if(group==root)break;
+            if(group.getWidth()<root.getWidth()*.65f||group.getHeight()<root.getHeight()*.22f)continue;
+            if(group.getHeight()>root.getHeight()*.98f&&!dialogs.contains(root)&&!panelName(viewName(group)))continue;
+            if(!hasList(group,0,new int[]{500}))continue;
+            int[] a=new int[2],b=new int[2];group.getLocationOnScreen(a);label.getLocationOnScreen(b);
+            if(b[1]-a[1]>group.getHeight()*.24f)continue;
+            if(!dialogs.contains(root)&&group.getHeight()>root.getHeight()*.85f&&!panelName(viewName(group)))continue;
+            return group;
+        }
+        return null;
+    }
+    private static void watch(View root){
+        if(watched.containsKey(root))return;watched.put(root,0L);
+        root.getViewTreeObserver().addOnPreDrawListener(()->{
+            if(!enabled||image==null||!root.isShown())return true;
+            long now=SystemClock.uptimeMillis(),prev=watched.getOrDefault(root,0L);
+            if(now-prev>=120){watched.put(root,now);scan(root);}return true;
+        });
+    }
+    static void apply(Activity a){if(a!=null&&enabled&&image!=null&&!a.isFinishing()&&!a.isDestroyed()){View root=a.getWindow().getDecorView();watch(root);scan(root);}}
     private static void refresh(){
         Activity a=ScreenWatcher.top();if(a!=null)apply(a);
         for(View root:new ArrayList<>(dialogs))if(root!=null&&root.isShown())scan(root);
     }
     private static void scan(View root){
         if(CrashGuard.tripped||!enabled||image==null||!root.isShown()||Screen.isOwnDecor(root))return;
-        View target=find(root,root,0,new int[]{1800});
+        View target=panel(root);
         for(View old:new ArrayList<>(painted.keySet()))if(old!=null&&(!old.isAttachedToWindow()||old.getRootView()==root&&!within(old,target)))restore(old);
         if(target==null)return;
         State old=painted.get(target);
@@ -185,7 +232,7 @@ final class CommentWallpaper {
             android.util.Log.i("TTMLonger","COMMENT_WALLPAPER_APPLIED "+target.getClass().getName());
         }
         State state=painted.get(target);
-        if(state!=null&&state.before instanceof ColorDrawable)uncover(target,target,((ColorDrawable)state.before).getColor(),0);
+        if(state!=null)uncover(target,target,solid(state.before),0);
     }
     private static boolean within(View child,View parent){
         if(parent==null)return false;
@@ -198,18 +245,26 @@ final class CommentWallpaper {
             if(n.endsWith(".recyclerview")||n.endsWith(".listview")||panelName(n))return true;
         }return false;
     }
-    private static void uncover(View v,View panel,int color,int depth){
-        if(depth>4||!(v instanceof ViewGroup))return;
+    private static Integer solid(Drawable d){
+        if(d instanceof ColorDrawable)return ((ColorDrawable)d).getColor();
+        if(d instanceof GradientDrawable&&Build.VERSION.SDK_INT>=24){android.content.res.ColorStateList c=((GradientDrawable)d).getColor();if(c!=null)return c.getDefaultColor();}
+        return null;
+    }
+    private static boolean neutral(Integer c){if(c==null||Color.alpha(c)<220)return false;return Math.max(Color.red(c),Math.max(Color.green(c),Color.blue(c)))-Math.min(Color.red(c),Math.min(Color.green(c),Color.blue(c)))<28;}
+    private static void uncover(View v,View panel,Integer color,int depth){
+        if(depth>8||!(v instanceof ViewGroup))return;
         ViewGroup group=(ViewGroup)v;
         for(int i=0;i<group.getChildCount();i++){
             View child=group.getChildAt(i);
-            if(child.getWidth()<panel.getWidth()*.8f||child.getHeight()<panel.getHeight()*.35f)continue;
-            if(listSurface(child)&&child.getBackground() instanceof ColorDrawable&&((ColorDrawable)child.getBackground()).getColor()==color&&Color.alpha(color)==255){
-                applyBackground(child,new ColorDrawable(Color.TRANSPARENT));
-            }
-            uncover(child,panel,color,depth+1);
+            if(child.getWidth()<panel.getWidth()*.80f)continue;
+            Integer fill=solid(child.getBackground());
+            boolean large=child.getHeight()>=panel.getHeight()*.30f;
+            boolean layer=listSurface(child)||child instanceof ViewGroup&&large;
+            if(layer&&large&&neutral(fill)&&(color==null||neutral(color))){applyBackground(child,new ColorDrawable(Color.TRANSPARENT));}
+            if(child instanceof ViewGroup&&large&&!isItemList(child))uncover(child,panel,color,depth+1);
         }
     }
+    private static boolean isItemList(View v){for(Class<?> c=v.getClass();c!=null;c=c.getSuperclass()){String n=c.getName().toLowerCase(Locale.ROOT);if(n.endsWith("recyclerview")||n.endsWith("listview"))return true;}return false;}
     static void applyBackground(View target,Drawable photo){
         painted.put(target,new State(target.getBackground(),photo));setBackground(target,photo);
     }

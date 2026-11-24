@@ -182,6 +182,7 @@ final class Trigger {
         try {
             activity.getWindow().getDecorView()
                     .performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            FeedPause.pause(activity);
             ModMenu.show(activity);
         } catch (Throwable t) {
             FlagStore.log(t);

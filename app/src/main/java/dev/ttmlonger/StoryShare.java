@@ -262,6 +262,34 @@ final class StoryShare {
         });
         return col;
     }
+    private static View compact(Context c,TextView sample,VideoTracker.Entry e){
+        LinearLayout r=new LinearLayout(c);r.setTag(ACTION,Boolean.TRUE);r.setGravity(Gravity.CENTER_VERTICAL);
+        int ink=sample.getCurrentTextColor();r.setPadding(dp(c,16),dp(c,4),dp(c,16),dp(c,4));r.setMinimumHeight(dp(c,42));
+        ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));r.addView(icon,new LinearLayout.LayoutParams(dp(c,20),dp(c,20)));
+        TextView label=new TextView(c);label.setText("Скачать через мод");label.setTextSize(14);label.setTextColor(ink);label.setTypeface(sample.getTypeface());label.setPadding(dp(c,12),0,0,0);r.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+        ImageView arrow=new ImageView(c);arrow.setImageDrawable(Icons.of(Icons.CHEVRON_RIGHT,ink));r.addView(arrow,new LinearLayout.LayoutParams(dp(c,16),dp(c,16)));
+        android.util.TypedValue tv=new android.util.TypedValue();if(c.getTheme().resolveAttribute(android.R.attr.selectableItemBackground,tv,true)&&tv.resourceId!=0)r.setBackgroundResource(tv.resourceId);
+        r.setClickable(true);r.setFocusable(true);r.setContentDescription("Скачать через мод, открыть варианты");
+        r.setOnClickListener(v->{
+            android.widget.PopupMenu menu=new android.widget.PopupMenu(c,r,Gravity.END);
+            menu.getMenu().add(0,1,0,"Скачать видео");menu.getMenu().add(0,2,1,"Скачать звук");
+            menu.setOnMenuItemClickListener(item->{try{Context app=c.getApplicationContext();if(item.getItemId()==1)VideoSaver.start(app==null?c:app,e);else AudioSaver.start(app==null?c:app,e);}catch(Throwable t){FlagStore.log(t);Toasts.show(c,"Не удалось сохранить");}return true;});
+            menu.show();
+        });return r;
+    }
+    private static boolean compactInSheet(View root,Scan s,VideoTracker.Entry e){
+        TextView first=s.report,second=neighbor(s);if(first==null||second==null)return false;
+        // Find the vertical sheet containing both labels, after their shared native row.
+        for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()){
+            if(!(q instanceof LinearLayout))continue;LinearLayout host=(LinearLayout)q;
+            if(host.getOrientation()!=LinearLayout.VERTICAL||host==root||host.getWidth()<root.getWidth()*.6f)continue;
+            View a=childOf(first,host),b=childOf(second,host);
+            if(a==null||a!=b||a.getWidth()<host.getWidth()*.65f)continue;
+            View entry=compact(root.getContext(),first,e);host.addView(entry,host.indexOfChild(a)+1,new LinearLayout.LayoutParams(-1,-2));
+            buttons.put(root,entry);bound.put(root,e);videoActions++;return true;
+        }
+        return false;
+    }
     private static TextView neighbor(Scan s) {
         Rect a=rect(s.report);
         TextView best=null; int distance=Integer.MAX_VALUE;
@@ -285,7 +313,8 @@ final class StoryShare {
         }
         if(e==null || (!e.isStory() && !Prefs.dlPill) || (e.isStory() && s.save!=null)) return;
         if(!e.isStory() && s.mute!=null && s.notInterested==null && s.save==null) return;
-        TextView first=s.report, second=e.isStory()?s.mute:neighbor(s);
+        if(!e.isStory()){compactInSheet(root,s,e);return;}
+        TextView first=s.report, second=s.mute;
         if(second==null || second==first)return;
         Rect a=rect(first), b=rect(second);
         if(a.width()==0||b.width()==0||Math.abs(a.top-b.top)>dp(root.getContext(),24))return;
@@ -294,13 +323,6 @@ final class StoryShare {
         if(step<dp(root.getContext(),45))return;
         int size=Math.min(dp(root.getContext(),56),Math.round(step*.72f));
         View mine=tile(root.getContext(),first,size,e,false);
-        if(!e.isStory()) {
-            LinearLayout pair=new LinearLayout(root.getContext());
-            pair.setTag(ACTION,Boolean.TRUE);pair.setOrientation(LinearLayout.HORIZONTAL);
-            pair.addView(mine,new LinearLayout.LayoutParams(0,-2,1));
-            pair.addView(tile(root.getContext(),first,size,e,true),new LinearLayout.LayoutParams(0,-2,1));
-            mine=pair;
-        }
         if(row instanceof LinearLayout) {
             View template=childOf(second,row);
             int w=template==null?step:template.getWidth();

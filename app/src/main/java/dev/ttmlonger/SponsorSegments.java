@@ -60,8 +60,9 @@ final class SponsorSegments {
             if(!method.getName().equals("onPlayProgressChange")||!Arrays.equals(method.getParameterTypes(),new Class<?>[]{String.class,long.class,long.class})||method.getReturnType()!=void.class)continue;
             XposedBridge.hookMethod(method,new XC_MethodHook(){
                 protected void afterHookedMethod(MethodHookParam p){
-                    if(!on||CrashGuard.tripped||p.hasThrowable())return;
-                    dispatch(p.thisObject,(String)p.args[0]);
+                    if(CrashGuard.tripped||p.hasThrowable())return;
+                    FeedPause.observe(p.thisObject,(String)p.args[0],((Number)p.args[1]).longValue());
+                    if(on)dispatch(p.thisObject,(String)p.args[0]);
                 }
             });
             progressHooks++;
