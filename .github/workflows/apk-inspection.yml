@@ -27,9 +27,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$TIKTOK_APK_URL" || -z "$LSPATCH_APK_URL" || -z "$SHIZUKU_APK_URL" ]]; then
-            echo "::notice::Set the three APK URL repository secrets before running this inspection."
-            echo "### APK inspection skipped — repository secrets are missing" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "$TIKTOK_APK_URL" ]]; then
+            echo "::notice::Set TIKTOK_APK_URL before running this inspection."
+            echo "### APK inspection skipped — TIKTOK_APK_URL is missing" >> "$GITHUB_STEP_SUMMARY"
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -55,11 +55,11 @@ jobs:
             sha256sum "$apk" | awk '{print "SHA256: " $1}'
           }
           inspect TikTok "$TIKTOK_APK_URL"
-          inspect LSPatch "$LSPATCH_APK_URL"
-          inspect Shizuku "$SHIZUKU_APK_URL"
-          echo "All APK archives and signatures verified. Compatibility and live testing remain separate steps."
+          if [[ -n "$LSPATCH_APK_URL" ]]; then inspect LSPatch "$LSPATCH_APK_URL"; fi
+          if [[ -n "$SHIZUKU_APK_URL" ]]; then inspect Shizuku "$SHIZUKU_APK_URL"; fi
+          echo "Provided APK archives and signatures verified."
           echo "ready=true" >> "$GITHUB_OUTPUT"
-          echo "### All three APK archives passed structural and signature checks" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Provided APK archives passed structural and signature checks" >> "$GITHUB_STEP_SUMMARY"
       - name: Enable KVM
         if: steps.inspect.outputs.ready == 'true'
         run: sudo chmod 666 /dev/kvm
