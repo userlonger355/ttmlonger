@@ -59,14 +59,14 @@ final class Prefs {
     /** Пробовать включать голосовые, обои и пузырь чата в модели настроек, которую шлёт сервер (DmGate). */
     static volatile boolean dmGate = true;
     /** Вид времени в плашке: 0 точное («26.09 02:32:00»), 1 давность, а для старых видео дата («3 дн. назад», «26.09.2026»). */
-    static volatile int vtFormat = 1;
+    static volatile int vtFormat = 2;
     /** Плашка с регионом видео: флаг и код страны. */
     static volatile boolean vtRegion = true;
     /** Вид плашки региона: 0 флаг и код, 1 только флаг, 2 только код. */
     static volatile int vtRegionMode = 0;
 
     /** Вид плашек: 0 по теме приложения, 1 тёмные, 2 светлые. */
-    static volatile int vtStyle = 0;
+    static volatile int vtStyle = 3;
     /** Где плашки: 0 авто (там, где свободно), 1 справа от имени, 2 над именем, 3 под именем. */
     static volatile int vtPos = 0;
     /** Непрозрачность плашек в процентах, 20..100. */
@@ -142,12 +142,12 @@ final class Prefs {
             streakOnlyPicked = o.optBoolean("streakOnlyPicked", false);
             vtTime = o.optBoolean("vtTime", true);
             vtSeconds = o.optBoolean("vtSeconds", true);
-            vtFormat = Math.max(0, Math.min(1, o.optInt("vtFormat", 1)));
+            vtFormat = o.optBoolean("compactVideoInfoV1",false) ? Math.max(0, Math.min(2, o.optInt("vtFormat", 2))) : 2;
             apiTapOn = o.optBoolean("apiTap", true);
             dmGate = o.optBoolean("dmGate", true);
             vtRegion = o.optBoolean("vtRegion", true);
             vtRegionMode = Math.max(0, Math.min(2, o.optInt("vtRegionMode", 0)));
-            vtStyle = Math.max(0, Math.min(2, o.optInt("vtStyle", 0)));
+            vtStyle = o.optBoolean("compactVideoInfoV1",false) ? Math.max(0, Math.min(3, o.optInt("vtStyle", 3))) : 3;
             vtPos = Math.max(0, Math.min(3, o.optInt("vtPos", 0)));
             vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
             viewBlocked = o.optBoolean("viewBlocked", false);
@@ -281,7 +281,7 @@ final class Prefs {
     }
 
     static void setVtFormat(int v) {
-        vtFormat = Math.max(0, Math.min(1, v));
+        vtFormat = Math.max(0, Math.min(2, v));
         save();
     }
 
@@ -301,7 +301,7 @@ final class Prefs {
     }
 
     static void setVtStyle(int v) {
-        vtStyle = Math.max(0, Math.min(2, v));
+        vtStyle = Math.max(0, Math.min(3, v));
         save();
     }
 
@@ -405,6 +405,7 @@ final class Prefs {
             o.put("streakOnlyPicked", streakOnlyPicked);
             o.put("vtTime", vtTime);
             o.put("vtSeconds", vtSeconds);
+            o.put("compactVideoInfoV1", true);
             o.put("vtFormat", vtFormat);
             o.put("apiTap", apiTapOn);
             o.put("dmGate", dmGate);

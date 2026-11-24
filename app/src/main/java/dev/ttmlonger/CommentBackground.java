@@ -167,6 +167,7 @@ final class CommentBackground {
     static void apply(View root) {
         try {
             if (root == null || Screen.isOwnDecor(root)) return;
+            CommentTools.apply(root);
             Bitmap b = CrashGuard.tripped ? null : image();
             if (b == null && changed.isEmpty()) return;
             View panel = b == null ? null : find(root, root, new int[]{2500}, 0);
@@ -204,6 +205,7 @@ final class CommentBackground {
         catch (Throwable ignored) {}
         return n;
     }
+    static View panel(View root) {return find(root,root,new int[]{2500},0);}
     private static View find(View v, View root, int[] budget, int depth) {
         if (--budget[0] < 0 || depth>40 || v.getVisibility()!=View.VISIBLE || !(v instanceof ViewGroup)) return null;
         String n=name(v);

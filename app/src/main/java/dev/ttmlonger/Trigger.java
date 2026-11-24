@@ -36,6 +36,7 @@ final class Trigger {
                             Activity a = (Activity) param.thisObject;
                             MotionEvent event = (MotionEvent) param.args[0];
                             onTouch(a, event);
+                            CommentTools.touch(a.getWindow().getDecorView(),event);
                             if (FeedGestures.touch(a, event)) param.setResult(true);
                         } catch (Throwable ignored) {
                             // Жест не должен мешать приложению.
@@ -61,6 +62,7 @@ final class Trigger {
                                 Activity a = d.getOwnerActivity();
                                 if (a == null) a = ScreenWatcher.top();
                                 if (a != null) onTouch(a, (MotionEvent) param.args[0]);
+                                if(d.getWindow()!=null)CommentTools.touch(d.getWindow().getDecorView(),(MotionEvent)param.args[0]);
                             } catch (Throwable ignored) {
                                 // Жест не должен мешать приложению.
                             }

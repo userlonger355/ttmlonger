@@ -26,7 +26,7 @@ final class ChatTicks {
         boolean active=!CrashGuard.tripped&&InterfaceHooks.on("chat_ticks")&&chat(root);
         for(TextView v:new ArrayList<>(originals.keySet())){
             if(v==null||v.getRootView()!=root)continue;
-            if(!active){CharSequence old=originals.remove(v);String t=v.getText().toString();if(old!=null&&(t.equals("☑️")||t.equals("☑️☑️")))v.setText(old);}
+            if(!active){CharSequence old=originals.remove(v);String t=v.getText().toString();if(old!=null&&(t.equals("✔️")||t.equals("✔️✔️")))v.setText(old);}
         }
         if(active)walk(root,0,new int[]{2400});
     }
@@ -37,7 +37,7 @@ final class ChatTicks {
             String n=name(t);
             // Only status labels, never message bubble content.
             if(!(n.contains("read_status")||n.contains("readstatus")||n.contains("send_status")||n.contains("sendstatus")||n.contains("receipt")||n.contains("message_status")))return;
-            String glyph=s.equals("прочитано")||s.equals("read")||s.equals("seen")?"☑️☑️":s.equals("отправлено")||s.equals("sent")?"☑️":null;
+            String glyph=s.equals("прочитано")||s.equals("read")||s.equals("seen")?"✔️✔️":s.equals("отправлено")||s.equals("sent")?"✔️":null;
             if(glyph!=null){originals.put(t,t.getText());t.setText(glyph);}
         }
         if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)walk(g.getChildAt(i),depth+1,budget);}
