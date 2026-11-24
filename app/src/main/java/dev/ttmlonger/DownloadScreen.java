@@ -96,20 +96,11 @@ final class DownloadScreen extends Screen {
         for (int i = 0; i < VALUES.length; i++) {
             if (VALUES[i] == Prefs.dlQuality) checked = i;
         }
-        AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme())
-                .setTitle("Качество видео")
-                .setSingleChoiceItems(LABELS, checked, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dlg, int which) {
-                        Prefs.setDlQuality(VALUES[which]);
-                        TextView val = Ui.valueOf(qualityRow);
-                        if (val != null) val.setText(qualityLabel(Prefs.dlQuality));
-                        dlg.dismiss();
-                    }
-                })
-                .create();
-        markOwn(d);
-        d.show();
-        Ui.style(d);
+        String[] detail={"Оригинальный выбор приложения","Максимальное доступное разрешение","Full HD · до 1080p","HD · до 720p","До 540p","SD · до 480p","До 360p","Минимальный доступный вариант"};
+        ChoiceSheet.quality(act,LABELS,detail,checked,which->{
+            Prefs.setDlQuality(VALUES[which]);
+            TextView val=Ui.valueOf(qualityRow);
+            if(val!=null)val.setText(qualityLabel(Prefs.dlQuality));
+        });
     }
 }

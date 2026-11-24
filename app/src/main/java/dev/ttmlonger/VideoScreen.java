@@ -166,24 +166,11 @@ final class VideoScreen extends Screen {
         String[] choices = byType ? TYPES : SORTS;
         String title = byType ? "Тип публикации" : "Порядок";
         LinearLayout row = ui.menuRow(-1, title, null, choices[0], null);
-        row.setOnClickListener(v -> {
-            AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme()).setTitle(title)
-                    .setSingleChoiceItems(choices, byType ? type : sort, (dialog, i) -> {
-                        TextView value = Ui.valueOf(row);
-                        if (value != null) value.setText(choices[i]);
-                        if (byType) {
-                            type = i;
-                            filter();
-                        } else {
-                            sort = i;
-                            arrange();
-                        }
-                        dialog.dismiss();
-                    }).setNegativeButton("Отмена", null).create();
-            markOwn(d);
-            d.show();
-            Ui.style(d);
-        });
+        row.setOnClickListener(v -> ChoiceSheet.show(act,title,choices,byType?type:sort,which->{
+            TextView value=Ui.valueOf(row);
+            if(value!=null)value.setText(choices[which]);
+            if(byType){type=which;filter();}else{sort=which;arrange();}
+        }));
         body.addView(row);
     }
 
