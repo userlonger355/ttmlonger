@@ -26,7 +26,7 @@ final class UnlocksScreen extends Screen {
     }
 
     static String menuSummary() {
-        return Unlocks.onCount() + " из " + (Unlocks.ALL.length + 1);
+        return (Unlocks.onCount() + (Prefs.vtTime ? 1 : 0)) + " из " + (Unlocks.ALL.length + 1);
     }
 
     @Override
@@ -56,6 +56,7 @@ final class UnlocksScreen extends Screen {
         }
         body.addView(groupRow("chat_bubble"));
         body.addView(groupRow("chat_wallpaper"));
+        body.addView(ui.menuRow(Icons.IMAGE, "Предпросмотр чата", "Пример пузырей и обоев — без изменения реальных чатов", null, v -> ChatAppearancePreview.show(act)));
         body.addView(groupRow("read_all"));
 
         body.addView(ui.header("Публикации и комментарии"));

@@ -212,6 +212,9 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
+                "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
+
         TextView ver = ui.text("TTMLonger " + Targets.VERSION, 13, Ui.MUTED, false);
         ver.setGravity(android.view.Gravity.CENTER);
         ver.setPadding(0, ui.dp(28), 0, ui.dp(8));

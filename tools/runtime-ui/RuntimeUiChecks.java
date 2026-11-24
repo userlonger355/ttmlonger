@@ -32,7 +32,7 @@ final class RuntimeUiChecks {
         {"appearance","Внешний вид"}, {"metadata","Время и регион видео"},
         {"unlocks","Возможности"}, {"badges","Бейджики"}, {"privacy","Невидимка"},
         {"ads","Реклама и LIVE"}, {"downloads","Скачивание"},
-        {"video","Видео и истории"}, {"stickers","Стикеры"}, {"streaks","Огоньки"}
+        {"video","Видео и истории"}, {"stickers","Стикеры"}, {"streaks","Огоньки"}, {"flags","Настройки разработчика TikTok"}
     };
     static void schedule(Activity a) {
         if (!started.compareAndSet(false, true)) return;
@@ -105,7 +105,7 @@ final class RuntimeUiChecks {
             result("release_no_developer_rows",text(menu.getWindow().getDecorView(),"Для опытных")==null
                 && text(menu.getWindow().getDecorView(),"Разведка кода")==null
                 && text(menu.getWindow().getDecorView(),"Перехват запросов")==null
-                && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")==null);
+                && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             main.postDelayed(() -> row(0), 1800);
         } catch(Throwable e) { fail("menu_exception",e); finish(); }
@@ -125,6 +125,7 @@ final class RuntimeUiChecks {
                         View root=opened.getWindow().getDecorView();
                         result("release_clean_"+id,text(root,"Скопировать сведения")==null && text(root,"Диагностика чатов")==null
                             && text(root,"Скопировать файл для GitHub")==null && text(root,"Открыть badges.json на GitHub")==null);
+                        if("unlocks".equals(id)) chatPreview(opened);
                         stage(id);
                     }
                 } catch(Throwable e) { fail("screen_"+id,e); }
@@ -135,6 +136,19 @@ final class RuntimeUiChecks {
                 }, 1600);
             }, 400);
         } catch(Throwable e) { fail("screen_"+id,e); main.postDelayed(() -> row(i+1),250); }
+    }
+    private static void chatPreview(Dialog parent) throws Exception {
+        ArrayList<Dialog> before=dialogs();
+        boolean clicked=click(parent,"Предпросмотр чата");
+        Dialog d=newest(before);
+        result("chat_preview_open",clicked && d!=null);
+        if(d==null) return;
+        try {
+            result("chat_preview_styles",click(d,"Мягкие") && click(d,"Градиент")
+                && text(d.getWindow().getDecorView(),"Пример: Мягкие · Градиент · "+(Ui.DARK?"тёмная":"светлая"))!=null);
+            result("chat_preview_reset",click(d,"Сбросить предпросмотр")
+                && text(d.getWindow().getDecorView(),"Пример: Стандарт · Однотонный · "+(Ui.DARK?"тёмная":"светлая"))!=null);
+        } finally { d.dismiss(); }
     }
     private static void glassStart() {
         try {
