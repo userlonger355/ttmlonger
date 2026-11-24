@@ -36,9 +36,9 @@ final class CommandPlugins extends Screen {
         return clean.put("rows",out);
     }
     @Override void build(LinearLayout body){
-        body.addView(ui.menuRow(Icons.SLIDERS,"MTP · MargyT API 5","Установка, запуск и настройки DEX-плагинов",null,v->MtpScreen.show(act)));
+        body.addView(ui.menuRow(Icons.SLIDERS,"MTP · API 5","Установка, запуск и настройки DEX-плагинов",null,v->MtpScreen.show(act)));
         body.addView(ui.menuRow(Icons.DOWNLOAD,"Установить JSON-плагин","Выбрать локальный файл",null,v->install()));
-        body.addView(ui.note("Поддержка формата commands-plugin.json из MargyT: команды открывают информационные окна. Нет доступа к сети, хукам, аккаунту и произвольному коду."));
+        body.addView(ui.note("Поддержка формата commands-plugin.json: команды открывают информационные окна. Нет доступа к сети, хукам, аккаунту и произвольному коду."));
         for(Map.Entry<String,?> e:new TreeMap<>(prefs().getAll()).entrySet()){
             if(!e.getKey().startsWith("plugin:")||!(e.getValue() instanceof String))continue;
             try{

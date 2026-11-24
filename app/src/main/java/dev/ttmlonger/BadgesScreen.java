@@ -51,8 +51,8 @@ final class BadgesScreen extends Screen {
                         Restart.offer(act);
                     }
                 }));
-        body.addView(ui.header("Каталог MargyT"));
-        body.addView(ui.menuRow(Icons.DOWNLOAD,"Импорт бейджиков MargyT","Локальный JSON: цвета и назначение по UID",null,v -> ImportedBadges.pick(act,()->refresh())));
+        body.addView(ui.header("Внешний каталог"));
+        body.addView(ui.menuRow(Icons.DOWNLOAD,"Импорт бейджиков","Локальный JSON: цвета и назначение по UID",null,v -> ImportedBadges.pick(act,()->refresh())));
         body.addView(ui.menuRow(Icons.TRASH,"Очистить импортированные бейджики",null,null,v -> {ImportedBadges.clear();refresh();}));
         body.addView(ui.header("Общий список"));
         body.addView(toggleRow(Icons.GLOBE, "Бейджики от других",

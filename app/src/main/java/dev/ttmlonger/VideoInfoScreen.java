@@ -48,7 +48,7 @@ final class VideoInfoScreen extends Screen {
                         changed();
                     }
                 }));
-        body.addView(toggleRow(Icons.CLOCK,"Точное время репоста","Отдельная строка с секундами, если TikTok передал время репоста",Prefs.vtRepost,on->{Prefs.setVtRepost(on);changed();}));
+        body.addView(toggleRow(Icons.CLOCK,"Точное время репоста","Отдельная дата и время с секундами из данных репоста",Prefs.vtRepost,on->{Prefs.setVtRepost(on);changed();}));
         formatRow = ui.menuRow(-1, "Вид времени", "«Давность, потом дата»: «5 ч. назад», а видео старше недели — "
                         + "«26.09.2026». «Точное время»: «26.09 02:32:00»", VideoInfo.formatLabel(Prefs.vtFormat),
                 new View.OnClickListener() {

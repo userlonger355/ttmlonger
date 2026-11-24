@@ -412,31 +412,45 @@ final class VideoInfo {
         return m;
     }
 
-    /** Только явно названная метка репоста; время публикации не является её заменой. */
+    /** Exact event time from a native repost record, never from the publication ID. */
     static long repostTimeOf(Object aweme) {
         if(aweme==null)return 0;
         long now=System.currentTimeMillis()/1000L;
         long published=parseEventTime(get(aweme,"getCreateTime","createTime","create_time","mCreateTime"));
-        long direct=repostFields(aweme,published,now,false);
-        if(direct<0)return 0;
-        Object info=get(aweme,"getUpvoteInfo","upvoteInfo","upvote_info");
-        long nested=0;
-        if(info!=null){
-            Object aid=get(aweme,"getAid","aid");
-            Object item=get(info,"getItemId","itemId","item_id");
-            Object rid=get(info,"getUpvoteId","upvoteId","upvote_id");
-            if(aid!=null && item!=null && aid.toString().equals(item.toString()) && rid!=null && rid.toString().matches("[1-9][0-9]{0,23}")){
-                nested=repostFields(info,published,now,true);
-                if(nested<0)return 0;
-            }
+        long result=repostFields(aweme,published,now,false);
+        if(result<0)return 0;
+        Object aid=get(aweme,"getAid","aid");
+        for(Object info:new Object[]{get(aweme,"getUpvoteInfo","upvoteInfo","upvote_info"),
+                get(aweme,"getRepostInfo","repostInfo","repost_info")}){
+            if(info==null)continue;
+            long nested=eventRecord(info,aid,published,now);
+            if(nested<0||result>0&&nested>0&&result!=nested)return 0;
+            if(nested>0)result=nested;
         }
-        if(direct>0&&nested>0&&direct!=nested)return 0;
-        return direct>0?direct:nested;
+        return result;
     }
-    /** Reject ambiguous or impossible event times; never decode an ID as a timestamp. */
-    private static long repostFields(Object model,long published,long now,boolean upvote){
-        String[] names=upvote?new String[]{"repostTime","repostTimestamp","upvoteTime","upvoteTimestamp","repost_time","repost_timestamp","upvote_time","upvote_timestamp","createTime","create_time"}
-            :new String[]{"repostTime","repostTimestamp","repost_time","repost_timestamp"};
+    private static long eventRecord(Object info,Object aid,long published,long now){
+        if(info instanceof java.util.List){
+            long result=0;
+            for(Object one:(java.util.List<?>)info){
+                if(one==null||one instanceof java.util.List)continue;
+                long time=eventRecord(one,aid,published,now);
+                if(time<0||result>0&&time>0&&result!=time)return -1;
+                if(time>0)result=time;
+            }
+            return result;
+        }
+        Object item=get(info,"getItemId","itemId","item_id");
+        if(item!=null&&!item.toString().isEmpty()&&!item.toString().equals("0")
+                &&(aid==null||!aid.toString().equals(item.toString())))return 0;
+        // The dedicated repost/upvote record is attached to this Aweme. A missing
+        // event ID is not a reason to discard an explicitly provided event timestamp.
+        return repostFields(info,published,now,true);
+    }
+    private static long repostFields(Object model,long published,long now,boolean event){
+        String[] names={"repostTime","repostTimestamp","repostCreateTime","repostedAt",
+            "upvoteTime","upvoteTimestamp","upvoteCreateTime","repost_time","repost_timestamp",
+            "repost_create_time","reposted_at","upvote_time","upvote_timestamp","upvote_create_time"};
         long result=0;
         for(String name:names){
             String getter="get"+Character.toUpperCase(name.charAt(0))+name.substring(1);
@@ -445,6 +459,19 @@ final class VideoInfo {
                 if(time<=0||time>now+300L||published>0&&time<published)continue;
                 if(result!=0&&result!=time)return -1;
                 result=time;
+            }
+        }
+        // Generic creation time belongs to the event only inside a dedicated record,
+        // never on Aweme itself. Explicit event fields take precedence.
+        if(event&&result==0){
+            for(String name:new String[]{"createTime","create_time","createdAt","created_at","timestamp"}){
+                String getter="get"+Character.toUpperCase(name.charAt(0))+name.substring(1);
+                for(Object value:new Object[]{DownloadHooks.call(model,getter),fieldOf(model,name)}){
+                    long time=parseEventTime(value);
+                    if(time<=0||time>now+300L||published>0&&time<published)continue;
+                    if(result!=0&&result!=time)return -1;
+                    result=time;
+                }
             }
         }
         return result;
@@ -782,7 +809,7 @@ final class VideoInfo {
         p.regionView.setVisibility(Prefs.vtRegion ? View.VISIBLE : View.GONE);
         p.timeView.setClickable(false);
         p.regionView.setClickable(false);
-        p.repostView.setText("Репост · "+formatTime(sample+3600L,true,Zones.current(),System.currentTimeMillis()));
+        p.repostView.setText("Репост · "+fullTime(sample+3600L,Zones.current()));
         p.repostView.setVisibility(Prefs.vtRepost?View.VISIBLE:View.GONE);
         p.repostView.setClickable(false);
         return p.box;
@@ -874,7 +901,7 @@ final class VideoInfo {
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
             boolean showRepost=Prefs.vtRepost&&reposted>0;
-            if(showRepost){String label="Репост · "+formatTime(reposted,true,Zones.current(),System.currentTimeMillis());
+            if(showRepost){String label="Репост · "+fullTime(reposted,Zones.current());
                 if(!TextUtils.equals(pills.repostView.getText(),label))pills.repostView.setText(label);}
             pills.repostView.setVisibility(showRepost?View.VISIBLE:View.GONE);
             if (wantRegion) {

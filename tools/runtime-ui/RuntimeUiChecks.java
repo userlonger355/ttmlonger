@@ -253,6 +253,18 @@ final class RuntimeUiChecks {
         public long getRepostTimestamp(){return repostTimestamp;}
         public String getRegion(){return region;}
     }
+    public static final class RepostWithoutId{
+        public long getCreateTime(){return 1700000000L;}
+        public String getAid(){return "123";}
+        public Object getUpvoteInfo(){return new EventWithoutId();}
+    }
+    public static final class EventWithoutId{
+        public long getCreateTime(){return 1700000333L;}
+    }
+    public static final class DirectUpvoteTime{
+        public long getCreateTime(){return 1700000000L;}
+        public long getUpvoteTime(){return 1700000444L;}
+    }
     public static final class FakeUpvote {
         public String itemId="one",upvoteId="123";
         public long createTime=1700000222L;
@@ -312,6 +324,8 @@ final class RuntimeUiChecks {
             result("metadata_no_fake_repost",VideoInfo.repostTimeOf(f)==0);
             f.upvoteInfo=new FakeUpvote();
             result("repost_nested_event",VideoInfo.repostTimeOf(f)==1700000222L);
+            result("repost_missing_id",VideoInfo.repostTimeOf(new RepostWithoutId())==1700000333L);
+            result("repost_explicit_event_field",VideoInfo.repostTimeOf(new DirectUpvoteTime())==1700000444L);
             f.upvoteInfo.itemId="other";
             result("repost_wrong_item",VideoInfo.repostTimeOf(f)==0);
             f.upvoteInfo.itemId="one"; f.upvoteInfo.createTime=1699999999L;

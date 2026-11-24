@@ -7,7 +7,7 @@ import java.util.*;
 import java.io.*;
 final class MtpScreen extends Screen{
     private MtpScreen(Activity a){super(a);}
-    static void show(Activity a){new MtpScreen(a).open("MTP-плагины","Совместимость публичного API MargyT 1–5. Незнакомый DEX может читать данные TikTok и выполнять действия от вашего имени. Устанавливайте только проверенный код.");}
+    static void show(Activity a){new MtpScreen(a).open("MTP-плагины","MTP API 1–5. Незнакомый DEX может читать данные TikTok и выполнять действия от вашего имени. Устанавливайте только проверенный код.");}
     void build(LinearLayout body){
         if(!MtpRuntime.ready()){body.addView(ui.note("Нужен Android 8+ и запущенный мод."));return;}
         body.addView(ui.menuRow(Icons.DOWNLOAD,"Установить .mtp","Выбор локального ZIP-пакета",null,v->pick()));
@@ -47,7 +47,7 @@ final class MtpScreen extends Screen{
                     if(!MtpRuntime.open(s,a))settings(a,s);
                 });
             }));
-            if(s.rows.isEmpty())body.addView(ui.note("Стандартных настроек нет. Если собственное окно не работает, плагин может зависеть от внутренних классов MargyT."));
+            if(s.rows.isEmpty())body.addView(ui.note("Стандартных настроек нет. Если собственное окно не работает, плагин может зависеть от внутренних классов другого мода."));
             for(MtpRuntime.Row r:s.rows){
                 if(r.kind==4){body.addView(ui.header(r.title));continue;}
                 if(r.kind==0){body.addView(ui.menuRow(Icons.SLIDERS,r.title,r.detail,null,v->{MtpRuntime.settingAction(s,r);}));continue;}
