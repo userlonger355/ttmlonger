@@ -6,6 +6,35 @@ import android.widget.FrameLayout;
 
 /** Emulator-only host for the real module dialogs. Compiled only in the screenshot job. */
 public final class PreviewActivity extends Activity {
+    private boolean homeFixture;
+    private int homeClicks, otherClicks;
+    private android.widget.TextView gestureStatus;
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (homeFixture && Trigger.homeTouch(this,event)) return true;
+        return super.dispatchTouchEvent(event);
+    }
+
+    private void homeFixture(FrameLayout frame) {
+        homeFixture=true;
+        Ui ui=new Ui(this);
+        gestureStatus=ui.text("Главная: 0 · Другие: 0",16,Ui.INK,false);
+        gestureStatus.setGravity(android.view.Gravity.CENTER);
+        frame.setBackgroundColor(Ui.BG);
+        frame.addView(gestureStatus,new FrameLayout.LayoutParams(-1,ui.dp(48),android.view.Gravity.CENTER));
+        android.widget.LinearLayout bar=new android.widget.LinearLayout(this);
+        bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        for(String label:new String[]{"Главная","Друзья","+","Входящие","Профиль"}) {
+            android.widget.TextView tab=ui.text(label,12,Ui.INK,false);
+            tab.setGravity(android.view.Gravity.CENTER);
+            bar.addView(tab,new android.widget.LinearLayout.LayoutParams(0,-1,1f));
+            tab.setOnClickListener(v->{
+                if("Главная".equals(label)) homeClicks++; else otherClicks++;
+                gestureStatus.setText("Главная: "+homeClicks+" · Другие: "+otherClicks);
+            });
+        }
+        frame.addView(bar,new FrameLayout.LayoutParams(-1,ui.dp(64),android.view.Gravity.BOTTOM));
+    }
     @Override
     public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -18,7 +47,9 @@ public final class PreviewActivity extends Activity {
             boolean night=(getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
             expect(Ui.DARK==night,"preview theme follows system");
             String screen=getIntent().getStringExtra("screen");
-            if ("streaks".equals(screen)) {
+            if ("home".equals(screen)) {
+                homeFixture(frame);
+            } else if ("streaks".equals(screen)) {
                 StreakChecks.verifyAccountSettings(this);
                 StreakScreen.show(this);
             } else if ("chat".equals(screen)) {

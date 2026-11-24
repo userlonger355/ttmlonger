@@ -37,3 +37,5 @@ for theme in dark light; do
     echo "PREVIEW $theme/$screen PASS"
   done
 done
+
+python3 tools/ui-preview/home-gesture.py

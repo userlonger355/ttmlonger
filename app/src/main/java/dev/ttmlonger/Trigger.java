@@ -126,7 +126,7 @@ final class Trigger {
     }
 
     /** Обычный тап идёт в TikTok; удержание Главной отменяет нативный жест и открывает меню. */
-    private static boolean homeTouch(final Activity a, MotionEvent e) {
+    static boolean homeTouch(final Activity a, MotionEvent e) {
         if (cancellingHome) return false;
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
