@@ -14,7 +14,6 @@ import android.view.accessibility.*;
 import android.widget.*;
 import java.lang.reflect.Method;
 import java.util.*;
-import de.robv.android.xposed.XposedHelpers;
 
 /** Inserts a settings row into the Activity group, without a top banner or inset changes. */
 final class SettingsHost {
@@ -128,8 +127,12 @@ final class SettingsHost {
         for(int i=0;i<n.getChildCount()&&budget[0]>0;i++){
             AccessibilityNodeInfo ch=null;
             try{
-                Object id=XposedHelpers.callMethod(n,"getChildId",i);
-                if(id instanceof Long)ch=provider.createAccessibilityNodeInfo((int)(((Long)id)>>>32));
+                try {
+                    Method getId=AccessibilityNodeInfo.class.getDeclaredMethod("getChildId",int.class);
+                    getId.setAccessible(true);
+                    Object id=getId.invoke(n,i);
+                    if(id instanceof Long)ch=provider.createAccessibilityNodeInfo((int)(((Long)id)>>>32));
+                } catch(Throwable ignored) { }
                 if(ch==null)ch=n.getChild(i);
                 nodes(provider,ch,row,out,budget,depth+1);
             }catch(Throwable ignored){}finally{if(ch!=null)ch.recycle();}
