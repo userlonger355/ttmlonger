@@ -26,15 +26,18 @@ final class InterfaceHooks {
     private static String lastAction = "";
 
     static boolean on(String key) {
+        if(key.equals("comment_copy"))key="comment_copy_body";
         return prefs != null && prefs.getBoolean(key, (key.equals("details") || key.equals("comment_copy_body")));
     }
 
     static void set(String key, boolean value) {
+        if(key.equals("comment_copy"))key="comment_copy_body";
         prefs.edit().putBoolean(key, value).apply();
     }
 
     static void install(Context ctx) {
         prefs = ctx.getSharedPreferences("ttmlonger_interface", Context.MODE_PRIVATE);
+        if(!prefs.contains("comment_copy_body")&&prefs.contains("comment_copy"))prefs.edit().putBoolean("comment_copy_body",prefs.getBoolean("comment_copy",true)).remove("comment_copy").apply();
         XC_MethodHook clean = new XC_MethodHook() {
             @Override protected void beforeHookedMethod(MethodHookParam p) {
                 if (!on("clean") || CrashGuard.tripped || p.args.length < 2) return;

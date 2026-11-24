@@ -11,7 +11,7 @@ final class CommentToolsScreen extends Screen {
         LinearLayout.LayoutParams lp=ui.matchWrap();lp.setMargins(ui.dp(16),0,ui.dp(16),ui.dp(10));body.addView(example,lp);
         for(int i=0;i<CommentTools.KEYS.length;i++){
             String key=CommentTools.KEYS[i];
-            body.addView(toggleRow(-1,CommentTools.TITLES[i],i==1?"Долгое нажатие на текст":i==3?"Из модели комментария, не из времени видео":null,InterfaceHooks.on(key),on->{InterfaceHooks.set(key,on);refresh();}));
+            body.addView(toggleRow(-1,CommentTools.TITLES[i],i==1?"Штатная кнопка «Копировать» в меню удержания":i==3?"Из модели комментария, не из времени видео":null,InterfaceHooks.on(key),on->{InterfaceHooks.set(key,on);refresh();}));
         }
         body.addView(ui.menuRow(Icons.IMAGE,"Фон комментариев","Изображение и размытие",null,v->CommentWallpaperScreen.show(act)));
         body.addView(ui.note("Распознано методов комментария: "+CommentTools.modelHooks+". Ник, время и жесты зависят от разметки версии TikTok."));

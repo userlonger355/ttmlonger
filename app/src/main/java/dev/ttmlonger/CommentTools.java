@@ -10,7 +10,7 @@ import java.text.SimpleDateFormat;
 import de.robv.android.xposed.*;
 
 final class CommentTools {
-    static final String[] KEYS={"comment_expand","comment_copy","comment_nick","comment_exact","comment_double","comment_full"};
+    static final String[] KEYS={"comment_expand","comment_copy_body","comment_nick","comment_exact","comment_double","comment_full"};
     static final String[] TITLES={"Разворачивать длинные комментарии","Копировать текст без имени автора","Ник вместо имени","Точное время комментариев","Двойное нажатие для лайка","Кнопка полноэкранных комментариев"};
     static int modelHooks;
     private static final LinkedHashMap<String,List<Fact>> facts=new LinkedHashMap<>();
@@ -74,17 +74,9 @@ final class CommentTools {
                 }
             }catch(Throwable ignored){}
         }
-        XposedBridge.hookAllMethods(View.class,"performLongClick",new XC_MethodHook(){
-            @Override protected void beforeHookedMethod(MethodHookParam p){
-                if(CrashGuard.tripped||!InterfaceHooks.on("comment_copy"))return;
-                View v=(View)p.thisObject;if(!body(v)||Screen.isOwnDecor(v.getRootView()))return;
-                View panel=CommentWallpaper.panel(v.getRootView());if(panel==null||!inside(v,panel))return;
-                CharSequence s=((TextView)v).getText();if(s==null||s.length()==0)return;
-                ClipboardManager cm=(ClipboardManager)v.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                if(cm!=null){cm.setPrimaryClip(ClipData.newPlainText("Комментарий",s));Toasts.show(v.getContext(),"Текст комментария скопирован");p.setResult(true);}
-            }
-        });
+        // Native long-press menu and its copy action are handled by CommentSelect.
     }
+
     private static boolean inside(View child,View parent){for(View v=child;v!=null;){if(v==parent)return true;v=v.getParent() instanceof View?(View)v.getParent():null;}return false;}
     static void apply(View root){
         if(root==null||Screen.isOwnDecor(root))return;
@@ -116,7 +108,6 @@ final class CommentTools {
             List<TextView> list=new ArrayList<>();collect(panel,list,0,new int[]{1800});
             for(TextView t:list)if(body(t)){
                 if(InterfaceHooks.on("comment_expand")&&!limits.containsKey(t)){limits.put(t,new Limits(t));t.setMaxLines(Integer.MAX_VALUE);t.setEllipsize(null);}
-                if(InterfaceHooks.on("comment_copy"))t.setLongClickable(true);
                 if(InterfaceHooks.on("comment_nick")||InterfaceHooks.on("comment_exact"))format(t,panel);
             }
             if(InterfaceHooks.on("comment_full")&&buttons.get(root)==null)addFull(root,panel,list);
