@@ -70,7 +70,7 @@ final class InterfaceScreen extends Screen {
         refreshPreview();
         for (FeedButtons.Button button : FeedButtons.Button.values()) {
             option(body, button.key(), button.label, FeedButtons.supported(button) ? null
-                    : "Компонент не распознан в этой версии TikTok");
+                    : "Может быть недоступно в этой версии TikTok");
         }
         body.addView(ui.header("Жесты на видео"));
         FeedGestures.settings(this, body);

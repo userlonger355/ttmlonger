@@ -32,9 +32,7 @@ final class RuntimeUiChecks {
         {"appearance","Внешний вид"}, {"metadata","Время и регион видео"},
         {"unlocks","Возможности"}, {"badges","Бейджики"}, {"privacy","Невидимка"},
         {"ads","Реклама и LIVE"}, {"downloads","Скачивание"},
-        {"video","Видео и истории"}, {"stickers","Стикеры"}, {"streaks","Огоньки"},
-        {"flags","Настройки разработчика TikTok"}, {"recon","Разведка кода"},
-        {"requests","Перехват запросов"}
+        {"video","Видео и истории"}, {"stickers","Стикеры"}, {"streaks","Огоньки"}
     };
     static void schedule(Activity a) {
         if (!started.compareAndSet(false, true)) return;
@@ -104,6 +102,10 @@ final class RuntimeUiChecks {
             ModMenu.show(activity);
             menu=newest(before);
             result("menu_dialog",menu!=null && text(menu.getWindow().getDecorView(),"Настройки мода")!=null);
+            result("release_no_developer_rows",text(menu.getWindow().getDecorView(),"Для опытных")==null
+                && text(menu.getWindow().getDecorView(),"Разведка кода")==null
+                && text(menu.getWindow().getDecorView(),"Перехват запросов")==null
+                && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")==null);
             stage("menu");
             main.postDelayed(() -> row(0), 1800);
         } catch(Throwable e) { fail("menu_exception",e); finish(); }
@@ -119,7 +121,12 @@ final class RuntimeUiChecks {
                 try {
                     opened=newest(before);
                     result("screen_"+id,clicked && opened!=null && opened.getWindow()!=null);
-                    if(opened!=null) stage(id);
+                    if(opened!=null) {
+                        View root=opened.getWindow().getDecorView();
+                        result("release_clean_"+id,text(root,"Скопировать сведения")==null && text(root,"Диагностика чатов")==null
+                            && text(root,"Скопировать файл для GitHub")==null && text(root,"Открыть badges.json на GitHub")==null);
+                        stage(id);
+                    }
                 } catch(Throwable e) { fail("screen_"+id,e); }
                 final Dialog close=opened;
                 main.postDelayed(() -> {
@@ -136,6 +143,7 @@ final class RuntimeUiChecks {
             boolean clicked=click(menu,"Нижняя панель");
             glass=newest(before);
             result("glass_screen",clicked && glass!=null);
+            if(glass!=null) result("release_clean_glass",text(glass.getWindow().getDecorView(),"Скопировать сведения")==null);
             if(glass==null) { finish(); return; }
             click(glass,"Оригинал");
             result("glass_original",GlassCfg.style==GlassCfg.ORIGINAL);

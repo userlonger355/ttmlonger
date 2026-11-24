@@ -63,8 +63,8 @@ final class ModMenu extends Screen {
         page.addView(tabScroll, ui.matchWrap());
         if (CrashGuard.tripped) {
             page.addView(ui.menuRow(Icons.FLAG, "Включена защита от сбоев",
-                    "После нескольких коротких запусков часть функций приостановлена. Открыть настройки защиты",
-                    null, v -> FlagsScreen.show(act)));
+                    "После нескольких неудачных запусков функции приостановлены. Нажмите для восстановления",
+                    null, v -> recovery()));
         }
         LinearLayout body = section(page, "Основное");
         regionRow = ui.menuRow(Icons.GLOBE, "Регион", null, regionSummary(), new View.OnClickListener() {
@@ -202,41 +202,13 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(toggleRow(Icons.FLAG, "Набор флагов мода",
-                "Голосовые и пузырь чата в личных, без рекламы, длинные видео и другое (" + RefSet.size()
-                        + " шт.). Ваши ручные подмены главнее. Нужен перезапуск TikTok",
+        body.addView(toggleRow(Icons.FLAG, "Дополнительные возможности",
+                "Дополнительные функции TikTok. Доступность зависит от аккаунта. Нужен перезапуск TikTok",
                 Prefs.refSet, new ModSwitch.Listener() {
                     @Override
                     public void onChanged(boolean on) {
                         Prefs.setRefSet(on);
                         Restart.offer(act);
-                    }
-                }));
-
-        body = section(page, "Для опытных");
-        body.addView(ui.menuRow(Icons.SEARCH, "Перехват запросов",
-                "Для удаления лайков, избранного и репостов: запись настоящих вызовов TikTok", ApiTap.menuSummary(),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        ApiTapScreen.show(act);
-                    }
-                }));
-        body.addView(ui.menuRow(Icons.SEARCH, "Разведка кода",
-                "Для «Невидимки», заблокированного профиля, удаления и личных сообщений", ReconScreen.menuSummary(),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        ReconScreen.show(act);
-                    }
-                }));
-
-        body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
-                "Внутренние флаги (A/B) для тестирования функций", null,
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        FlagsScreen.show(act);
                     }
                 }));
 
@@ -258,6 +230,20 @@ final class ModMenu extends Screen {
             Ui.valueOf(streakMenuRow).setText(StreakScreen.menuSummary());
         });
         filter();
+    }
+
+    private void recovery() {
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(act, Ui.dialogTheme())
+                .setTitle("Восстановить функции?")
+                .setMessage("Защита приостановила функции после нескольких коротких запусков. Если сбои повторятся, защита сработает снова.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Восстановить", (dlg, which) -> {
+                    CrashGuard.reenable();
+                    Restart.offer(act);
+                }).create();
+        Screen.markOwn(d);
+        d.show();
+        Ui.style(d);
     }
 
     private TextView tile(int icon, String title, String value, boolean warm, Runnable open) {

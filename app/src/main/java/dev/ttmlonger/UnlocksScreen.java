@@ -14,7 +14,6 @@ import android.widget.TextView;
  * свой выключатель. Флаги читаются при запуске приложения, поэтому после смены нужен перезапуск TikTok.
  */
 final class UnlocksScreen extends Screen {
-    private TextView blocked;
 
     private UnlocksScreen(Activity act) {
         super(act);
@@ -57,23 +56,6 @@ final class UnlocksScreen extends Screen {
         }
         body.addView(groupRow("chat_bubble"));
         body.addView(groupRow("chat_wallpaper"));
-        body.addView(ui.row(Icons.COPY, "Диагностика чатов",
-                "Откройте чат, попробуйте голосовые, обои и пузырь, затем скопируйте отчёт",
-                null, false, v -> {
-                    try {
-                        ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
-                        String report = "TTMLonger " + Targets.VERSION + " · Android "
-                                + android.os.Build.VERSION.SDK_INT + "\n"
-                                + "Микрофон: " + (act.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-                                == android.content.pm.PackageManager.PERMISSION_GRANTED ? "разрешён" : "не разрешён")
-                                + "\n" + FlagTap.chatSummary() + "\n" + FlagHooks.status()
-                                + "\n" + FlagHooks.readerStatus();
-                        cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", report));
-                        Toasts.show(act, "Диагностика скопирована");
-                    } catch (Throwable t) {
-                        Toasts.show(act, "Не удалось скопировать");
-                    }
-                }));
         body.addView(groupRow("read_all"));
 
         body.addView(ui.header("Публикации и комментарии"));
@@ -92,7 +74,6 @@ final class UnlocksScreen extends Screen {
                     @Override
                     public void onChanged(boolean on) {
                         Prefs.setViewBlocked(on);
-                        refreshBlocked();
                     }
                 }));
         body.addView(toggleRow(-1, "Прятать блокировку везде",
@@ -101,26 +82,11 @@ final class UnlocksScreen extends Screen {
                     @Override
                     public void onChanged(boolean on) {
                         Prefs.setViewBlockedEverywhere(on);
-                        refreshBlocked();
                     }
                 }));
-        blocked = ui.text("", 14f, Ui.INK, false);
-        blocked.setLineSpacing(0f, 1.15f);
-        blocked.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
-        body.addView(blocked, ui.matchWrap());
-        refreshBlocked();
-        body.addView(ui.row(Icons.COPY, "Скопировать сведения", "Для разработчика: что TikTok отвечал про блокировку и "
-                + "на каких экранах (имён и данных людей нет)", null, false, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                copyBlocked();
-            }
-        }));
-
         body.addView(ui.note("Перезапустите TikTok после смены: приложение читает эти настройки при запуске. "
                 + "Если функции нет у вас на экране, значит её ещё нет в этой версии TikTok или её прячет "
-                + "сервер: мод может включить только то, что есть в самом приложении. Свои подмены на экране "
-                + "флагов главнее этих выключателей."));
+                + "сервер: мод может включить только то, что есть в самом приложении."));
         body.addView(ui.row(Icons.REFRESH, "Перезапустить TikTok", "Приложение закроется и откроется заново", null,
                 false, new View.OnClickListener() {
                     @Override
@@ -128,21 +94,6 @@ final class UnlocksScreen extends Screen {
                         Restart.offer(act);
                     }
                 }));
-    }
-
-    private void refreshBlocked() {
-        if (blocked != null) blocked.setText(BlockedProfile.status());
-    }
-
-    private void copyBlocked() {
-        try {
-            ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", "TTMLonger " + Targets.VERSION + " · Android "
-                    + android.os.Build.VERSION.SDK_INT + "\n" + BlockedProfile.details()));
-            Toasts.show(act, "Скопировано. Вставьте в сообщение разработчику");
-        } catch (Throwable t) {
-            Toasts.show(act, "Не удалось скопировать");
-        }
     }
 
     private LinearLayout groupRow(final String id) {

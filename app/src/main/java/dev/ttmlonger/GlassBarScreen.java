@@ -30,7 +30,6 @@ final class GlassBarScreen extends Screen {
     private LinearLayout choiceOriginal;
     private LinearLayout choiceGlass;
     private LinearLayout glassBox;
-    private TextView state;
     private LinearLayout compactRow;
     private LinearLayout backRow;
     private LinearLayout liveRow;
@@ -72,7 +71,6 @@ final class GlassBarScreen extends Screen {
     @Override
     void build(LinearLayout body) {
         dialog.setOnDismissListener(d -> {
-            if (state != null) state.removeCallbacks(stateLoop);
             stopPreview();
         });
 
@@ -90,44 +88,15 @@ final class GlassBarScreen extends Screen {
         body.addView(glassBox, ui.matchWrap());
         buildGlass(glassBox);
 
-        body.addView(ui.header("Состояние"));
-        state = ui.text("", 14f, Ui.INK, false);
-        state.setLineSpacing(0f, 1.15f);
-        state.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
-        body.addView(state, ui.matchWrap());
-        body.addView(ui.row(Icons.REFRESH, "Обновить состояние", "Панель мод ищет раз в секунду, пока открыт TikTok",
-                null, false, v -> {
-                    GlassBar.refresh();
-                    refreshState();
-                }));
-        body.addView(ui.row(Icons.COPY, "Скопировать сведения",
-                "Если панель не нашлась или выглядит не так, пришлите это разработчику (текстов с экрана в сведениях нет)",
-                null, false, v -> copy()));
         body.addView(ui.row(Icons.REFRESH, "Сбросить оформление", "Вернуть значения стекла и пружины по умолчанию",
                 null, false, v -> {
                     GlassCfg.resetLook();
                     applyAll();
                 }));
-        body.addView(ui.note("Непрозрачность, насыщенность и яркость действуют на капсулу и линзу. Фон из ленты "
-                + "снимается через PixelCopy: на каких-то экранах TikTok он может не сняться (тогда капсула "
-                + "остаётся сплошной), причину покажет «Скопировать сведения». Шейдер работает на Android 13 и "
-                + "новее; на старых версиях рисуется упрощённая линза без преломления."));
-
         syncChoice();
         syncAll();
-        refreshState();
-        state.postDelayed(stateLoop, 1000L);
-    }
 
-    /** Строка состояния живая: снимок ленты и шейдер появляются не сразу, а настройки открыты уже. */
-    private final Runnable stateLoop = new Runnable() {
-        @Override
-        public void run() {
-            if (state == null || !dialog.isShowing()) return;
-            refreshState();
-            state.postDelayed(this, 1000L);
-        }
-    };
+    }
 
     // ------------------------------------------------------------ выбор Оригинал / Liquid Glass
 
@@ -136,7 +105,6 @@ final class GlassBarScreen extends Screen {
             GlassCfg.setStyle(value);
             GlassBar.refresh();
             syncChoice();
-            refreshState();
         });
         ImageView check = ui.icon(Icons.CHECK, Theme.accent(), 22);
         check.setTag("check");
@@ -202,21 +170,7 @@ final class GlassBarScreen extends Screen {
                     if (GlassCfg.lv) GlassCfg.setLb(v);
                     else GlassCfg.setBl(v);
                 }, v -> v + " dp");
-        box.addView(ui.note("«Настоящий» фон (Android 13+): стекло показывает то, что на самом деле лежит под панелью "
-                + "(страница, превью, видео), и преломляет это у краёв капсулы и под линзой, как в видео-образце. "
-                + "Мод перед каждым кадром записывает всё, что рисуется под панелью, а шейдер преломляет запись на "
-                + "видеокарте, поэтому отставания нет. Видео, которое рисуется отдельным слоем (SurfaceView), в запись "
-                + "не попадает: под панелью оно будет тёмным. «Полоса ленты» — прежний запасной режим: размытое "
-                + "продолжение нижнего края ленты. Если запись ломается, мод сам переходит на него."));
-        box.addView(ui.note("«Без чёрной заливки»: мод не рисует сплошной фон панели и снимает такой фон у её "
-                + "обёртки (родителя не выше двух высот панели), капсула лежит прямо на ленте. Если снизу всё "
-                + "равно чёрное, чернит что-то другое: «Скопировать сведения» покажет цепочку фонов. «Как в "
-                + "TikTok» возвращает всё как было."));
-        box.addView(ui.note("«Из ленты»: мод снимает полоску окна над панелью и продолжает её свет под капсулу "
-                + "(под панелью TikTok ничего нет), размывает и подкрашивает, а линза преломляет его. Так получается "
-                + "жидкое стекло, как в index.html. «Сплошной»: капсула просто серая, без снимка. Нужен Android 13 (шейдер) и Android 8 "
-                + "(снимок окна); если снять окно нельзя, панель остаётся сплошной."));
-
+        box.addView(ui.note("Настоящий фон доступен на Android 13 и новее. Если захват фона недоступен, используется упрощённое стекло."));
         box.addView(ui.header("Физика линзы"));
         physRow = chipRow();
         box.addView(physRow);
@@ -266,10 +220,6 @@ final class GlassBarScreen extends Screen {
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(28));
         sp.setMargins(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8));
         plusColors.addView(plusSwatch, sp);
-        box.addView(ui.note("Перекрашивает кнопку загрузки видео в нижней панели: тело кнопки и знак «+» (голубая и "
-                + "красная кромки TikTok становятся цветом тела). Работает, пока капсулу рисует шейдер; «Как в TikTok» "
-                + "оставляет родную кнопку. Если цвет не поменялся, пришлите «Скопировать сведения»: там видно, нашлась "
-                + "ли кнопка."));
     }
 
     /** Образец выбранного цвета кнопки «+». */
@@ -377,7 +327,6 @@ final class GlassBarScreen extends Screen {
     private void applyAll() {
         GlassBar.refresh();
         syncAll();
-        refreshState();
     }
 
     private void syncAll() {
@@ -677,27 +626,4 @@ final class GlassBarScreen extends Screen {
         }
     }
 
-    // ------------------------------------------------------------ состояние
-
-    private void refreshState() {
-        StringBuilder sb = new StringBuilder(GlassBar.status());
-        if (previewSession != null) {
-            sb.append("\nпредпросмотр: ").append(previewSession.shaderNote());
-            sb.append("\nпредпросмотр, ").append(previewSession.bkStatus());
-        }
-        state.setText(sb.toString());
-    }
-
-    private void copy() {
-        try {
-            ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
-            String text = "TTMLonger " + Targets.VERSION + "\n" + GlassBar.details()
-                    + (previewSession != null ? "\nпредпросмотр: " + previewSession.details() : "");
-            cm.setPrimaryClip(ClipData.newPlainText("TTMLonger", text));
-            Toasts.show(act, "Скопировано. Вставьте в сообщение разработчику");
-        } catch (Throwable t) {
-            FlagStore.log(t);
-            Toasts.show(act, "Не удалось скопировать");
-        }
-    }
 }
