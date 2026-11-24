@@ -178,8 +178,7 @@ final class TabOrder {
         rail.setGravity(android.view.Gravity.CENTER_VERTICAL);
         sc.addView(rail);
         demo.addView(sc,ui.matchWrap());
-        box.addView(ui.space(10));
-        box.addView(demo,ui.matchWrap());
+        LinearLayout.LayoutParams dp=ui.matchWrap();dp.setMargins(ui.dp(14),0,ui.dp(14),ui.dp(6));sheet.root.addView(demo,dp);
         final boolean[] reset={false};
         Runnable draw = new Runnable() {
             @Override public void run() {
@@ -225,7 +224,7 @@ final class TabOrder {
         android.widget.ScrollView scroll=new android.widget.ScrollView(a);
         scroll.addView(box);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        sheet.root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(390),(int)(a.getResources().getDisplayMetrics().heightPixels*.48f))));
+        sheet.root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(390),(int)(a.getResources().getDisplayMetrics().heightPixels*.40f))));
         sheet.button("Как в TikTok",false,()->{items.clear();items.addAll(base);reset[0]=true;draw.run();});
         sheet.button("Сохранить",true,()->{
             if(reset[0])prefs(a).edit().remove(pref).apply();

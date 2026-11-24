@@ -219,18 +219,29 @@ final class StoryShare {
         View old=buttons.get(root);if(old!=null&&old.isAttachedToWindow())return;
         Object music=SoundPage.find(act);if(music==null||s.qr==null||s.soundReport==null)return;
         ViewGroup row=sharedRow(s.qr,s.soundReport);
-        if(row==null)return;
-        View sample=childOf(s.soundReport,row);if(sample==null)return;
+        if(row==null){soundFallback(root,s,music);return;}
+        View sample=childOf(s.soundReport,row);if(sample==null){soundFallback(root,s,music);return;}
         int step=Math.abs(rect(s.soundReport).centerX()-rect(s.qr).centerX());if(step<dp(root.getContext(),40))return;
-        if(row.getWidth()<step*3)return;
+        if(row.getWidth()<step*3){soundFallback(root,s,music);return;}
         Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor(),size=Math.min(dp(c,56),Math.round(step*.72f));
         LinearLayout tile=new LinearLayout(c);tile.setTag(ACTION,Boolean.TRUE);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
         ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);icon.setBackground(bg);int pad=Math.round(size*.27f);icon.setPadding(pad,pad,pad,pad);tile.addView(icon,new LinearLayout.LayoutParams(size,size));
         TextView label=new TextView(c);label.setText("Сохранить звук");label.setGravity(Gravity.CENTER);label.setTextColor(ink);label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,s.soundReport.getTextSize());label.setTypeface(s.soundReport.getTypeface());label.setMaxLines(2);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(c,8);tile.addView(label,lp);
         tile.setContentDescription("Сохранить звук");tile.setOnClickListener(v->AudioSaver.startMusic(c,music));
-        if(row instanceof LinearLayout){int occupied=0;for(int i=0;i<row.getChildCount();i++)if(row.getChildAt(i).getVisibility()!=View.GONE)occupied+=row.getChildAt(i).getWidth();if(occupied+step>row.getWidth()+dp(c,4))return;row.addView(tile,new LinearLayout.LayoutParams(step,-2));}
+        if(row instanceof LinearLayout){int occupied=0;for(int i=0;i<row.getChildCount();i++)if(row.getChildAt(i).getVisibility()!=View.GONE)occupied+=row.getChildAt(i).getWidth();if(occupied+step>row.getWidth()+dp(c,4)){soundFallback(root,s,music);return;}row.addView(tile,new LinearLayout.LayoutParams(step,-2));}
         else if(row instanceof GridLayout){GridLayout.LayoutParams gp=new GridLayout.LayoutParams();gp.width=step;gp.height=-2;row.addView(tile,gp);}else return;
         buttons.put(root,tile);
+    }
+    private static void soundFallback(View root,Scan s,Object music){
+        for(android.view.ViewParent q=s.soundReport.getParent();q instanceof ViewGroup;q=q.getParent()){
+            if(!(q instanceof LinearLayout))continue;LinearLayout host=(LinearLayout)q;
+            if(host==root||host.getOrientation()!=LinearLayout.VERTICAL||host.getWidth()<root.getWidth()*.6f)continue;
+            View a=childOf(s.soundReport,host),b=childOf(s.qr,host);if(a==null||a!=b||a.getWidth()<host.getWidth()*.65f)continue;
+            Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor();LinearLayout action=new LinearLayout(c);action.setTag(ACTION,Boolean.TRUE);action.setGravity(Gravity.CENTER_VERTICAL);action.setPadding(dp(c,16),dp(c,8),dp(c,16),dp(c,8));action.setMinimumHeight(dp(c,44));
+            ImageView icon=new ImageView(c);icon.setImageDrawable(Glyph.download(ink));action.addView(icon,new LinearLayout.LayoutParams(dp(c,20),dp(c,20)));
+            TextView label=new TextView(c);label.setText("Сохранить звук");label.setTextColor(ink);label.setTextSize(14);label.setPadding(dp(c,12),0,0,0);action.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+            action.setOnClickListener(v->AudioSaver.startMusic(c,music));host.addView(action,host.indexOfChild(a)+1,new LinearLayout.LayoutParams(-1,-2));buttons.put(root,action);return;
+        }
     }
     private static void remove(View root) {
         View button=buttons.remove(root); bound.remove(root);
