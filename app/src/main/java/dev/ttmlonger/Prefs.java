@@ -89,6 +89,10 @@ final class Prefs {
 
     /** Убирать рекламные посты из ленты ещё до показа. */
     static volatile boolean hideAds = true;
+    static volatile boolean hideAdVideos = true;
+    static volatile boolean hideAdCards = true;
+    static volatile boolean hideAdAiCards = true;
+    static volatile int commentBlur = 15;
     /** Прятать кнопку LIVE в левом верхнем углу главной. */
     static volatile boolean hideLiveButton = true;
     /** Убирать из ленты прямые эфиры, которые TikTok подмешивает среди видео. */
@@ -153,6 +157,10 @@ final class Prefs {
             hideTyping = o.optBoolean("hideTyping", false);
             hideOnline = o.optBoolean("hideOnline", false);
             hideAds = o.optBoolean("hideAds", true);
+            hideAdVideos = o.optBoolean("hideAdVideos", true);
+            hideAdCards = o.optBoolean("hideAdCards", true);
+            hideAdAiCards = o.optBoolean("hideAdAiCards", true);
+            commentBlur = Math.max(0, Math.min(100, o.optInt("commentBlur", 15)));
             hideLiveButton = o.optBoolean("hideLiveButton", true);
             hideLiveRooms = o.optBoolean("hideLiveRooms", false);
             unlockOff = o.optString("unlockOff", "");
@@ -337,6 +345,11 @@ final class Prefs {
         save();
     }
 
+    static void setAdVideos(boolean v) { hideAdVideos = v; save(); }
+    static void setAdCards(boolean v) { hideAdCards = v; save(); }
+    static void setAdAiCards(boolean v) { hideAdAiCards = v; save(); }
+    static void setCommentBlur(int v) { commentBlur = Math.max(0, Math.min(100, v)); save(); }
+
     static void setHideAds(boolean v) {
         hideAds = v;
         save();
@@ -407,6 +420,10 @@ final class Prefs {
             o.put("hideTyping", hideTyping);
             o.put("hideOnline", hideOnline);
             o.put("hideAds", hideAds);
+            o.put("hideAdVideos", hideAdVideos);
+            o.put("hideAdCards", hideAdCards);
+            o.put("hideAdAiCards", hideAdAiCards);
+            o.put("commentBlur", commentBlur);
             o.put("hideLiveButton", hideLiveButton);
             o.put("hideLiveRooms", hideLiveRooms);
             o.put("chatAppearanceGroups", true);

@@ -45,6 +45,15 @@ final class AdsScreen extends Screen {
                     }
                 }));
 
+        body.addView(ui.header("Фильтры рекламы"));
+        body.addView(toggleRow(-1, "Рекламные видео", "Посты с явной отметкой рекламы",
+                Prefs.hideAdVideos, on -> { Prefs.setAdVideos(on); changed(); }));
+        body.addView(toggleRow(-1, "Рекламные карточки", "Карточки PreciseAd, в том числе без видео",
+                Prefs.hideAdCards, on -> { Prefs.setAdCards(on); changed(); }));
+        body.addView(toggleRow(-1, "AI-реклама", "Карточки AiAdCard, если они присутствуют в ленте",
+                Prefs.hideAdAiCards, on -> { Prefs.setAdAiCards(on); changed(); }));
+        body.addView(ui.note("Фильтры работают при включённом общем переключателе рекламы. Обновите ленту после изменения."));
+
         body.addView(ui.header("LIVE"));
         body.addView(toggleRow(Icons.EYE_OFF, "Скрыть кнопку LIVE",
                 "Кнопка в левом верхнем углу главной прячется, остальная шапка не сдвигается",

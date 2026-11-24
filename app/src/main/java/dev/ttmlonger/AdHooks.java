@@ -186,7 +186,9 @@ final class AdHooks {
 
     /** Список без нежелательного; если убирать нечего, возвращается тот же объект. Повторы берутся из памяти. */
     static List process(List in, boolean ads, boolean rooms) {
-        int flags = (ads ? 1 : 0) | (rooms ? 2 : 0);
+        int flags = (ads ? 1 : 0) | (rooms ? 2 : 0)
+                | (Prefs.hideAdVideos ? 4 : 0) | (Prefs.hideAdCards ? 8 : 0)
+                | (Prefs.hideAdAiCards ? 16 : 0);
         int size = in.size();
         synchronized (AdHooks.class) {
             if (cacheFlags == flags) {
@@ -309,8 +311,8 @@ final class AdHooks {
             if (!s.post) {
                 // обёртка вокруг поста: рекламная карточка бывает и без самого поста
                 if (ads) {
-                    if ((s.preciseAd != null && s.preciseAd.invoke(item) != null)
-                            || (s.aiAdCard != null && s.aiAdCard.invoke(item) != null)) {
+                    if ((Prefs.hideAdCards && s.preciseAd != null && s.preciseAd.invoke(item) != null)
+                            || (Prefs.hideAdAiCards && s.aiAdCard != null && s.aiAdCard.invoke(item) != null)) {
                         s.ads++;
                         return AD;
                     }
@@ -319,7 +321,7 @@ final class AdHooks {
                 if (post == null) return KEEP;
             }
             Shape ps = post == item ? s : shapeOf(post.getClass());
-            if (ads && advert(ps, post)) {
+            if (ads && Prefs.hideAdVideos && advert(ps, post)) {
                 s.ads++;
                 return AD;
             }

@@ -73,6 +73,9 @@ final class AppearanceScreen extends Screen {
         body.addView(restartCard, rp);
 
         buildAccentCard(body);
+        body.addView(ui.header("Комментарии"));
+        body.addView(ui.menuRow(Icons.SLIDERS, "Фон комментариев", "Изображение из галереи и размытие", null,
+                v -> CommentBackgroundScreen.show(act)));
         buildFontCard(body);
         buildIconCard(body);
 
