@@ -243,8 +243,10 @@ final class RuntimeUiChecks {
             GlassCfg.setTr(47);
             GlassCfg.setBk(false);
             GlassCfg.save();
-            GlassCfg.setTr(65);
-            GlassCfg.setBk(true);
+            org.json.JSONObject transientCfg = GlassCfg.toJson();
+            transientCfg.put("tr",65);
+            transientCfg.put("bk",true);
+            GlassCfg.load(transientCfg); // Change memory only, without overwriting the file.
             GlassCfg.init(FlagStore.dir());
             result("glass_disk_roundtrip",GlassCfg.tr==47 && !GlassCfg.bk);
             GlassCfg.resetLook();
@@ -266,6 +268,11 @@ final class RuntimeUiChecks {
         try {
             GlassSession previous=session;
             glass.dismiss();
+            main.postDelayed(() -> reopenAfterDetach(previous), 500);
+        } catch(Throwable e) { fail("glass_close_exception",e); finish(); }
+    }
+    private static void reopenAfterDetach(GlassSession previous) {
+        try {
             result("glass_close_detaches",!previous.isAttached());
             ArrayList<Dialog> before=dialogs();
             boolean clicked=click(menu,"Нижняя панель");

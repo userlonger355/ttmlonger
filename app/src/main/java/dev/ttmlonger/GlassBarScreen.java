@@ -383,13 +383,19 @@ final class GlassBarScreen extends Screen {
     private void syncPresets() {
         presetRow.removeAllViews();
         int cur = GlassCfg.glassPreset();
+        HorizontalScrollView glassScroll = new HorizontalScrollView(act);
+        glassScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout glassInner = new LinearLayout(act);
+        glassInner.setOrientation(LinearLayout.HORIZONTAL);
         for (int i = 0; i < GlassCfg.GLASS_NAMES.length; i++) {
             final int idx = i;
-            presetRow.addView(chip(GlassCfg.GLASS_NAMES[i], cur == i, v -> {
+            glassInner.addView(chip(GlassCfg.GLASS_NAMES[i], cur == i, v -> {
                 GlassCfg.applyGlassPreset(idx);
                 applyAll();
             }));
         }
+        glassScroll.addView(glassInner);
+        presetRow.addView(glassScroll);
         physRow.removeAllViews();
         int pc = GlassCfg.physPreset();
         LinearLayout inner = new LinearLayout(act);
@@ -532,8 +538,12 @@ final class GlassBarScreen extends Screen {
                 Gravity.BOTTOM));
         selectTab(0);
 
+        previewBar.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View v) { updatePreview(); }
+            @Override public void onViewDetachedFromWindow(View v) { stopPreview(); }
+        });
         previewBar.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            if (r - l > 0 && previewSession == null) updatePreview();
+            if (v.isAttachedToWindow() && r - l > 0 && previewSession == null) updatePreview();
         });
         return host;
     }
@@ -583,7 +593,7 @@ final class GlassBarScreen extends Screen {
     private void updatePreview() {
         if (previewBar == null) return;
         boolean glass = GlassCfg.style == GlassCfg.GLASS;
-        if (glass && previewSession == null && previewBar.getWidth() > 0) {
+        if (glass && previewSession == null && previewBar.isAttachedToWindow() && previewBar.getWidth() > 0) {
             ArrayList<View> tabs = new ArrayList<>();
             for (int i = 0; i < previewBar.getChildCount(); i++) tabs.add(previewBar.getChildAt(i));
             previewSession = new GlassSession(previewBar, tabs, 2, true);
