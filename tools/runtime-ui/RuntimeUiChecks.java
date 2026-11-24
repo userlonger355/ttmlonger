@@ -110,8 +110,8 @@ final class RuntimeUiChecks {
             metadataChecks();
             TextView saveOffer=TtStyle.saveOffer(activity);
             saveOffer.measure(View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
-            result("save_offer_single_icon","Сохранить".contentEquals(saveOffer.getText())&&saveOffer.getCompoundDrawablesRelative()[0]!=null&&saveOffer.getCompoundDrawablesRelative()[2]==null);
-            result("save_offer_measured_text",saveOffer.getMeasuredWidth()>=Math.ceil(saveOffer.getPaint().measureText(saveOffer.getText().toString()))+saveOffer.getCompoundPaddingLeft()+saveOffer.getCompoundPaddingRight());
+            result("save_offer_single_icon",saveOffer.getText().length()==0&&saveOffer.getForeground()!=null&&saveOffer.getCompoundDrawablesRelative()[0]==null);
+            result("save_offer_round_size",saveOffer.getMeasuredWidth()==saveOffer.getMeasuredHeight()&&saveOffer.getMeasuredWidth()==Math.round(44*activity.getResources().getDisplayMetrics().density));
             result("inbox_label_with_count",InboxBadge.label("Входящие, 12")&&InboxBadge.label("Inbox, 3 unread"));
             try{
                 android.graphics.Path mask=new android.graphics.Path();
