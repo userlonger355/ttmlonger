@@ -28,11 +28,11 @@ final class RuntimeUiChecks {
     private static GlassSession session;
     private static int oldStyle;
     private static final String[][] ROWS = {
-        {"region","Регион"}, {"interface","Интерфейс и конфиденциальность"},
-        {"appearance","Внешний вид"}, {"metadata","Время и регион видео"},
+        {"region","Регион"}, {"interface","Интерфейс"},
+        {"appearance","Внешний вид"}, {"metadata","Дата и регион"},
         {"unlocks","Возможности"}, {"badges","Бейджики"}, {"privacy","Невидимка"},
         {"ads","Реклама и LIVE"}, {"downloads","Скачивание"},
-        {"video","Видео и истории"}, {"stickers","Стикеры"}, {"streaks","Огоньки"}, {"flags","Настройки разработчика TikTok"}
+        {"video","Видео и истории"}, {"stickers","Стикеры"}, {"streaks","Огоньки"}, {"flags","Разработчик"}
     };
     static void schedule(Activity a) {
         if (!started.compareAndSet(false, true)) return;
@@ -106,10 +106,12 @@ final class RuntimeUiChecks {
             result("release_no_developer_rows",text(menu.getWindow().getDecorView(),"Для опытных")==null
                 && text(menu.getWindow().getDecorView(),"Разведка кода")==null
                 && text(menu.getWindow().getDecorView(),"Перехват запросов")==null
-                && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
+                && text(menu.getWindow().getDecorView(),"Разработчик")!=null);
             stage("menu");
             View grid=findGrid(menu.getWindow().getDecorView());
             result("menu_card_grid",grid instanceof ModMenu.CardGrid);
+            if(grid instanceof ModMenu.CardGrid){ViewGroup all=(ViewGroup)grid;result("menu_all_cards",all.getChildCount()==23&&"Огоньки".contentEquals(Ui.titleOf(all.getChildAt(0)).getText())&&"Интерфейс".contentEquals(Ui.titleOf(all.getChildAt(1)).getText()));}
+            result("menu_compact_title","Интерфейс".equals(ModMenu.compact("Интерфейс и конфиденциальность")[0]));
             View version=text(menu.getWindow().getDecorView(),"0.0.1a (dev buld)"),author=text(menu.getWindow().getDecorView(),"Автор: @Ueod5");
             result("menu_footer_equal_color",version instanceof TextView&&author instanceof TextView&&((TextView)version).getCurrentTextColor()==((TextView)author).getCurrentTextColor()&&((TextView)version).getTextSize()==((TextView)author).getTextSize());
             result("menu_card_title_preserved",text(menu.getWindow().getDecorView(),"Регион")!=null&&text(menu.getWindow().getDecorView(),"Нижняя панель")!=null);

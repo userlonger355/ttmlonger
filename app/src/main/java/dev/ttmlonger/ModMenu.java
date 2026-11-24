@@ -2,32 +2,24 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.view.Gravity;
-import android.widget.HorizontalScrollView;
 import android.widget.EditText;
 import android.text.Editable;
 import android.text.TextWatcher;
-import java.util.ArrayList;
-import java.util.List;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /** Главная страница «Настройки мода». */
 final class ModMenu extends Screen {
     private LinearLayout regionRow;
-    private LinearLayout tabs;
-    private LinearLayout shortcuts;
+    private CardGrid grid;
+    private LinearLayout interfaceRow;
+    private final java.util.Map<View,String> searchWords=new java.util.IdentityHashMap<>();
     private EditText search;
     private TextView empty;
-    private TextView streakValue;
     private LinearLayout streakMenuRow;
-    private HorizontalScrollView tabScroll;
-    private final List<LinearLayout> sections = new ArrayList<>();
-    private final List<TextView> labels = new ArrayList<>();
-    private int selected;
-    private final java.util.Map<TextView,android.animation.ValueAnimator> chipAnimations=new java.util.WeakHashMap<>();
+
 
     private ModMenu(Activity act) {
         super(act);
@@ -39,13 +31,6 @@ final class ModMenu extends Screen {
 
     @Override
     void build(LinearLayout page) {
-        shortcuts = new LinearLayout(act);
-        shortcuts.setBaselineAligned(false);
-        shortcuts.setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(6));
-        page.addView(shortcuts, ui.matchWrap());
-        streakValue = tile(Icons.FLAME, "Огоньки", StreakScreen.menuSummary(), true, () -> StreakScreen.show(act));
-        tile(Icons.SLIDERS, "Интерфейс", "Лента и жесты", false, () -> InterfaceScreen.show(act));
-
         search = new EditText(act);
         search.setSingleLine(true);
         search.setHint("Поиск по настройкам мода");
@@ -58,12 +43,6 @@ final class ModMenu extends Screen {
         page.setFocusableInTouchMode(true);
         page.requestFocus();
         page.addView(search, inset);
-        tabScroll = new HorizontalScrollView(act);
-        tabScroll.setHorizontalScrollBarEnabled(false);
-        tabs = new LinearLayout(act);
-        tabs.setPadding(ui.dp(14), ui.dp(12), ui.dp(8), ui.dp(6));
-        tabScroll.addView(tabs);
-        page.addView(tabScroll, ui.matchWrap());
         if (CrashGuard.tripped) {
             page.addView(ui.menuRow(Icons.FLAG, "Включена защита от сбоев",
                     "После нескольких неудачных запусков функции приостановлены. Нажмите для восстановления",
@@ -83,8 +62,9 @@ final class ModMenu extends Screen {
             }
         });
         body.addView(regionRow);
-        body.addView(ui.menuRow(Icons.SLIDERS, "Интерфейс и конфиденциальность",
-                "Ссылки, вкладки и подтверждение действий", null, v -> InterfaceScreen.show(act)));
+        interfaceRow=ui.menuRow(Icons.SLIDERS, "Интерфейс и конфиденциальность",
+                "Ссылки, вкладки и подтверждение действий", null, v -> InterfaceScreen.show(act));
+        body.addView(interfaceRow);
 
         body.addView(ui.menuRow(Icons.PALETTE, "Внешний вид", "Акцент, Amoled-тема, шрифт, значок приложения", null,
                 new View.OnClickListener() {
@@ -225,6 +205,10 @@ final class ModMenu extends Screen {
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
 
+        grid.removeView(streakMenuRow);grid.removeView(interfaceRow);
+        grid.addView(streakMenuRow,0);grid.addView(interfaceRow,1);
+        for(int j=0;j<grid.getChildCount();j++)makeCard((LinearLayout)grid.getChildAt(j));
+        empty=ui.note("По этому запросу настроек нет");page.addView(empty);empty.setVisibility(View.GONE);
         LinearLayout footer=new LinearLayout(act);
         footer.setGravity(Gravity.CENTER);
         footer.setOrientation(LinearLayout.HORIZONTAL);
@@ -241,9 +225,6 @@ final class ModMenu extends Screen {
         footer.addView(ver);
         footer.addView(author);
         page.addView(footer,ui.matchWrap());
-        empty = ui.note("По этому запросу настроек нет");
-        page.addView(empty);
-        empty.setVisibility(View.GONE);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             public void afterTextChanged(Editable s) {}
@@ -251,10 +232,9 @@ final class ModMenu extends Screen {
         });
         page.getViewTreeObserver().addOnWindowFocusChangeListener(focus -> {
             if (!focus) return;
-            streakValue.setText(StreakScreen.menuSummary());
-            Ui.valueOf(streakMenuRow).setText(StreakScreen.menuSummary());
+            TextView status=Ui.valueOf(streakMenuRow);if(status!=null)status.setText(StreakScreen.menuSummary());
+            TextView region=Ui.valueOf(regionRow);if(region!=null)region.setText(regionSummary());
         });
-        for(LinearLayout group:sections)for(int j=0;j<group.getChildCount();j++)makeCard((LinearLayout)group.getChildAt(j));
         filter();
     }
 
@@ -262,6 +242,11 @@ final class ModMenu extends Screen {
     private void makeCard(LinearLayout row){
         TextView title=Ui.titleOf(row),sub=Ui.subtitleOf(row),value=Ui.valueOf(row);
         if(title==null)return;
+        String original=title.getText().toString();
+        searchWords.put(row,original+" "+(sub==null?"":sub.getText()));
+        String[] wording=compact(original);
+        title.setText(wording[0]);
+        if(sub!=null)sub.setText(wording[1]);
         View icon=null,chevron=null;ModSwitch toggle=null;
         for(int j=0;j<row.getChildCount();j++){
             View child=row.getChildAt(j);
@@ -274,8 +259,8 @@ final class ModMenu extends Screen {
         row.removeAllViews();
         row.setOrientation(LinearLayout.VERTICAL);
         row.setGravity(Gravity.TOP|Gravity.START);
-        row.setPadding(ui.dp(14),ui.dp(14),ui.dp(14),ui.dp(15));
-        row.setMinimumHeight(ui.dp(136));
+        row.setPadding(ui.dp(14),ui.dp(13),ui.dp(14),ui.dp(12));
+        row.setMinimumHeight(ui.dp(124));
         row.setBackground(ui.expressiveSurface(24));
         row.setForeground(ui.softRipple(24));
         row.setClipToOutline(true);
@@ -286,15 +271,17 @@ final class ModMenu extends Screen {
         if(toggle!=null)top.addView(toggle,new LinearLayout.LayoutParams(-2,-2));
         else if(chevron!=null){top.addView(chevron,new LinearLayout.LayoutParams(ui.dp(18),ui.dp(18)));}
         row.addView(top,ui.matchWrap());
-        title.setTextSize(16.5f);title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
-        title.setPadding(0,ui.dp(12),0,ui.dp(3));
-        if(sub!=null){sub.setTextSize(12.5f);sub.setPadding(0,ui.dp(2),0,0);}
+        title.setTextSize(16f);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);title.setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE);title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        title.setPadding(0,ui.dp(10),0,ui.dp(3));
+        if(sub!=null){sub.setTextSize(12.5f);sub.setMaxLines(2);sub.setEllipsize(android.text.TextUtils.TruncateAt.END);sub.setPadding(0,ui.dp(2),0,0);if(value!=null)sub.setVisibility(View.GONE);}
         row.addView(col,ui.matchWrap());
+        row.addView(new View(act),new LinearLayout.LayoutParams(1,0,1));
         if(value!=null){
             value.setSingleLine(false);value.setMaxLines(2);value.setMaxWidth(Integer.MAX_VALUE);
-            value.setPadding(0,ui.dp(7),0,0);value.setTextSize(13);
+            value.setPadding(0,ui.dp(4),0,0);value.setTextSize(12.5f);value.setEllipsize(android.text.TextUtils.TruncateAt.END);
             row.addView(value,ui.matchWrap());
         }
+        row.setContentDescription(original+(sub==null?"":". "+searchWords.get(row)));
         Ui.pressMotion(row);
     }
 
@@ -306,15 +293,17 @@ final class ModMenu extends Screen {
         @Override protected void onMeasure(int ws,int hs){
             int width=View.MeasureSpec.getSize(ws);int cols=columns(width);
             int cell=Math.max(1,(width-2*side-(cols-1)*gap)/cols), y=gap;
-            ArrayList<View> row=new ArrayList<>(cols);
-            int h=0;
+            int h=0,count=0;
             for(int k=0;k<getChildCount();k++){
                 View child=getChildAt(k);if(child.getVisibility()==GONE)continue;
                 child.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
-                h=Math.max(h,child.getMeasuredHeight());row.add(child);
-                if(row.size()==cols){for(View one:row)one.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));y+=h+gap;row.clear();h=0;}
+                h=Math.max(h,child.getMeasuredHeight());count++;
             }
-            if(!row.isEmpty()){for(View one:row)one.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));y+=h+gap;}
+            for(int k=0;k<getChildCount();k++){
+                View child=getChildAt(k);if(child.getVisibility()==GONE)continue;
+                child.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));
+            }
+            y+=((count+cols-1)/cols)*(h+gap);
             setMeasuredDimension(width,resolveSize(y,hs));
         }
         @Override protected void onLayout(boolean changed,int l,int t,int r,int b){
@@ -344,124 +333,48 @@ final class ModMenu extends Screen {
         Ui.style(d);
     }
 
-    private TextView tile(int icon, String title, String value, boolean warm, Runnable open) {
-        int ink = Ui.INK;
-        LinearLayout tile = new LinearLayout(act);
-        tile.setOrientation(LinearLayout.VERTICAL);
-        tile.setPadding(ui.dp(16), ui.dp(15), ui.dp(12), ui.dp(16));
-        tile.setBackground(ui.expressiveSurface(24));
-        tile.setClipToOutline(true);
-        tile.setForeground(ui.softRipple(24));
-        tile.setFocusable(true);
-        Ui.pressMotion(tile);
-        tile.setOnClickListener(v -> open.run());
-        int tint = Ui.MUTED;
-        tile.addView(ui.icon(icon, tint, 27));
-        TextView heading = ui.text(title, 19, ink, true);
-        heading.setPadding(0, ui.dp(12), 0, ui.dp(2));
-        tile.addView(heading);
-        TextView detail = ui.text(value, 13, tint, false);
-        tile.addView(detail);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
-        if (!warm) lp.setMarginStart(ui.dp(8));
-        shortcuts.addView(tile, lp);
-        return detail;
+    private LinearLayout section(LinearLayout page,String ignored){
+        if(grid==null){grid=new CardGrid(act,ui);page.addView(grid,ui.matchWrap());}
+        return grid;
     }
-
-    private LinearLayout section(LinearLayout page, String title) {
-        int index = sections.size();
-        TextView chip = ui.medium(title, 14, Ui.INK);
-        chip.setGravity(Gravity.CENTER);
-        chip.setPadding(ui.dp(14), 0, ui.dp(14), 0);
-        chip.setMinimumHeight(ui.dp(44));
-        chip.setFocusable(true);
-        Ui.pressMotion(chip);
-        chip.setOnClickListener(v -> {
-            if(selected==index)return;
-            int direction=index>selected?1:-1;
-            selected=index;
-            filter();
-            animateSection(sections.get(index),direction);
-            tabScroll.smoothScrollTo(chip.getLeft() - ui.dp(14), 0);
-        });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.setMarginEnd(ui.dp(6));
-        tabs.addView(chip, lp);
-        labels.add(chip);
-        LinearLayout card = new CardGrid(act,ui);
-        page.addView(card,ui.matchWrap());
-        sections.add(card);
-        return card;
-    }
-
-    private void filter() {
-        String q = VideoScreen.normalize(search.getText().toString());
-        boolean browsing = q.isEmpty();
-        shortcuts.setVisibility(browsing ? View.VISIBLE : View.GONE);
-        tabScroll.setVisibility(browsing ? View.VISIBLE : View.GONE);
-        boolean any = false;
-        for (int i = 0; i < sections.size(); i++) {
-            LinearLayout card = sections.get(i);
-            TextView chip = labels.get(i);
-            boolean current = i == selected;
-            updateChip(chip,current);
-            boolean matchGroup = VideoScreen.normalize(chip.getText().toString()).contains(q);
-            boolean visible = false;
-            for (int j = 0; j < card.getChildCount(); j++) {
-                View row = card.getChildAt(j);
-                TextView title = Ui.titleOf(row);
-                TextView sub = Ui.subtitleOf(row);
-                String words = (title == null ? "" : title.getText()) + " " + (sub == null ? "" : sub.getText());
-                boolean match = browsing ? current : matchGroup || VideoScreen.normalize(words).contains(q);
-                row.setVisibility(match ? View.VISIBLE : View.GONE);
-                visible |= match;
-            }
-            if(!visible)resetSection(card);
-            card.setVisibility(visible ? View.VISIBLE : View.GONE);
-            any |= visible;
-        }
-        empty.setVisibility(any ? View.GONE : View.VISIBLE);
-    }
-
-    private void updateChip(TextView chip,boolean selectedNow){
-        Object saved=chip.getTag();
-        float target=selectedNow?1f:0f;
-        float initial=saved instanceof Float?(Float)saved:target;
-        boolean changed=chip.isSelected()!=selectedNow;
-        chip.setSelected(selectedNow);
-        if(!changed&&saved instanceof Float)return;
-        android.animation.ValueAnimator old=chipAnimations.remove(chip);if(old!=null)old.cancel();
-        android.graphics.drawable.GradientDrawable shape=ui.round(Ui.CARD,24);
-        chip.setBackground(shape);
-        java.util.function.Consumer<Float> render=progress->{
-            chip.setTag(progress);
-            shape.setColor(Ui.blend(Ui.CARD,Ui.INK,progress));
-            shape.setCornerRadius(ui.dp(24-9*progress));
-            chip.setTextColor(Ui.blend(Ui.INK,Ui.BG,progress));
-        };
-        render.accept(initial);
-        if(!Ui.motionEnabled()||initial==target){render.accept(target);return;}
-        android.animation.ValueAnimator a=android.animation.ValueAnimator.ofFloat(initial,target);
-        a.setDuration(330);a.setInterpolator(Ui.motionCurve());
-        a.addUpdateListener(anim->render.accept((Float)anim.getAnimatedValue()));
-        chipAnimations.put(chip,a);a.start();
-    }
-    private void resetSection(LinearLayout grid){
-        grid.animate().cancel();grid.setAlpha(1f);grid.setTranslationX(0);grid.setTranslationY(0);
+    private void filter(){
+        String q=VideoScreen.normalize(search.getText().toString());
+        int count=0;
         for(int i=0;i<grid.getChildCount();i++){
-            View card=grid.getChildAt(i);card.animate().cancel();card.setAlpha(1f);card.setTranslationX(0);card.setTranslationY(0);
+            View row=grid.getChildAt(i);TextView title=Ui.titleOf(row),value=Ui.valueOf(row);
+            String words=searchWords.getOrDefault(row,"")+" "+(title==null?"":title.getText())+" "+(value==null?"":value.getText());
+            boolean match=q.isEmpty()||VideoScreen.normalize(words).contains(q);
+            boolean changed=row.getVisibility()!=View.VISIBLE&&match;
+            row.setVisibility(match?View.VISIBLE:View.GONE);
+            if(match){count++;if(changed&&Ui.motionEnabled()){row.animate().cancel();row.setAlpha(.7f);row.setTranslationY(ui.dp(5));row.animate().alpha(1f).translationY(0).setStartDelay(0).setDuration(260).setInterpolator(Ui.motionCurve()).start();}}
         }
+        empty.setVisibility(count==0?View.VISIBLE:View.GONE);
     }
-    private void animateSection(LinearLayout grid,int direction){
-        resetSection(grid);
-        if(!Ui.motionEnabled())return;
-        int visible=0;
-        for(int i=0;i<grid.getChildCount();i++){
-            View card=grid.getChildAt(i);if(card.getVisibility()!=View.VISIBLE)continue;
-            card.setAlpha(.68f);card.setTranslationX(direction*ui.dp(7));card.setTranslationY(ui.dp(8));
-            card.animate().alpha(1f).translationX(0).translationY(0)
-                .setStartDelay(Math.min(visible++/2,4)*24L)
-                .setDuration(360).setInterpolator(Ui.motionCurve()).start();
+    static String[] compact(String title){
+        switch(title){
+            case "Интерфейс и конфиденциальность": return new String[]{"Интерфейс","Лента и жесты"};
+            case "Время и регион видео": return new String[]{"Дата и регион","Время публикации"};
+            case "Управление репостами": return new String[]{"Репосты","Управление"};
+            case "Время каждого сообщения": return new String[]{"Время сообщений","Часы и секунды"};
+            case "Голосовые и обои без региона": return new String[]{"Функции чата","Голосовые и обои"};
+            case "Голосовые комментарии": return new String[]{"Голосовые","Комментарии"};
+            case "Дополнительные возможности": return new String[]{"Доп. функции","Возможности TikTok"};
+            case "Резервная копия настроек": return new String[]{"Резервная копия","Импорт и экспорт"};
+            case "Настройки разработчика TikTok": return new String[]{"Разработчик","Флаги A/B"};
+            case "Внешний вид": return new String[]{title,"Тема и акцент"};
+            case "Нижняя панель": return new String[]{title,"Liquid Glass"};
+            case "Возможности": return new String[]{title,"Функции TikTok"};
+            case "Бейджики": return new String[]{title,"Значки аккаунтов"};
+            case "Невидимка": return new String[]{title,"Приватность"};
+            case "Реклама и LIVE": return new String[]{title,"Фильтр ленты"};
+            case "Скачивание": return new String[]{title,"Видео и фото"};
+            case "Видео и истории": return new String[]{title,"Сохранение"};
+            case "Стикеры": return new String[]{title,"Сохранение"};
+            case "Скрытые авторы": return new String[]{title,"Локальный список"};
+            case "Огоньки": return new String[]{title,"Автопродление"};
+            case "Баннер профиля": return new String[]{title,"Оформление"};
+            case "Плагины": return new String[]{title,"MTP и команды"};
+            default:return new String[]{title,""};
         }
     }
 
