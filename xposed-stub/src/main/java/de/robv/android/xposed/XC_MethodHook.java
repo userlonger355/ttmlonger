@@ -21,6 +21,9 @@ public abstract class XC_MethodHook {
         public Object thisObject;
         public Object[] args;
 
+        public void setObjectExtra(String key, Object value) {}
+        public Object getObjectExtra(String key) { return null; }
+
         public Object getResult() {
             return null;
         }
