@@ -33,8 +33,8 @@ final class AdsScreen extends Screen {
     @Override
     void build(LinearLayout body) {
         body.addView(ui.header("Реклама"));
-        body.addView(toggleRow(Icons.EYE_OFF, "Скрывать рекламу в ленте",
-                "Рекламные ролики не попадают в ленту. Действует на страницы ленты, которые придут после "
+        body.addView(toggleRow(Icons.EYE_OFF, "Пропускать рекламу",
+                "Фильтрует рекламные ролики и рекламные карточки поиска до показа. Действует на страницы, которые придут после "
                         + "включения: обновите ленту, чтобы увидеть результат",
                 Prefs.hideAds, new ModSwitch.Listener() {
                     @Override

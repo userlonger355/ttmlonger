@@ -111,9 +111,15 @@ final class AdHooks {
         if(searchClass!=null) {
             hookedItems+=hookNamed(searchClass,"getItems",ITEMS);
             hookedExtra+=installIngress(searchClass);
+            for(Method method:searchClass.getDeclaredMethods()) {
+                if(!simpleGetter(method))continue;
+                try{XposedBridge.hookMethod(method,ENTRY);hookedExtra++;}catch(Throwable ignored){}
+            }
         }
         // Runtime equivalent of ingress filtering: only known feed-page objects.
         // No arbitrary list or network payload modifications.
+        Class<?> adapter=XposedHelpers.findClassIfExists("com.google.gson.internal.bind.ReflectiveTypeAdapterFactory$Adapter",cl);
+        if(adapter!=null)hookedExtra+=hookNamed(adapter,"read",PARSED);
         for(String gson:new String[]{"com.google.gson.Gson","com.bytedance.mt.protector.impl.GsonProtectorUtils"}) {
             Class<?> parser=XposedHelpers.findClassIfExists(gson,cl);
             if(parser!=null) hookedExtra+=hookNamed(parser,"fromJson",PARSED);
@@ -250,6 +256,9 @@ final class AdHooks {
 
     static List process(List in, boolean ads, boolean rooms) {
         if (in == null || (!ads && !rooms)) return in;
+        // Ad marker can change on the very same model while its payload is loading.
+        // List identity alone must not cache a stale advertising verdict.
+        if(ads){lists++;return filter(in,true,rooms);}
         int flags = (ads ? 1 : 0) | (rooms ? 2 : 0);
         int size = in.size();
         int hash;
@@ -337,9 +346,9 @@ final class AdHooks {
             isAd = m;
             adFlag = DownloadHooks.findField(c, "_isAd");
             post = isAd != null || adFlag != null;
-            getAweme = post ? null : DownloadHooks.findMethodNamed(c, "getAweme");
-            preciseAd = post ? null : DownloadHooks.findMethodNamed(c, "getPreciseAd");
-            aiAdCard = post ? null : DownloadHooks.findMethodNamed(c, "getAiAdCard");
+            getAweme = DownloadHooks.findMethodNamed(c, "getAweme");
+            preciseAd = DownloadHooks.findMethodNamed(c, "getPreciseAd");
+            aiAdCard = DownloadHooks.findMethodNamed(c, "getAiAdCard");
             awemeType = DownloadHooks.findMethodNamed(c, "getAwemeType");
             liveId = DownloadHooks.findMethodNamed(c, "getLiveId");
             room = DownloadHooks.findMethodNamed(c, "getRoomFeedCellStruct");
@@ -365,6 +374,11 @@ final class AdHooks {
         return false;
     }
 
+    private static boolean present(Method method,Object o){
+        if(method==null)return false;
+        try{return method.invoke(o)!=null;}catch(Throwable t){return false;}
+    }
+
     /** Прямой эфир ли этот пост: тип 101, номер эфира или структура комнаты. */
     private static boolean room(Shape s, Object post) throws Exception {
         if (s.awemeType != null && DownloadHooks.number(s.awemeType.invoke(post)) == LIVE_TYPE) return true;
@@ -378,24 +392,20 @@ final class AdHooks {
         Shape s = shapeOf(item.getClass());
         s.seen++;
         try {
-            Object post = item;
-            if (!s.post) {
-                // обёртка вокруг поста: рекламная карточка бывает и без самого поста
-                if (ads) {
-                    if ((s.preciseAd != null && s.preciseAd.invoke(item) != null)
-                            || (s.aiAdCard != null && s.aiAdCard.invoke(item) != null)) {
-                        s.ads++;
-                        return AD;
-                    }
+            // Search wrappers can implement isAd() themselves while returning false;
+            // examine both the wrapper and its actual Aweme, and explicit ad-card slots.
+            boolean wrapper=s.getAweme!=null||!s.post;
+            if(ads){
+                if(advert(s,item) || wrapper && (present(s.preciseAd,item)||present(s.aiAdCard,item))){
+                    s.ads++;return AD;
                 }
-                post = s.getAweme == null ? null : s.getAweme.invoke(item);
-                if (post == null) return KEEP;
             }
-            Shape ps = post == item ? s : shapeOf(post.getClass());
-            if (ads && advert(ps, post) && !mine(ps,post)) {
-                s.ads++;
-                return AD;
-            }
+            Object nested=null;
+            if(s.getAweme!=null)try{nested=s.getAweme.invoke(item);}catch(Throwable ignored){}
+            Object post=nested!=null?nested:s.post?item:null;
+            if(post==null)return KEEP;
+            Shape ps=post==item?s:shapeOf(post.getClass());
+            if(ads&&advert(ps,post)){s.ads++;return AD;}
             if (rooms && room(ps, post) && !mine(ps, post)) {
                 s.rooms++;
                 return ROOM;

@@ -173,6 +173,19 @@ final class RuntimeUiChecks {
         public boolean isAd(){return ad;}
         public int getAwemeType(){return type;}
     }
+    public static final class MutableAd {
+        public boolean _isAd;
+        public boolean isAd(){return false;}
+    }
+    public static final class WrappedAd {
+        public boolean isAd(){return false;}
+        public Object getAweme(){return new FakeFeedPost(true,0);}
+    }
+    public static final class SearchAdCard {
+        public boolean isAd(){return false;}
+        public Object getAweme(){return null;}
+        public Object getPreciseAd(){return new Object();}
+    }
     private static void adChecks() {
         try {
             FakeFeedPost regular=new FakeFeedPost(false,0), ad=new FakeFeedPost(true,0), live=new FakeFeedPost(false,101);
@@ -182,6 +195,18 @@ final class RuntimeUiChecks {
             result("ad_filter_live_only",AdHooks.process(feed,false,true).equals(java.util.Arrays.asList(regular,ad)));
             result("ad_filter_both",AdHooks.process(feed,true,true).equals(java.util.Arrays.asList(regular)));
             result("ad_filter_toggle_back",AdHooks.process(feed,false,false)==feed && feed.size()==3);
+            MutableAd marker=new MutableAd();
+            java.util.List<Object> page=java.util.Arrays.asList(marker,regular);
+            result("ad_flag_initial",AdHooks.process(page,true,false)==page);
+            marker._isAd=true;
+            result("ad_late_flag",AdHooks.process(page,true,false).equals(java.util.Arrays.asList(regular)));
+            result("ad_wrapped_post",AdHooks.judge(new WrappedAd(),true,false)==AdHooks.AD);
+            result("ad_search_card",AdHooks.judge(new SearchAdCard(),true,false)==AdHooks.AD);
+            java.util.List<Integer> nativeCounts=java.util.Arrays.asList(50,100,200);
+            java.util.List<?> expanded=OfflineLimit.choices(nativeCounts,true);
+            result("offline_limit_9000",expanded.contains(9000)&&!expanded.contains(9001)&&nativeCounts.size()==3);
+            result("offline_limit_disabled",OfflineLimit.choices(nativeCounts,false)==nativeCounts);
+            result("offline_limit_no_duplicates",java.util.Collections.frequency(OfflineLimit.choices(java.util.Arrays.asList(500,9000),true),9000)==1);
             result("ad_native_client",BrowserLinks.nativeAdPage("com.tiktok.commercialize.AdWebView","https://example.org"));
             result("ad_native_destination",BrowserLinks.nativeAdPage("Client","https://ads.tiktok.com/landing_page"));
             result("ad_native_domain_boundary",!BrowserLinks.nativeAdPage("Client","https://tiktok.com.example.org/ad/"));

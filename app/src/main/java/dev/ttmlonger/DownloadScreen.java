@@ -73,6 +73,11 @@ final class DownloadScreen extends Screen {
                 });
         body.addView(qualityRow);
 
+        body.addView(ui.header("Офлайн-видео"));
+        body.addView(toggleRow(Icons.DOWNLOAD,"Расширенный лимит до 9000",
+                "Дополнительные варианты количества в штатном меню «Офлайн-видео». Загрузку запускаете сами.",
+                OfflineLimit.enabled(act),on->{OfflineLimit.set(act,on);Toasts.show(act,"Заново откройте меню офлайн-видео");}));
+        body.addView(ui.note(OfflineLimit.available()?"Дополнительные варианты: 500, 1000, 3000, 5000, 9000. Реальный объём зависит от сети, свободного места и ограничений TikTok.":"Нативные методы офлайн-меню этой версии пока не распознаны; обычный загрузчик не изменён."));
         body.addView(ui.header("Стикеры"));
         body.addView(toggleRow(Icons.STICKER, "Сохранение стикеров",
                 "Кнопка ⬇ на листе стикера в переписке и комментариях",

@@ -76,12 +76,12 @@ jobs:
           printf 'Commit: %s\nTikTok: 47.9.3\nLSPatch: 1.2-487\nSignature: patched APK signed, verified\nAndroid 17: not device-tested\n' "$GITHUB_SHA" > build-info.txt
           cat SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
           printf "\nExtract TikTok-47.9.3-TTMLonger.apk from the artifact. No second LSPatch pass is needed.\n" >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload ready-to-install APK
+      - name: Upload ready-to-install APK (offline counts and ad filtering)
         uses: actions/upload-artifact@v4
         with:
           name: TikTok-47.9.3-TTMLonger-ready
           path: ${{ runner.temp }}/ready-apk/
-          retention-days: 1
+          retention-days: 3
           compression-level: 0
           if-no-files-found: error
       - name: Remove temporary APKs
