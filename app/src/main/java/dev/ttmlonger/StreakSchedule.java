@@ -30,7 +30,8 @@ final class StreakSchedule {
     }
 
     long last(String owner, int minute, String conversation) {
-        return data.getLong(receipt(owner, minute, conversation), legacy(owner, conversation));
+        return Math.max(lastAny(owner, conversation),
+                data.getLong(receipt(owner, minute, conversation), legacy(owner, conversation)));
     }
 
     long lastAny(String owner, String conversation) {

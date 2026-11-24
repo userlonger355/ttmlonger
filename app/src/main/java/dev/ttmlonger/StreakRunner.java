@@ -532,7 +532,8 @@ final class StreakRunner {
             StreakHooks.Info info = StreakHooks.read(conv, true);
             if (info == null || info.streak < 0 || info.status == null) {
                 unreadable++;
-            } else if (info.streak >= StreakLogic.FLAME_FROM && StreakLogic.worthSending(info.status)) {
+            } else if (StreakLogic.manualVerdict(info.status,info.streak,schedule.lastAny(owner,conv),
+                    StreakStore.lastFail(conv),System.currentTimeMillis(),Zones.current())==StreakLogic.Verdict.SEND) {
                 hot.add(conv);
             }
         }
@@ -541,7 +542,7 @@ final class StreakRunner {
         if (capped) targets = new ArrayList<>(targets.subList(0, ALL_MAX));
         if (targets.isEmpty()) {
             return new Plan(targets, convs.size(), unreadable, owner, false,
-                    "Чатов с огоньком не видно (проверено " + convs.size() + ")");
+                    "Нет серий для отправки сейчас: возможно, сегодня уже отправляли или действует пауза после ошибки (проверено " + convs.size() + ")");
         }
         return new Plan(targets, convs.size(), unreadable, owner, capped, null);
     }
@@ -597,7 +598,8 @@ final class StreakRunner {
             if (!owner.equals(StreakHooks.liveOwner()) || CrashGuard.tripped) break;
             if (Prefs.streakOnlyPicked && !StreakStore.isPicked(conv)) continue;
             StreakHooks.Info fresh = StreakHooks.read(conv, true);
-            if (fresh == null || fresh.streak < StreakLogic.FLAME_FROM || !StreakLogic.worthSending(fresh.status)) continue;
+            if (fresh == null || StreakLogic.manualVerdict(fresh.status,fresh.streak,
+                    schedule.lastAny(owner,conv),StreakStore.lastFail(conv),at,Zones.current())!=StreakLogic.Verdict.SEND) continue;
             if (StreakHooks.send(app, sticker, conv, owner, false)) {
                 schedule.submitted(owner, StreakSchedule.WHEN_GREY, conv, at);
                 ok++;
@@ -622,8 +624,10 @@ final class StreakRunner {
             }
         }
         StreakStore.flush();
-        last = "отправка всем: отправлено " + ok + " из " + total + ", ошибок " + bad;
-        hint = "Передано TikTok: " + ok + " из " + total + (bad > 0 ? " · ошибок: " + bad : "");
+        int skipped = Math.max(0,total-ok-bad);
+        last = "Передано TikTok " + ok + " из " + total + ", ошибок " + bad + ", пропущено " + skipped;
+        hint = "Передано TikTok: " + ok + " из " + total + (bad > 0 ? " · ошибок: " + bad : "")
+                + (skipped>0 ? " · не отправлено: "+skipped : "") + ". Продление проверьте в чатах.";
         String msg = hint;
 
         if (stopped) msg += ". Остановился после " + STOP_AFTER_FAILS + " ошибок подряд: " + StreakHooks.senderNote();

@@ -62,9 +62,14 @@ final class StreakLogic {
         if (status == null) return Verdict.UNKNOWN;
         if (!worthSending(status)) return Verdict.GONE;
         if (daily && minuteOfDay(now, tz) < dailyMinute) return Verdict.LIT;
-        if (lastSent > 0 && sameDay(lastSent, now, tz)) return Verdict.SENT_TODAY;
-        if (lastFail > 0 && now >= lastFail && now - lastFail < FAIL_BACKOFF_MS) return Verdict.BACKOFF;
+        if (lastSent > 0 && (lastSent > now || sameDay(lastSent, now, tz))) return Verdict.SENT_TODAY;
+        if (lastFail > 0 && (lastFail > now || now - lastFail < FAIL_BACKOFF_MS)) return Verdict.BACKOFF;
         return daily || isGrey(status) ? Verdict.SEND : Verdict.LIT;
+    }
+
+    /** Manual submissions respect the same daily receipt and failure cooldown as automatic ones. */
+    static Verdict manualVerdict(String status,int streak,long lastSent,long lastFail,long now,TimeZone tz) {
+        return decide(true,0,status,streak,lastSent,lastFail,now,tz);
     }
 
     static boolean sameDay(long a, long b, TimeZone tz) {

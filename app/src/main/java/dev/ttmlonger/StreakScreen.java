@@ -170,8 +170,9 @@ final class StreakScreen extends Screen {
                 result.setText(plan.problem);
                 return;
             }
-            result.setText("Действующих серий для отправки: " + plan.targets.size());
+            result.setText("Серий к отправке: " + plan.targets.size());
             String message = "Получателей: " + plan.targets.size() + ".\nСтикер: " + StreakSticker.summary()
+                    + "\nПовторные отправки в этот день пропускаются."
                     + (plan.capped ? "\nЗа один раз доступно до " + StreakRunner.ALL_MAX + " чатов." : "");
             AlertDialog confirm = new AlertDialog.Builder(act, Ui.dialogTheme()).setTitle("Отправить стикер сейчас?")
                     .setMessage(message).setNegativeButton("Отмена", null)

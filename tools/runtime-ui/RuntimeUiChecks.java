@@ -109,6 +109,7 @@ final class RuntimeUiChecks {
             stage("menu");
             metadataChecks();
             adChecks();
+            streakChecks();
             main.postDelayed(() -> row(0), 1800);
         } catch(Throwable e) { fail("menu_exception",e); finish(); }
     }
@@ -138,6 +139,19 @@ final class RuntimeUiChecks {
                 }, 1600);
             }, 400);
         } catch(Throwable e) { fail("screen_"+id,e); main.postDelayed(() -> row(i+1),250); }
+    }
+    private static void streakChecks() {
+        try {
+            long now=1700000000000L;
+            java.util.TimeZone tz=java.util.TimeZone.getTimeZone("UTC");
+            result("streak_manual_eligible",StreakLogic.manualVerdict("GREY",3,0,0,now,tz)==StreakLogic.Verdict.SEND);
+            result("streak_manual_duplicate",StreakLogic.manualVerdict("GREY",3,now-1000,0,now,tz)==StreakLogic.Verdict.SENT_TODAY);
+            result("streak_manual_backoff",StreakLogic.manualVerdict("GREY",3,0,now-1000,now,tz)==StreakLogic.Verdict.BACKOFF);
+            result("streak_manual_expired",StreakLogic.manualVerdict("EXPIRED",5,0,0,now,tz)==StreakLogic.Verdict.GONE);
+            result("streak_future_receipt",StreakLogic.manualVerdict("GREY",3,now+1000,0,now,tz)==StreakLogic.Verdict.SENT_TODAY);
+            result("streak_future_failure",StreakLogic.manualVerdict("GREY",3,0,now+1000,now,tz)==StreakLogic.Verdict.BACKOFF);
+            result("streak_next_day",StreakLogic.manualVerdict("GREY",3,now-86400000L,0,now,tz)==StreakLogic.Verdict.SEND);
+        } catch(Throwable e){fail("streak_checks",e);}
     }
     public static final class FakeFeedPost {
         final boolean ad;
