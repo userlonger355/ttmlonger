@@ -72,6 +72,8 @@ final class Prefs {
     static volatile int vtPos = 0;
     /** Непрозрачность плашек в процентах, 20..100. */
     static volatile int vtOpacity = 90;
+    static volatile int vtWeight = 400;
+    static volatile boolean vtBackground = false;
 
     /** Просмотр заблокированного профиля: прятать от экрана профиля, что аккаунт заблокирован. */
     static volatile boolean viewBlocked = false;
@@ -152,6 +154,8 @@ final class Prefs {
             vtStyle = o.optBoolean("compactVideoInfoV1",false) ? Math.max(0, Math.min(3, o.optInt("vtStyle", 3))) : 3;
             vtPos = Math.max(0, Math.min(3, o.optInt("vtPos", 0)));
             vtOpacity = Math.max(20, Math.min(100, o.optInt("vtOpacity", 90)));
+            vtWeight = Math.max(300,Math.min(800,o.optInt("vtWeight",400)));
+            vtBackground = o.optBoolean("vtBackground",vtStyle!=3);
             viewBlocked = o.optBoolean("viewBlocked", false);
             viewBlockedEverywhere = o.optBoolean("viewBlockedEverywhere", false);
             badgesOn = o.optBoolean("badgesOn", false);
@@ -262,6 +266,8 @@ final class Prefs {
         save();
     }
 
+    static void setVtWeight(int v){vtWeight=Math.max(300,Math.min(800,v));save();}
+    static void setVtBackground(boolean v){vtBackground=v;save();}
     static void setVtRepost(boolean v) { vtRepost=v; save(); }
 
     static void setVtTime(boolean v) {
@@ -420,6 +426,8 @@ final class Prefs {
             o.put("vtStyle", vtStyle);
             o.put("vtPos", vtPos);
             o.put("vtOpacity", vtOpacity);
+            o.put("vtWeight",vtWeight);
+            o.put("vtBackground",vtBackground);
             o.put("viewBlocked", viewBlocked);
             o.put("viewBlockedEverywhere", viewBlockedEverywhere);
             o.put("badgesOn", badgesOn);

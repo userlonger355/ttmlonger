@@ -70,7 +70,7 @@ final class AdHooks {
     private static int cacheFlags = -1;
     private static int cacheInHash, cacheOutHash;
     private static long cacheAt;
-    private static final long CACHE_NS = 500_000_000L;
+    private static final long CACHE_NS = 75_000_000L;
 
     /** Как устроены элементы ленты каждого класса: методы находятся один раз. */
     private static final Map<Class<?>, Shape> SHAPES = new ConcurrentHashMap<>();
@@ -258,7 +258,8 @@ final class AdHooks {
         if (in == null || (!ads && !rooms)) return in;
         // Ad marker can change on the very same model while its payload is loading.
         // List identity alone must not cache a stale advertising verdict.
-        if(ads){lists++;return filter(in,true,rooms);}
+        // Cache repeated getters within a frame; late payloads are checked again shortly.
+
         int flags = (ads ? 1 : 0) | (rooms ? 2 : 0);
         int size = in.size();
         int hash;
@@ -334,6 +335,8 @@ final class AdHooks {
         final Method liveId;
         final Method room;
         final Method author;
+        final Method rawAd,adData;
+        final Field rawAdField;
         final boolean post;
         volatile int seen;
         volatile int ads;
@@ -353,6 +356,7 @@ final class AdHooks {
             liveId = DownloadHooks.findMethodNamed(c, "getLiveId");
             room = DownloadHooks.findMethodNamed(c, "getRoomFeedCellStruct");
             author = DownloadHooks.findMethodNamed(c, "getAuthorUid");
+            rawAd=DownloadHooks.findMethodNamed(c,"getAwemeRawAd");adData=DownloadHooks.findMethodNamed(c,"getAdData");rawAdField=DownloadHooks.findField(c,"awemeRawAd");
         }
     }
 
@@ -371,9 +375,21 @@ final class AdHooks {
         // The explicit flag can arrive before the native ad payload. Check independently.
         try { if (s.adFlag != null && Boolean.TRUE.equals(s.adFlag.get(post))) return true; } catch(Throwable ignored){}
         try { if (s.isAd != null && Boolean.TRUE.equals(s.isAd.invoke(post))) return true; } catch(Throwable ignored){}
+        try {if(s.rawAd!=null&&adPayload(s.rawAd.invoke(post)))return true;}catch(Throwable ignored){}
+        try {if(s.rawAdField!=null&&adPayload(s.rawAdField.get(post)))return true;}catch(Throwable ignored){}
+        try {if(s.adData!=null&&adPayload(s.adData.invoke(post)))return true;}catch(Throwable ignored){}
         return false;
     }
 
+    private static boolean adPayload(Object data){
+        if(data==null)return false;
+        for(String getter:new String[]{"getCreativeId","getAdId","getAdGroupId"}){
+            Object v=DownloadHooks.call(data,getter);if(v instanceof Number&&((Number)v).longValue()>0)return true;
+            if(v instanceof String&&((String)v).matches("[1-9][0-9]{4,24}"))return true;
+        }
+        for(String name:new String[]{"creativeId","adId","adGroupId","creative_id","ad_id"})try{Field field=DownloadHooks.findField(data.getClass(),name);Object v=field==null?null:field.get(data);if(v instanceof Number&&((Number)v).longValue()>0||v instanceof String&&((String)v).matches("[1-9][0-9]{4,24}"))return true;}catch(Throwable ignored){}
+        return false;
+    }
     private static boolean present(Method method,Object o){
         if(method==null)return false;
         try{return method.invoke(o)!=null;}catch(Throwable t){return false;}

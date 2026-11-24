@@ -19,6 +19,7 @@ final class VideoInfoScreen extends Screen {
     private LinearLayout formatRow;
     private LinearLayout styleRow;
     private LinearLayout posRow;
+    private LinearLayout weightRow;
     private FrameLayout previewHost;
     private TextView opacityValue;
 
@@ -49,17 +50,7 @@ final class VideoInfoScreen extends Screen {
                     }
                 }));
         body.addView(toggleRow(Icons.CLOCK,"Точное время репоста","Отдельная дата и время с секундами из данных репоста",Prefs.vtRepost,on->{Prefs.setVtRepost(on);changed();}));
-        formatRow = ui.menuRow(-1, "Вид времени", "«Давность, потом дата»: «5 ч. назад», а видео старше недели — "
-                        + "«26.09.2026». «Точное время»: «26.09 02:32:00»", VideoInfo.formatLabel(Prefs.vtFormat),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Prefs.setVtFormat(VideoInfo.nextFormat(Prefs.vtFormat));
-                        TextView val = Ui.valueOf(formatRow);
-                        if (val != null) val.setText(VideoInfo.formatLabel(Prefs.vtFormat));
-                        changed();
-                    }
-                });
+        formatRow=ui.menuRow(-1,"Вид времени",null,VideoInfo.formatLabel(Prefs.vtFormat),v->ChoiceSheet.show(act,"Вид времени",new String[]{"Точное время","Давность, потом дата","Месяц-день (10-13)"},Prefs.vtFormat,which->{Prefs.setVtFormat(which);TextView val=Ui.valueOf(formatRow);if(val!=null)val.setText(VideoInfo.formatLabel(Prefs.vtFormat));changed();}));
         body.addView(formatRow);
         secondsRow = toggleRow(-1, "Секунды", "Для точного времени: 02:32:00 вместо 02:32",
                 Prefs.vtSeconds, new ModSwitch.Listener() {
@@ -81,16 +72,7 @@ final class VideoInfoScreen extends Screen {
                         changed();
                     }
                 }));
-        modeRow = ui.menuRow(-1, "Вид региона", null, VideoInfo.modeLabel(Prefs.vtRegionMode),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Prefs.setVtRegionMode(VideoInfo.nextMode(Prefs.vtRegionMode));
-                        TextView val = Ui.valueOf(modeRow);
-                        if (val != null) val.setText(VideoInfo.modeLabel(Prefs.vtRegionMode));
-                        changed();
-                    }
-                });
+        modeRow=ui.menuRow(-1,"Вид региона",null,VideoInfo.modeLabel(Prefs.vtRegionMode),v->ChoiceSheet.show(act,"Вид региона",new String[]{"Флаг и код","Только флаг","Только код"},Prefs.vtRegionMode,which->{Prefs.setVtRegionMode(which);TextView val=Ui.valueOf(modeRow);if(val!=null)val.setText(VideoInfo.modeLabel(Prefs.vtRegionMode));changed();}));
         body.addView(modeRow);
 
         body.addView(ui.header("Вид"));
@@ -100,33 +82,25 @@ final class VideoInfoScreen extends Screen {
         LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(ViewGroupLP.MATCH, ViewGroupLP.WRAP);
         pl.setMargins(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(10));
         body.addView(previewHost, pl);
-        styleRow = ui.menuRow(-1, "Оформление", "Компактная строка: · 10-13 · 🇫🇷 FR, без подложки",
-                VideoInfo.styleLabel(Prefs.vtStyle), new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Prefs.setVtStyle(VideoInfo.nextStyle(Prefs.vtStyle));
-                        TextView val = Ui.valueOf(styleRow);
-                        if (val != null) val.setText(VideoInfo.styleLabel(Prefs.vtStyle));
-                        changed();
-                    }
-                });
+        styleRow=ui.menuRow(-1,"Оформление",null,VideoInfo.styleLabel(Prefs.vtStyle),v->ChoiceSheet.show(act,"Оформление",new String[]{"По теме приложения","Тёмные","Светлые","Компактная строка"},Prefs.vtStyle,which->{Prefs.setVtStyle(which);TextView val=Ui.valueOf(styleRow);if(val!=null)val.setText(VideoInfo.styleLabel(Prefs.vtStyle));changed();}));
         body.addView(styleRow);
-        posRow = ui.menuRow(-1, "Положение", "«Авто» ставит плашки туда, где они ничего не закрывают: справа от "
-                        + "имени, иначе над ним или под ним", VideoInfo.posLabel(Prefs.vtPos),
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Prefs.setVtPos(VideoInfo.nextPos(Prefs.vtPos));
-                        TextView val = Ui.valueOf(posRow);
-                        if (val != null) val.setText(VideoInfo.posLabel(Prefs.vtPos));
-                        changed();
-                    }
-                });
+        weightRow=ui.menuRow(-1,"Жирность шрифта",null,weightLabel(),v->weight());body.addView(weightRow);
+        body.addView(toggleRow(-1,"Подложка","Фон за датой и регионом",Prefs.vtBackground,on->{Prefs.setVtBackground(on);changed();}));
+        posRow=ui.menuRow(-1,"Положение",null,VideoInfo.posLabel(Prefs.vtPos),v->ChoiceSheet.show(act,"Положение",new String[]{"Авто","Справа от имени","Над именем","Под именем"},Prefs.vtPos,which->{Prefs.setVtPos(which);TextView val=Ui.valueOf(posRow);if(val!=null)val.setText(VideoInfo.posLabel(Prefs.vtPos));changed();}));
         body.addView(posRow);
         body.addView(opacityRow());
 
         refreshPreview();
         refreshOptions();
+    }
+
+    private static final String[] WEIGHTS={"Лёгкий","Обычный","Средний","Полужирный","Жирный","Очень жирный"};
+    private String weightLabel(){return WEIGHTS[Math.max(0,Math.min(5,(Prefs.vtWeight-300)/100))];}
+    private void weight(){
+        StreakSheet s=new StreakSheet(act,"Жирность шрифта");int[] picked={Math.max(0,Math.min(5,(Prefs.vtWeight-300)/100))};
+        LinearLayout rows=new LinearLayout(act);rows.setOrientation(1);rows.setPadding(ui.dp(16),0,ui.dp(16),0);
+        final Runnable[] draw=new Runnable[1];draw[0]=()->{rows.removeAllViews();for(int i=0;i<WEIGHTS.length;i++){final int n=i;LinearLayout row=new LinearLayout(act);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(ui.dp(12),0,ui.dp(12),0);row.setBackground(ui.round(i==picked[0]?Ui.alpha(Theme.accent(),0x25):Ui.FIELD,14));TextView name=ui.medium(WEIGHTS[i],14,Ui.INK);row.addView(name,new LinearLayout.LayoutParams(0,-2,1));TextView sample=ui.text("· 10-13 · 🇫🇷 FR",14,Ui.INK,false);sample.setTypeface(android.os.Build.VERSION.SDK_INT>=28?android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT,300+i*100,false):android.graphics.Typeface.create("sans-serif",i>=3?1:0));row.addView(sample);if(i==picked[0])row.addView(ui.icon(Icons.CHECK,Theme.accent(),20));row.setOnClickListener(v->{picked[0]=n;draw[0].run();});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,ui.dp(46));lp.bottomMargin=ui.dp(4);rows.addView(row,lp);}};draw[0].run();
+        android.widget.ScrollView sc=new android.widget.ScrollView(act);sc.addView(rows);s.root.addView(sc,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(300),(int)(act.getResources().getDisplayMetrics().heightPixels*.55f))));s.button("Сохранить",true,()->{Prefs.setVtWeight(300+100*picked[0]);TextView val=Ui.valueOf(weightRow);if(val!=null)val.setText(weightLabel());changed();s.dialog.dismiss();});s.show();
     }
 
     /** Строка с ползунком непрозрачности плашек: от 20 до 100 процентов. */

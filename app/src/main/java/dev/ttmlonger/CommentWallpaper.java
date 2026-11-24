@@ -188,7 +188,17 @@ final class CommentWallpaper {
         if(listSurface(v)&&v.getHeight()>0)return true;
         if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(hasList(g.getChildAt(i),depth+1,budget))return true;}return false;
     }
+    private static final WeakHashMap<View,PanelCache> panels=new WeakHashMap<>();
+    private static final class PanelCache {long at;boolean dirty=true;java.lang.ref.WeakReference<View> hit=new java.lang.ref.WeakReference<>(null);}
     static View panel(View root){
+        if(root==null||root.getWidth()==0||root.getHeight()==0||Screen.isOwnDecor(root))return null;
+        PanelCache c=panels.get(root);if(c==null){c=new PanelCache();panels.put(root,c);}
+        long now=SystemClock.uptimeMillis();View old=c.hit.get();
+        if(!c.dirty&&now-c.at<180&&(old==null||old.isShown()&&old.isAttachedToWindow()))return old;
+        View next=findPanel(root);c.at=now;c.dirty=false;c.hit=new java.lang.ref.WeakReference<>(next);return next;
+    }
+    static void invalidatePanel(View root){PanelCache c=panels.get(root);if(c!=null)c.dirty=true;}
+    private static View findPanel(View root){
         if(root==null||root.getWidth()==0||root.getHeight()==0||Screen.isOwnDecor(root))return null;
         View named=find(root,root,0,new int[]{1800});
         if(named!=null&&hasList(named,0,new int[]{500}))return named;

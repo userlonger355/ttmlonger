@@ -125,6 +125,7 @@ final class ScreenWatcher {
         private int addedTop;
 
         // Кнопка «Сохранить аватар».
+        private boolean commentOpen;
         private TextView avatarButton;
         private ImageView avatarTarget;
 
@@ -136,11 +137,16 @@ final class ScreenWatcher {
         void start() {
             View decor = act.getWindow().getDecorView();
             decor.getViewTreeObserver().addOnGlobalLayoutListener(this);
+            decor.getViewTreeObserver().addOnPreDrawListener(()->{if(!act.isFinishing()&&!act.isDestroyed()&&VideoInfo.enabled()){
+                boolean open=CommentWallpaper.panel(decor)!=null;
+                if(open!=commentOpen){commentOpen=open;VideoInfo.panelChanged(open);}
+            }return true;});
             schedule();
         }
 
         @Override
         public void onGlobalLayout() {
+            CommentWallpaper.invalidatePanel(act.getWindow().getDecorView());
             schedule();
         }
 
@@ -174,6 +180,7 @@ final class ScreenWatcher {
             InterfaceHooks.labels(act);
             InboxBadge.attach(act);
             CommentTools.apply(decor);
+            if(CommentWallpaper.panel(decor)!=null)return;
             StoryShare.update(act, decor);
             ChatTicks.apply(decor);
             DisplayInfo di = new DisplayInfo(act);

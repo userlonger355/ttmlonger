@@ -230,7 +230,7 @@ final class VideoInfo {
 
     /** Цвета плашки: {фон, текст}. «По теме» даёт тёмные плашки в тёмной теме и светлые в светлой. */
     static int[] colorsFor(int style, boolean night) {
-        boolean dark = style == STYLE_DARK || (style == STYLE_AUTO && night);
+        boolean dark = style == STYLE_DARK || style == STYLE_INLINE || (style == STYLE_AUTO && night);
         return dark ? new int[]{0xD0121214, 0xFFFFFFFF} : new int[]{0xF2F2F2F5, 0xFF1B1B1F};
     }
 
@@ -641,7 +641,9 @@ final class VideoInfo {
     static VideoTracker.Entry currentEntry(Activity a){if(a==null||android.os.Looper.myLooper()!=android.os.Looper.getMainLooper())return null;Hit h=locate(a);return h==null?null:h.entry;}
 
     private static Hit locate(Activity a) {
-        NativeDates.Binding direct=NativeDates.visible(a.getWindow().getDecorView());
+        View root=a.getWindow().getDecorView();
+        if(!a.hasWindowFocus()||CommentWallpaper.panel(root)!=null)return null;
+        NativeDates.Binding direct=NativeDates.visible(root);
         if(direct!=null) return new Hit(direct.entry,direct.anchor);
         List<Cand> cands = new ArrayList<>();
         for (VideoTracker.Entry e : VideoTracker.candidates()) {
@@ -779,15 +781,19 @@ final class VideoInfo {
         /** Применяет цвета по стилю и теме и прозрачность всего ряда; повторно с теми же значениями ничего не делает. */
         void style(int style, boolean night, int opacity) {
             int op = clampOpacity(opacity);
-            int key = (style << 16) | ((night ? 1 : 0) << 8) | op;
+            int key = java.util.Objects.hash(style,night,op,Prefs.vtWeight,Prefs.vtBackground);
             if (key == appliedKey) return;
             appliedKey = key;
             int[] c = colorsFor(style, night);
             GradientDrawable background = new GradientDrawable();
             background.setColor(c[0]);
             background.setCornerRadius(dp(12));
-            box.setBackground(null);
-            int ink=style==STYLE_INLINE?0xff999999:style==STYLE_LIGHT?0xff25252b:0xffeeeeee;
+            boolean bg=Prefs.vtBackground;
+            box.setBackground(bg?background:null);
+            box.setPadding(bg?dp(5):0,bg?dp(2):0,bg?dp(5):0,bg?dp(2):0);
+            int ink=bg?c[1]:style==STYLE_INLINE?0xffb0b0b0:0xffeeeeee;
+            Typeface face=android.os.Build.VERSION.SDK_INT>=28?Typeface.create(Typeface.create("sans-serif",0),Prefs.vtWeight,false):Typeface.create("sans-serif",Prefs.vtWeight>=600?Typeface.BOLD:Typeface.NORMAL);
+            for(TextView label:new TextView[]{timeView,regionView,repostView})label.setTypeface(face);
             timeView.setTextColor(ink);
             regionView.setTextColor(ink);
             repostView.setTextColor(ink);
@@ -921,7 +927,7 @@ final class VideoInfo {
                         ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
                 attached = true;
             }
-            pills.measure();
+            if(!slotReady||box.isLayoutRequested())pills.measure();
             if (!listening) {
                 decor.getViewTreeObserver().addOnPreDrawListener(this);
                 listening = true;
@@ -1016,6 +1022,7 @@ final class VideoInfo {
         void follow() {
             TextView a = anchor;
             if (a == null) return;
+            if (!act.hasWindowFocus()||CommentWallpaper.panel(decor)!=null){hide();return;}
             if (!a.isAttachedToWindow() || a.getVisibility() != View.VISIBLE) {
                 hide();
                 soon();
@@ -1065,7 +1072,7 @@ final class VideoInfo {
                 float opacity = clampOpacity(Prefs.vtOpacity) / 100f;
                 box.animate().cancel();
                 box.setAlpha(animate ? 0f : opacity);
-                if (animate) box.animate().alpha(opacity).setDuration(180L).start();
+                if (animate) box.animate().alpha(opacity).setDuration(90L).start();
             }
             if (box.getTranslationX() != x) box.setTranslationX(x);
             if (box.getTranslationY() != y) box.setTranslationY(y);
@@ -1127,6 +1134,7 @@ final class VideoInfo {
         if (pending.compareAndSet(false, true)) main().post(UPDATE);
     }
 
+    static void panelChanged(boolean open){if(open){if(overlay!=null)overlay.hide();}else nudge();}
     static void nudge() {
         if (enabled()) soon();
     }
@@ -1162,6 +1170,7 @@ final class VideoInfo {
             Activity prev = overlayAct == null ? null : overlayAct.get();
             if (overlay != null && prev != a) drop();
 
+            if(!a.hasWindowFocus()||CommentWallpaper.panel(decor)!=null){if(overlay!=null)overlay.hide();delay=160L;return;}
             Hit hit = locate(a);
             if (hit == null) {
                 if (overlay != null) overlay.hide();
@@ -1188,7 +1197,7 @@ final class VideoInfo {
             overlay.show(hit.view, hit.entry, m, wantTime, wantRegion);
 
             // Keep polling incomplete native metadata quickly; never substitute the account region.
-            delay = (Prefs.vtRegion && m.region==null || Prefs.vtTime && m.created<=0) ? 120L : 300L;
+            delay = (Prefs.vtRegion && m.region==null || Prefs.vtTime && m.created<=0) ? 140L : 650L;
         } catch (Throwable t) {
             FlagStore.log(t);
             delay = 2500L;
