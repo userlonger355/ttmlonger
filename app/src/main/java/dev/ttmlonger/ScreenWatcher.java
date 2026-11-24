@@ -182,8 +182,8 @@ final class ScreenWatcher {
             boolean page = s.settingsTitle || s.rows.size() >= Targets.SETTINGS_ROWS_MIN;
             report(s, page);
 
-            if (page) showSettingsBlock(s.hasSample && luminance(s.sampleColor) < 0.5f);
-            else hideSettingsBlock();
+            // Do not add the legacy top banner on unknown settings screens.
+            hideSettingsBlock();
 
             if (s.avatar != null && s.shareLabel != null) showAvatarButton(s);
             else hideAvatarButton();
