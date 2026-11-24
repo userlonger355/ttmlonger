@@ -24,7 +24,9 @@ final class CommentWallpaper {
     private static Context app;
     private static volatile Bitmap image;
     private static volatile boolean enabled;
-    private static int generation,blur=20,dim=45;
+    private static volatile int generation;
+    private static int blur=20,dim=45;
+    private static boolean hasPhoto;
     private static final Map<View,State> painted=new WeakHashMap<>();
     private static final Set<View> dialogs=Collections.newSetFromMap(new WeakHashMap<View,Boolean>());
     private static final class State {
@@ -37,13 +39,14 @@ final class CommentWallpaper {
     static boolean enabled(){return enabled;}
     static int blur(){return blur;}
     static int dim(){return dim;}
-    static boolean exists(){return app!=null&&file().isFile();}
+    static boolean exists(){return app!=null&&hasPhoto;}
     private static File file(){return new File(app.getFilesDir(),FILE);}
     static Bitmap image(){return image;}
     static void install(Context context){
         app=context.getApplicationContext();if(app==null)app=context;
         enabled=prefs().getBoolean("enabled",false);
         blur=clamp(prefs().getInt("blur",20));dim=clamp(prefs().getInt("dim",45));
+        hasPhoto=file().isFile();
         if(exists())load();
         // Some versions display the comment sheet inside a Dialog instead of the Activity.
         try{XposedHelpers.findAndHookMethod(Dialog.class,"show",new XC_MethodHook(){
@@ -58,12 +61,14 @@ final class CommentWallpaper {
         });}catch(Throwable e){FlagStore.log(e);}
     }
     static void configure(boolean on,int b,int d){
-        if(app==null)return;enabled=on&&exists();blur=clamp(b);dim=clamp(d);
+        if(app==null)return;boolean changed=blur!=clamp(b);enabled=on&&exists();blur=clamp(b);dim=clamp(d);
         prefs().edit().putBoolean("enabled",enabled).putInt("blur",blur).putInt("dim",dim).apply();
-        if(!enabled){generation++;restoreAll();}else{load();refresh();}
+        restoreAll();
+        if(exists()&&(changed||image==null))load();
+        if(enabled)refresh();
     }
     static void reset(){
-        if(app==null)return;generation++;enabled=false;image=null;restoreAll();
+        if(app==null)return;generation++;enabled=false;hasPhoto=false;image=null;restoreAll();
         prefs().edit().clear().apply();blur=20;dim=45;
         WORK.execute(()->file().delete());
     }
@@ -87,12 +92,13 @@ final class CommentWallpaper {
                 ok=true;
             }catch(Throwable e){FlagStore.log(e);}finally{if(temp!=null)temp.delete();}
             final boolean success=ok;
-            MAIN.post(()->{if(success){enabled=true;prefs().edit().putBoolean("enabled",true).apply();load();}cb.result(success);});
+            MAIN.post(()->{if(success){hasPhoto=true;enabled=true;prefs().edit().putBoolean("enabled",true).apply();load();}cb.result(success);});
         });
     }
     private static void load(){
         if(app==null)return;final int token=++generation,b=blur;
         WORK.execute(()->{
+            if(token!=generation)return;
             Bitmap out=null;
             try{Bitmap src=BitmapFactory.decodeFile(file().getAbsolutePath());if(src!=null)out=blurred(src,b);}
             catch(Throwable e){FlagStore.log(e);}
@@ -169,12 +175,39 @@ final class CommentWallpaper {
     private static void scan(View root){
         if(CrashGuard.tripped||!enabled||image==null||!root.isShown()||Screen.isOwnDecor(root))return;
         View target=find(root,root,0,new int[]{1800});
-        for(View old:new ArrayList<>(painted.keySet()))if(old!=null&&(!old.isAttachedToWindow()||old.getRootView()==root&&old!=target))restore(old);
+        for(View old:new ArrayList<>(painted.keySet()))if(old!=null&&(!old.isAttachedToWindow()||old.getRootView()==root&&!within(old,target)))restore(old);
         if(target==null)return;
-        State old=painted.get(target);if(old!=null&&target.getBackground()==old.applied)return;
-        Drawable photo=drawable(image,dim,VideoInfo.isNight(target.getContext()),16*target.getResources().getDisplayMetrics().density);
-        applyBackground(target,photo);
-        android.util.Log.i("TTMLonger","COMMENT_WALLPAPER_APPLIED "+target.getClass().getName());
+        State old=painted.get(target);
+        if(old==null||target.getBackground()!=old.applied){
+            Drawable photo=drawable(image,dim,VideoInfo.isNight(target.getContext()),16*target.getResources().getDisplayMetrics().density);
+            applyBackground(target,photo);
+            android.util.Log.i("TTMLonger","COMMENT_WALLPAPER_APPLIED "+target.getClass().getName());
+        }
+        State state=painted.get(target);
+        if(state!=null&&state.before instanceof ColorDrawable)uncover(target,target,((ColorDrawable)state.before).getColor(),0);
+    }
+    private static boolean within(View child,View parent){
+        if(parent==null)return false;
+        for(View current=child;current!=null;){if(current==parent)return true;ViewParent p=current.getParent();current=p instanceof View?(View)p:null;}
+        return false;
+    }
+    private static boolean listSurface(View v){
+        for(Class<?> c=v.getClass();c!=null;c=c.getSuperclass()){
+            String n=c.getName().toLowerCase(Locale.ROOT);
+            if(n.endsWith(".recyclerview")||n.endsWith(".listview")||panelName(n))return true;
+        }return false;
+    }
+    private static void uncover(View v,View panel,int color,int depth){
+        if(depth>4||!(v instanceof ViewGroup))return;
+        ViewGroup group=(ViewGroup)v;
+        for(int i=0;i<group.getChildCount();i++){
+            View child=group.getChildAt(i);
+            if(child.getWidth()<panel.getWidth()*.8f||child.getHeight()<panel.getHeight()*.35f)continue;
+            if(listSurface(child)&&child.getBackground() instanceof ColorDrawable&&((ColorDrawable)child.getBackground()).getColor()==color&&Color.alpha(color)==255){
+                applyBackground(child,new ColorDrawable(Color.TRANSPARENT));
+            }
+            uncover(child,panel,color,depth+1);
+        }
     }
     static void applyBackground(View target,Drawable photo){
         painted.put(target,new State(target.getBackground(),photo));setBackground(target,photo);

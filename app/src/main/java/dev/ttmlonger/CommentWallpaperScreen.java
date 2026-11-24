@@ -35,7 +35,7 @@ final class CommentWallpaperScreen extends Screen {
         slider(body,dim,false);
         body.addView(ui.menuRow(Icons.REFRESH,"Вернуть стандартный фон",null,null,v->{CommentWallpaper.reset();dialog.dismiss();show(act);}));
         body.addView(ui.note("Если оформление не применилось, закройте и снова откройте комментарии. Поддержка зависит от контейнера этой версии TikTok."));
-        render();
+        render();main.postDelayed(()->waitRender(0),150);
     }
     private void slider(LinearLayout body,int initial,boolean isBlur){
         SeekBar bar=new SeekBar(act);bar.setMax(100);bar.setProgress(initial);
