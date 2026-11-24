@@ -30,10 +30,27 @@ final class SponsorSegments {
     };
     private static final Set<String> allowed=new HashSet<>();
     private static String current="",pending="";
+    private static final Map<String,Long> retryAfter=new LinkedHashMap<String,Long>(32,.75f,true){protected boolean removeEldestEntry(Map.Entry<String,Long> e){return size()>100;}};
     private static long lastTry,lastTick;
     private static TextView undo;
+    private static final java.util.concurrent.atomic.AtomicBoolean queued=new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicReference<Event> latest=new java.util.concurrent.atomic.AtomicReference<>();
+    private static final class Event { final Object controller;final String aid;Event(Object c,String a){controller=c;aid=a;} }
+    private static volatile int progressHooks;
+    static boolean available(){return progressHooks>0;}
+    private static void dispatch(Object controller,String aid){
+        if(aid==null||!on)return;
+        if(Looper.myLooper()==Looper.getMainLooper()){try{progress(controller,aid);}catch(Throwable ignored){}return;}
+        latest.set(new Event(controller,aid));
+        if(queued.compareAndSet(false,true))MAIN.post(SponsorSegments::drain);
+    }
+    private static void drain(){
+        queued.set(false);Event e=latest.getAndSet(null);
+        if(e!=null&&on&&!CrashGuard.tripped)try{progress(e.controller,e.aid);}catch(Throwable ignored){}
+        if(latest.get()!=null&&queued.compareAndSet(false,true))MAIN.post(SponsorSegments::drain);
+    }
     static boolean enabled(Context c){return c.getSharedPreferences("ttmlonger_interface",0).getBoolean(KEY,false);}
-    static void set(Context c,boolean value){on=value;c.getSharedPreferences("ttmlonger_interface",0).edit().putBoolean(KEY,value).apply();if(!value){cache.clear();allowed.clear();removeUndo();}}
+    static void set(Context c,boolean value){on=value;c.getSharedPreferences("ttmlonger_interface",0).edit().putBoolean(KEY,value).apply();if(!value){cache.clear();retryAfter.clear();allowed.clear();latest.set(null);removeUndo();}}
     static boolean valid(long start,long end,long duration){return start>=0&&end>start+400&&end<=duration&&duration>0;}
     static void install(Context c,ClassLoader cl){
         on=enabled(c);
@@ -43,10 +60,11 @@ final class SponsorSegments {
             if(!method.getName().equals("onPlayProgressChange")||!Arrays.equals(method.getParameterTypes(),new Class<?>[]{String.class,long.class,long.class})||method.getReturnType()!=void.class)continue;
             XposedBridge.hookMethod(method,new XC_MethodHook(){
                 protected void afterHookedMethod(MethodHookParam p){
-                    if(!on||CrashGuard.tripped||p.hasThrowable()||Looper.myLooper()!=Looper.getMainLooper())return;
-                    try{progress(p.thisObject,(String)p.args[0]);}catch(Throwable ignored){}
+                    if(!on||CrashGuard.tripped||p.hasThrowable())return;
+                    dispatch(p.thisObject,(String)p.args[0]);
                 }
             });
+            progressHooks++;
             android.util.Log.i("TTMLonger","Sponsor segment progress hook installed");
         }
     }
@@ -77,7 +95,7 @@ final class SponsorSegments {
         }
     }
     private static void lookup(String aid,long now){
-        if(!pending.isEmpty()||now-lastTry<2000)return;
+        if(!pending.isEmpty()||now-lastTry<2000||now<retryAfter.getOrDefault(aid,0L))return;
         pending=aid;lastTry=now;
         NET.execute(()->{
             List<long[]> out=null;
@@ -86,7 +104,7 @@ final class SponsorSegments {
                 out=h.get();
             }catch(Throwable ignored){}
             final List<long[]> result=out;
-            MAIN.post(()->{pending="";if(on&&result!=null)cache.put(aid,result);});
+            MAIN.post(()->{pending="";if(on){if(result!=null)cache.put(aid,result);else retryAfter.put(aid,android.os.SystemClock.uptimeMillis()+60000L);}});
         });
     }
     private static final class HttpsOnly{

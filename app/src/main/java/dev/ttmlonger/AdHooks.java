@@ -213,12 +213,11 @@ final class AdHooks {
                 if(searchPage(param.thisObject)) rooms=false;
                 Object r = param.getResult();
                 if (!(r instanceof List)) return;
-                List out = process((List) r, ads, rooms);
-                if(!searchPage(param.thisObject))out=MtpRuntime.feed(out);
-                if (out != r) {
-                    param.setResult(out);
-                    writeBack(param.thisObject, r, out);
-                }
+                List filtered = process((List) r, ads, rooms);
+                if(filtered!=r)writeBack(param.thisObject,r,filtered);
+                // Never persist a plugin transformation into the original page.
+                List out=searchPage(param.thisObject)?filtered:MtpRuntime.feed(filtered);
+                if(out!=r)param.setResult(out);
             } catch (Throwable t) {
                 error(t);
             }

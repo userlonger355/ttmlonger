@@ -328,6 +328,7 @@ final class Prefs {
 
     static void setBadgesRemote(boolean v) {
         badgesRemote = v;
+        BadgeStore.importedChanged();
         save();
     }
 

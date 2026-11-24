@@ -29,6 +29,7 @@ final class InboxBadge {
     static boolean label(CharSequence raw){
         if(raw==null)return false;
         String s=raw.toString().trim().toLowerCase(Locale.ROOT);
+        s=s.replaceFirst("[,·:]\\s*[0-9]{1,3}\\+?\\s*(unread|непрочитанных)?$","").trim();
         return s.equals("inbox")||s.equals("входящие")||s.equals("вхідні")||s.equals("сообщения")||s.equals("messages");
     }
     static boolean isInbox(View v){return named(v,0,new int[]{64});}
@@ -46,10 +47,11 @@ final class InboxBadge {
         return null;
     }
     private static String account(){String id=StreakHooks.knownOwnUid();return id==null?"":id;}
+    private static void unwatch(){ViewTreeObserver v=observer.get();if(v!=null&&v.isAlive())v.removeOnPreDrawListener(TICK);observer.clear();tab.clear();}
     private static void restore(){TextView old=hidden.get();if(old!=null&&old.getAlpha()==0f)old.setAlpha(originalAlpha);hidden.clear();}
     private static final ViewTreeObserver.OnPreDrawListener TICK=()->{
         try{
-            if(CrashGuard.tripped||!java.util.Objects.equals(owner,account())){baseline=0;restore();return true;}
+            if(CrashGuard.tripped||!java.util.Objects.equals(owner,account())){baseline=0;restore();unwatch();return true;}
             View v=tab.get();
             long now=android.os.SystemClock.uptimeMillis();
             if(v==null||!v.isAttachedToWindow()||!v.isShown()){
@@ -68,7 +70,7 @@ final class InboxBadge {
                 return true;
             }
             missingAt=0;baseline=next(baseline,count(badge.getText()));
-            if(baseline==0)restore();
+            if(baseline==0){restore();unwatch();}
             else{
                 if(hidden.get()!=badge){restore();originalAlpha=badge.getAlpha();hidden=new WeakReference<>(badge);}
                 if(badge.getAlpha()!=0f)badge.setAlpha(0f);
@@ -101,7 +103,7 @@ final class InboxBadge {
                 TextView current=number(v);if(current==null)return;
                 owner=identity;baseline=back?0:count(current.getText());missingAt=0;
                 if(back)restore();
-                watch(a.getWindow().getDecorView(),v);v.invalidate();
+                if(baseline>0)watch(a.getWindow().getDecorView(),v);else unwatch();v.invalidate();
             }).create();
         Screen.markOwn(d);d.show();Ui.style(d);
     }

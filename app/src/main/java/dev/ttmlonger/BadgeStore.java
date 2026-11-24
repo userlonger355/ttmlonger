@@ -163,11 +163,12 @@ final class BadgeStore {
 
     private static void rebuild() {
         Map<String, String> next = new HashMap<>();
-        java.util.Set<String> uids = new java.util.LinkedHashSet<>(remote.keySet());
+        Map<String,List<String>> shared=Prefs.badgesRemote?remote:Collections.emptyMap();
+        java.util.Set<String> uids = new java.util.LinkedHashSet<>(shared.keySet());
         uids.addAll(rules.keySet());
         for (String uid : uids) {
             Rule r = rules.get(uid);
-            List<String> ids = shown(remote.get(uid), r == null ? null : r.ids);
+            List<String> ids = shown(shared.get(uid), r == null ? null : r.ids);
             StringBuilder sb = new StringBuilder();
             for (String id : ids) sb.append(BadgeLogic.mark(BadgeSet.indexOf(id)));
             if (sb.length() > 0) next.put(uid, sb.toString());

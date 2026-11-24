@@ -108,6 +108,7 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            result("inbox_label_with_count",InboxBadge.label("Входящие, 12")&&InboxBadge.label("Inbox, 3 unread"));
             try{
                 android.graphics.Path mask=new android.graphics.Path();
                 AvatarContours.addMask(mask,2,50,50,20);
