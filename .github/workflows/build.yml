@@ -12,7 +12,7 @@ on:
       - badges.json
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -48,6 +48,15 @@ jobs:
         with:
           name: TTMLonger
           path: ${{ env.PROJECT }}/TTMLonger.apk
+
+      - name: Publish alpha module APK
+        if: github.ref == 'refs/heads/fix/navigation-metadata-20261124'
+        working-directory: ${{ env.PROJECT }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="module-alpha-${GITHUB_RUN_ID}"
+          gh release create "$tag" TTMLonger.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "TTMLonger 0.0.1(alpha) — module" --notes "LSPatch/Xposed module only. Not a standalone TikTok APK. Commit: $GITHUB_SHA" --prerelease --latest=false
 
       - name: Record build provenance
         working-directory: ${{ env.PROJECT }}

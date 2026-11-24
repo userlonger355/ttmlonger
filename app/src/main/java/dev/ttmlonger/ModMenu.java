@@ -213,7 +213,7 @@ final class ModMenu extends Screen {
         footer.setGravity(Gravity.CENTER);
         footer.setOrientation(LinearLayout.HORIZONTAL);
         footer.setPadding(ui.dp(12),ui.dp(20),ui.dp(12),ui.dp(16));
-        TextView ver=ui.medium("0.0.1a (dev buld)",13,Ui.INK);
+        TextView ver=ui.medium(Targets.VERSION,13,Ui.INK);
         TextView author=ui.medium("Автор: @Ueod5",13,Ui.INK);
         author.setPadding(ui.dp(12),ui.dp(8),ui.dp(8),ui.dp(8));
         author.setBackground(ui.ripple());
