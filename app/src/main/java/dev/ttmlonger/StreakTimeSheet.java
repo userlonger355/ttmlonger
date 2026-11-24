@@ -67,7 +67,7 @@ final class StreakTimeSheet {
             View v=p.getChildAt(i);if(v instanceof EditText){EditText e=(EditText)v;e.setTextColor(Ui.INK);e.setTextSize(29);e.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);}
         }
         p.setHapticFeedbackEnabled(true);
-        final long[] last={-100};p.setOnValueChangedListener((picker,old,value)->{if(old==value||!picker.isShown())return;long now=android.os.SystemClock.uptimeMillis();if(now-last[0]>=35){last[0]=now;picker.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);}});
+        final long[] last={-100};p.setOnValueChangedListener((picker,oldValue,newValue)->{if(oldValue==newValue||!picker.isShown())return;long now=android.os.SystemClock.uptimeMillis();if(now-last[0]>=35){last[0]=now;picker.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);}});
         return p;
     }
 }
