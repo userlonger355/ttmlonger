@@ -14,24 +14,25 @@ final class RepostTimes {
     private static Map<String,Field> fields(Class<?> c){synchronized(FIELDS){Map<String,Field> old=FIELDS.get(c);if(old!=null)return old;Map<String,Field> map=new HashMap<>();for(Class<?> k=c;k!=null&&k!=Object.class;k=k.getSuperclass())for(Field f:k.getDeclaredFields())try{if(Modifier.isStatic(f.getModifiers()))continue;f.setAccessible(true);map.putIfAbsent(norm(f.getName()),f);for(java.lang.annotation.Annotation a:f.getDeclaredAnnotations()){String n=a.annotationType().getName();if(!n.equals("com.google.gson.annotations.SerializedName")&&!n.endsWith(".JsonProperty"))continue;Object v=a.annotationType().getMethod("value").invoke(a);if(v instanceof String)map.putIfAbsent(norm((String)v),f);}}catch(Throwable ignored){}if(FIELDS.size()>200)FIELDS.clear();FIELDS.put(c,map);return map;}}
     private static Object read(Object o,String key){if(o==null)return null;Object v=DownloadHooks.call(o,"get"+camel(key));if(v!=null)return v;try{Field f=fields(o.getClass()).get(norm(key));return f==null?null:f.get(o);}catch(Throwable ignored){return null;}}
     private static long valid(Object raw,long published,long now){long t=VideoInfo.parseEventTime(raw);return t>=1262304000L&&t<=now+300&&(published<=0||t>=published)?t:0;}
-    private static long fieldsTime(Object o,String[] keys,long published,long now){long t=0;for(String key:keys){long v=valid(read(o,key),published,now);if(v>0)t=Math.max(t,v);}return t;}
-    private static long event(Object o,String aid,long published,long now,int depth,Set<Object> seen){
+    private static long merge(long a,long b){if(a<0||b<0||a>0&&b>0&&a!=b)return -1;return Math.max(a,b);}
+    private static long fieldsTime(Object o,String[] keys,long published,long now){long t=0;for(String key:keys){long v=valid(read(o,key),published,now);t=merge(t,v);if(t<0)return t;}return t;}
+    private static long event(Object o,String aid,long published,long now,int depth,Set<Object> seen,boolean dedicated){
         if(o==null||depth>4||seen.size()>80||!seen.add(o))return 0;
-        if(o instanceof List){long t=0;for(Object x:(List<?>)o){t=Math.max(t,event(x,aid,published,now,depth+1,seen));if(seen.size()>80)break;}return t;}
-        if(o.getClass().isArray()&&!o.getClass().getComponentType().isPrimitive()){long t=0;for(int i=0;i<Math.min(80,Array.getLength(o));i++)t=Math.max(t,event(Array.get(o,i),aid,published,now,depth+1,seen));return t;}
+        if(o instanceof List){long t=0;for(Object x:(List<?>)o){t=merge(t,event(x,aid,published,now,depth+1,seen,dedicated));if(seen.size()>80)break;}return t;}
+        if(o.getClass().isArray()&&!o.getClass().getComponentType().isPrimitive()){long t=0;for(int i=0;i<Math.min(80,Array.getLength(o));i++)t=merge(t,event(Array.get(o,i),aid,published,now,depth+1,seen,dedicated));return t;}
         String cls=o.getClass().getName().toLowerCase(Locale.ROOT);if(o instanceof Number||o instanceof CharSequence||o instanceof Map||o instanceof Boolean||o.getClass().getName().equals(DownloadHooks.AWEME)||cls.endsWith(".user"))return 0;
-        Object item=read(o,"item_id");if(item==null)item=read(o,"aweme_id");if(item!=null&&!item.toString().isEmpty()&&!item.toString().equals("0")&&!aid.equals(item.toString()))return 0;
+        Object item=read(o,"item_id");if(item==null)item=read(o,"aweme_id");if(item!=null&&!item.toString().isEmpty()&&!item.toString().equals("0")&&(aid==null||!aid.equals(item.toString())))return 0;
         long t=fieldsTime(o,DIRECT,published,now);
         // Generic timestamp only for a dedicated repost/upvote record, never a nested User.
-        if(t==0&&(cls.contains("repost")||cls.contains("upvote")))t=fieldsTime(o,RECORD,published,now);
-        for(String key:NESTED)t=Math.max(t,event(read(o,key),aid,published,now,depth+1,seen));
+        if(t==0&&(dedicated||cls.contains("repost")||cls.contains("upvote")))t=fieldsTime(o,RECORD,published,now);
+        for(String key:NESTED)t=merge(t,event(read(o,key),aid,published,now,depth+1,seen,key.contains("info")));
         return t;
     }
     static long read(Object aweme){
-        if(aweme==null)return 0;Object id=DownloadHooks.call(aweme,"getAid");if(id==null)return 0;
+        if(aweme==null)return 0;Object id=DownloadHooks.call(aweme,"getAid");String aid=id==null?null:id.toString();
         long now=System.currentTimeMillis()/1000L,published=VideoInfo.parseEventTime(DownloadHooks.call(aweme,"getCreateTime"));
         long t=fieldsTime(aweme,DIRECT,published,now);Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
-        for(String key:NESTED)t=Math.max(t,event(read(aweme,key),id.toString(),published,now,0,seen));return t;
+        for(String key:NESTED)t=merge(t,event(read(aweme,key),aid,published,now,0,seen,key.contains("info")));return Math.max(0,t);
     }
     static void install(ClassLoader cl){
         Class<?> aweme=XposedHelpers.findClassIfExists(DownloadHooks.AWEME,cl);if(aweme==null)return;

@@ -106,6 +106,9 @@ public final class PreviewActivity extends Activity {
     }
 
     private static void verifyFixes() {
+        expect(StreakTimeSheet.parseTime("0","00")==0,"manual midnight");
+        expect(StreakTimeSheet.parseTime("23","59")==1439,"manual end of day");
+        expect(StreakTimeSheet.parseTime("24","00")==-1&&StreakTimeSheet.parseTime("12","60")==-1&&StreakTimeSheet.parseTime("","10")==-1,"invalid manual time");
         expect(VideoInfo.parseEventTime("1700000000000") == 1_700_000_000L, "milliseconds");
         expect(VideoInfo.parseEventTime(1_700_000_000L) == 1_700_000_000L, "seconds");
         expect(VideoInfo.parseEventTime("invalid") == 0, "invalid event time");
