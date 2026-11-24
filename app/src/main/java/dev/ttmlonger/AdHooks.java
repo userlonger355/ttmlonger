@@ -66,6 +66,9 @@ final class AdHooks {
     private static int cacheInSize = -1;
     private static int cacheOutSize = -1;
     private static int cacheFlags = -1;
+    private static int cacheInHash, cacheOutHash;
+    private static long cacheAt;
+    private static final long CACHE_NS = 500_000_000L;
 
     /** Как устроены элементы ленты каждого класса: методы находятся один раз. */
     private static final Map<Class<?>, Shape> SHAPES = new ConcurrentHashMap<>();
@@ -185,18 +188,29 @@ final class AdHooks {
     };
 
     /** Список без нежелательного; если убирать нечего, возвращается тот же объект. Повторы берутся из памяти. */
+    private static int identityHash(List items) {
+        int h = 1;
+        for (Object item : items) h = h * 31 + System.identityHashCode(item);
+        return h;
+    }
+
     static List process(List in, boolean ads, boolean rooms) {
+        if (in == null || (!ads && !rooms)) return in;
         int flags = (ads ? 1 : 0) | (rooms ? 2 : 0);
         int size = in.size();
+        int hash;
+        try { hash = identityHash(in); }
+        catch (RuntimeException changed) { return filter(in, ads, rooms); }
+        long now = System.nanoTime();
         synchronized (AdHooks.class) {
-            if (cacheFlags == flags) {
+            if (cacheFlags == flags && now - cacheAt < CACHE_NS) {
                 // тот же исходный список: отдаём прежний результат
-                if (cacheInSize == size && cacheIn.get() == in) {
+                if (cacheInSize == size && cacheInHash == hash && cacheIn.get() == in) {
                     Object o = cacheOut.get();
                     if (o instanceof List) return (List) o;
                 }
                 // это уже очищенный нами список
-                if (cacheOutSize == size && cacheOut.get() == in) return in;
+                if (cacheOutSize == size && cacheOutHash == hash && cacheOut.get() == in) return in;
             }
         }
         List out = filter(in, ads, rooms);
@@ -206,6 +220,10 @@ final class AdHooks {
             cacheInSize = size;
             cacheOutSize = out.size();
             cacheFlags = flags;
+            cacheInHash = hash;
+            try { cacheOutHash = identityHash(out); }
+            catch (RuntimeException changed) { cacheOutHash = 0; }
+            cacheAt = now;
         }
         lists++;
         return out;
