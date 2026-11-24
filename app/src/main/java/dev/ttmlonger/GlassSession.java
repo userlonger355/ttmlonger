@@ -89,6 +89,10 @@ final class GlassSession implements Choreographer.FrameCallback {
     private boolean track;
     /** Вкладка (номер в tabs), на которую лёг палец. */
     private int downTab = -1;
+    // Не синхронизируем линзу со старой вкладкой, пока штатная навигация выполняется.
+    private int pendingTab = -1;
+    private long pendingUntil;
+    private int gestureEpoch;
     /** Идёт наше собственное нажатие на вкладку: оно не должно попадать в onTouch. */
     private boolean synthetic;
     /** Устройство настоящего касания: синтетическое нажатие подписывается им же, как у пальца. */
@@ -176,6 +180,8 @@ final class GlassSession implements Choreographer.FrameCallback {
     void detach() {
         if (!attached) return;
         attached = false;
+        ++gestureEpoch;
+        pendingTab = -1;
         h.removeCallbacks(poll);
         h.removeCallbacks(bkRun);
         unhookPre();
@@ -588,12 +594,17 @@ final class GlassSession implements Choreographer.FrameCallback {
         for (int i = 0; i < 6 && v != null; i++) {
             Object par = v.getParent();
             if (!(par instanceof View)) break;
-            if (v != bar && clearedViews.indexOf(v) < 0 && GlassGeo.isWrapper(v.getHeight(), v.getWidth(), bar.getHeight(),
+            if (v != bar && GlassGeo.isWrapper(v.getHeight(), v.getWidth(), bar.getHeight(),
                     bar.getWidth())) {
                 Drawable d = v.getBackground();
                 if (d instanceof ColorDrawable && Color.alpha(((ColorDrawable) d).getColor()) > 0) {
-                    clearedViews.add(v);
-                    clearedBgs.add(d);
+                    int saved = clearedViews.indexOf(v);
+                    if (saved < 0) {
+                        clearedViews.add(v);
+                        clearedBgs.add(d);
+                    } else {
+                        clearedBgs.set(saved, d);
+                    }
                     v.setBackground(null);
                 }
             }
@@ -667,6 +678,13 @@ final class GlassSession implements Choreographer.FrameCallback {
 
     private void syncSelection() {
         int s = readSelected();
+        if (pendingTab >= 0) {
+            if (s == pendingTab || SystemClock.uptimeMillis() >= pendingUntil) {
+                pendingTab = -1;
+            } else {
+                return;
+            }
+        }
         if (s < 0) return;
         if (s != lastSelected) {
             lastSelected = s;
@@ -907,6 +925,8 @@ final class GlassSession implements Choreographer.FrameCallback {
         int a = ev.getActionMasked();
         if (a == MotionEvent.ACTION_DOWN) {
             lastDevice = ev.getDeviceId();
+            ++gestureEpoch;
+            pendingTab = -1;
             track = false;
             downTab = -1;
             sTrack = false;
@@ -974,7 +994,9 @@ final class GlassSession implements Choreographer.FrameCallback {
                 if (near && n >= 0 && n < eligible.length) {
                     int target = eligible[n];
                     if (target != downTab) {
-                        chooseLater(target);
+                        pendingTab = target;
+                        pendingUntil = SystemClock.uptimeMillis() + 1900L;
+                        chooseLater(target, gestureEpoch);
                         delay = 1900L;
                     }
                 }
@@ -985,10 +1007,11 @@ final class GlassSession implements Choreographer.FrameCallback {
             capDirty = true;
             kick();
             // если вкладка так и не переключилась, линза вернётся на выбранную
+            final int epoch = gestureEpoch;
             h.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    if (attached) syncBack();
+                    if (attached && gestureEpoch == epoch) syncSelection();
                 }
             }, delay);
         }
@@ -1001,11 +1024,11 @@ final class GlassSession implements Choreographer.FrameCallback {
      * экранными координатами, проверка через полсекунды, и только если вкладка не выбралась (или TikTok вообще не
      * принял касание), обычный клик по вкладке: сама вкладка, её дочерние виды, потом родители внутри панели.
      */
-    private void chooseLater(final int target) {
+    private void chooseLater(final int target, final int epoch) {
         h.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (!attached || target < 0 || target >= tabs.size()) return;
+                if (!attached || gestureEpoch != epoch || target < 0 || target >= tabs.size()) return;
                 if (readSelected() == target) {
                     dragNote = "TikTok сам выбрал вкладку " + (target + 1);
                     return;
@@ -1014,7 +1037,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                 h.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        if (!attached) return;
+                        if (!attached || gestureEpoch != epoch) return;
                         int sel = readSelected();
                         if (sel == target) {
                             dragNote = "нажатие на вкладку " + (target + 1) + " сработало";
