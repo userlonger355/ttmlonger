@@ -222,9 +222,18 @@ final class ModMenu extends Screen {
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
 
-        TextView ver = ui.text("TTMLonger " + Targets.VERSION, 13, Ui.MUTED, false);
+        page.addView(ui.menuRow(Icons.GLOBE, "Автор: @Ueod5",
+                "t.me/Ueod5", null, v -> {
+                    try {
+                        act.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://t.me/Ueod5")));
+                    } catch (android.content.ActivityNotFoundException e) {
+                        Toasts.show(act, "Не удалось открыть Telegram");
+                    }
+                }));
+        TextView ver = ui.text("0.0.1a (dev buld)", 13, Ui.MUTED, false);
         ver.setGravity(android.view.Gravity.CENTER);
-        ver.setPadding(0, ui.dp(28), 0, ui.dp(8));
+        ver.setPadding(0, ui.dp(12), 0, ui.dp(12));
         page.addView(ver, ui.matchWrap());
         empty = ui.note("По этому запросу настроек нет");
         page.addView(empty);
