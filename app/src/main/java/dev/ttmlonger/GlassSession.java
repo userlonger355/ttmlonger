@@ -117,6 +117,7 @@ final class GlassSession implements Choreographer.FrameCallback {
     /** Настоящий фон: запись того, что лежит под панелью (Android 13+); null, если недоступна. */
     private LiveBackdrop live;
     private boolean liveFailed;
+    private android.view.SurfaceView backdropSurface;
     private ViewTreeObserver preVto;
     private Window window;
     private String bkNote = "";
@@ -309,7 +310,7 @@ final class GlassSession implements Choreographer.FrameCallback {
 
     /** Нужен ли настоящий фон прямо сейчас: включён, панель видна, шейдер рисует панель целиком. */
     private boolean liveWanted() {
-        return GlassCfg.lv && GlassCfg.bk && live != null && !liveFailed && attached && measured && bar.isShown()
+        return GlassCfg.lv && GlassCfg.bk && live != null && !liveFailed && backdropSurface == null && attached && measured && bar.isShown()
                 && shaderOnly();
     }
 
@@ -357,6 +358,22 @@ final class GlassSession implements Choreographer.FrameCallback {
                     }
                 }
                 BackdropCopy bc = bcopy;
+                // SurfaceView рисуется отдельной поверхностью, которой нет в View.draw/RenderNode.
+                // Если полоса ленты покрыта такой поверхностью, используем штатный PixelCopy.
+                if (bc != null && measured && GlassCfg.bk && bar.isShown()) {
+                    bar.getLocationInWindow(loc);
+                    View dv = windowDecor();
+                    int[] sample = dv == null ? null : GlassBackdrop.plan(loc[0], loc[1], capL, capT,
+                            capR, capB, pad, dv.getWidth(), dv.getHeight(), GlassBackdrop.sigmaPx(GlassCfg.bl, dm));
+                    android.view.SurfaceView surface = sample == null ? null : BackdropCopy.findSurface(dv, sample);
+                    if (surface != backdropSurface) {
+                        backdropSurface = surface;
+                        capDirty = true;
+                        lens.invalidateSelf();
+                    }
+                } else {
+                    backdropSurface = null;
+                }
                 if (bc != null && GlassCfg.bk && GlassCfg.glass() && !CrashGuard.tripped && measured && useAgsl()
                         && bar.isShown() && !bc.busy() && !liveOn()) {
                     next = Math.min(next, bc.lastChanged() || ph.active() ? 120L : 360L);
@@ -369,7 +386,7 @@ final class GlassSession implements Choreographer.FrameCallback {
                         bkNote = dv == null ? "у окна нет корневого вида" : "полоса над панелью не помещается в окно";
                     } else {
                         bkNote = "";
-                        bc.request(pl, GlassBackdrop.sigmaPx(GlassCfg.bl, dm), onBackdrop);
+                        bc.request(pl, GlassBackdrop.sigmaPx(GlassCfg.bl, dm), onBackdrop, backdropSurface);
                     }
                 } else if (bc != null && bc.busy()) {
                     next = Math.min(next, 60L);
