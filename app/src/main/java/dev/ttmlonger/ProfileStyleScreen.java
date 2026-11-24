@@ -14,7 +14,8 @@ final class ProfileStyleScreen extends Screen {
         opt(body,"profile_follow","Показывать статус подписки","Под именем пользователя");
         opt(body,"profile_date","Дата создания аккаунта","Приблизительная дата из ID");
         opt(body,"profile_repost","Время последнего репоста","Только если модель TikTok отдаёт время последнего репоста");
-        opt(body,"profile_copy","Копировать данные профиля","Долгое нажатие на @username");
+        opt(body,"profile_copy","Копировать данные профиля","Долгое нажатие на @username · отдельные поля");
+        opt(body,"profile_date_jump","Перейти к дате","Год и месяц среди загруженных публикаций профиля");
         body.addView(toggleRow(-1,"Значки TikTok You","Список бейджиков мода",Prefs.badgesOn,on->{Prefs.setBadgesOn(on);refresh();}));
         body.addView(ui.menuRow(Icons.SLIDERS,"Управление бейджиками","Персональные значки и общий список",null,v->BadgesScreen.show(act)));
         body.addView(ui.header("Кнопки профиля"));

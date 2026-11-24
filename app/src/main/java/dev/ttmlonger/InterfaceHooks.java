@@ -27,7 +27,7 @@ final class InterfaceHooks {
 
     static boolean on(String key) {
         if(key.equals("comment_copy"))key="comment_copy_body";
-        return prefs != null && prefs.getBoolean(key, (key.equals("details") || key.equals("comment_copy_body")));
+        return prefs != null && prefs.getBoolean(key, (key.equals("details") || key.equals("comment_copy_body") || key.equals("profile_date_jump") || key.equals("profile_copy")));
     }
 
     static void set(String key, boolean value) {

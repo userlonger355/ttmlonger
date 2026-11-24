@@ -22,6 +22,7 @@ import de.robv.android.xposed.XposedBridge;
 final class ProfileFacts {
     private static final LruCache<String, WeakReference<Object>> users = new LruCache<>(128);
     private TextView extras;
+    private TextView dateAction;
     private TextView anchor;
     private boolean wasLongClickable;
     private static final java.util.WeakHashMap<View, String> handles = new java.util.WeakHashMap<>();
@@ -43,14 +44,14 @@ final class ProfileFacts {
         }
         XposedBridge.hookAllMethods(View.class, "performLongClick", new XC_MethodHook() {
             @Override protected void beforeHookedMethod(MethodHookParam p) {
-                if (!InterfaceHooks.on("profile_copy") || CrashGuard.tripped) return;
+                if ((!InterfaceHooks.on("profile_copy")&&!InterfaceHooks.on("profile_date_jump")) || CrashGuard.tripped) return;
                 View v = (View) p.thisObject;
                 String key = handles.get(v);
                 if (key == null || !v.isShown() || !(v instanceof TextView)
                         || !("@" + key).equalsIgnoreCase(((TextView) v).getText().toString().trim())) return;
                 Activity a = ScreenWatcher.top();
                 if (a == null || a.getWindow().getDecorView() != v.getRootView()) return;
-                show(a, key);
+                if(InterfaceHooks.on("profile_copy"))show(a,key);else ProfileDatePicker.show(a,key);
                 p.setResult(true);
             }
         });
@@ -80,18 +81,20 @@ final class ProfileFacts {
         List<String> labels = new ArrayList<>(), values = new ArrayList<>();
         add(labels, values, "Имя", BadgeLogic.strip(text(user, "getNickname")));
         add(labels, values, "Имя пользователя", "@" + key);
-        add(labels, values, "Ссылка", "https://www.tiktok.com/@" + key);
-        add(labels, values, "ID", BadgeHooks.uidOf(user));
+        add(labels, values, "Ссылка на профиль", "https://www.tiktok.com/@" + key);
+        add(labels, values, "ID пользователя", BadgeHooks.uidOf(user));
         add(labels, values, "Описание", text(user, "getSignature"));
-        AlertDialog d = new AlertDialog.Builder(a, Ui.dialogTheme()).setTitle("Скопировать из профиля")
-                .setItems(labels.toArray(new String[0]), (dialog, i) -> {
-                    ClipboardManager cm = (ClipboardManager) a.getSystemService(Context.CLIPBOARD_SERVICE);
-                    cm.setPrimaryClip(ClipData.newPlainText(labels.get(i), values.get(i)));
-                    Toasts.show(a, "Скопировано");
-                }).setNegativeButton("Закрыть", null).create();
-        Screen.markOwn(d);
-        d.show();
-        Ui.style(d);
+        StreakSheet sheet=new StreakSheet(a,"Скопировать");Ui ui=sheet.ui;
+        android.widget.ScrollView scroll=new android.widget.ScrollView(a);LinearLayout rows=new LinearLayout(a);rows.setOrientation(1);rows.setPadding(ui.dp(16),0,ui.dp(16),0);scroll.addView(rows);
+        for(int n=0;n<labels.size();n++){
+            final int index=n;LinearLayout row=ui.row(-1,labels.get(n),values.get(n),null,false,null);row.setBackground(ui.round(Ui.FIELD,14));
+            row.addView(ui.icon(Icons.COPY,Ui.MUTED,20));
+            row.setOnClickListener(v->{ClipboardManager cm=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);if(cm!=null){cm.setPrimaryClip(new ClipData(labels.get(index),new String[]{"text/plain"},new ClipData.Item(values.get(index))));Toasts.show(a,"Скопировано: "+labels.get(index));}});
+            LinearLayout.LayoutParams lp=ui.matchWrap();lp.bottomMargin=ui.dp(5);rows.addView(row,lp);
+        }
+        sheet.root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(ui.dp(390),(int)(a.getResources().getDisplayMetrics().heightPixels*.50f))));
+        if(InterfaceHooks.on("profile_date_jump"))sheet.button("Перейти к дате",false,()->{sheet.dialog.dismiss();ProfileDatePicker.show(a,key);});
+        sheet.button("Закрыть",false,()->sheet.dialog.dismiss());sheet.show();
     }
 
     private static void add(List<String> names, List<String> values, String name, String value) {
@@ -100,14 +103,14 @@ final class ProfileFacts {
 
     void bind(TextView view) {
         if (!InterfaceHooks.on("profile_copy") && !InterfaceHooks.on("profile_follow")
-                && !InterfaceHooks.on("profile_date") && !InterfaceHooks.on("profile_counts") && !InterfaceHooks.on("profile_repost")) view = null;
-        if (anchor != view || !InterfaceHooks.on("profile_copy")) {
+                && !InterfaceHooks.on("profile_date") && !InterfaceHooks.on("profile_counts") && !InterfaceHooks.on("profile_repost")&&!InterfaceHooks.on("profile_date_jump")) view = null;
+        if (anchor != view || (!InterfaceHooks.on("profile_copy")&&!InterfaceHooks.on("profile_date_jump"))) {
             if (anchor != null && handles.remove(anchor) != null) anchor.setLongClickable(wasLongClickable);
         }
         anchor = view;
         if (view == null) { remove(); return; }
         String key = view.getText().toString().trim().substring(1);
-        if (InterfaceHooks.on("profile_copy")) {
+        if (InterfaceHooks.on("profile_copy")||InterfaceHooks.on("profile_date_jump")) {
             if (!handles.containsKey(view)) wasLongClickable = view.isLongClickable();
             handles.put(view, key);
             view.setLongClickable(true);
@@ -141,7 +144,7 @@ final class ProfileFacts {
             }
             if (!counts.isEmpty()) info += (info.isEmpty() ? "" : "\n") + android.text.TextUtils.join(" · ", counts);
         }
-        if (info.isEmpty() || !(view.getParent() instanceof LinearLayout)) { remove(); return; }
+        if (!(view.getParent() instanceof LinearLayout)) { remove(); return; }
         LinearLayout parent = (LinearLayout) view.getParent();
         if (parent.getOrientation() != LinearLayout.VERTICAL) { remove(); return; }
         if (extras == null || extras.getParent() != parent) {
@@ -151,6 +154,11 @@ final class ProfileFacts {
             extras.setTextSize(12);
             parent.addView(extras, parent.indexOfChild(view) + 1);
         }
+        extras.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
+        if(InterfaceHooks.on("profile_date_jump")){
+            if(dateAction==null||dateAction.getParent()!=parent){if(dateAction!=null&&dateAction.getParent() instanceof ViewGroup)((ViewGroup)dateAction.getParent()).removeView(dateAction);dateAction=new TextView(view.getContext());dateAction.setTag(Ui.OWN_TAG);dateAction.setText("Перейти к дате ›");dateAction.setTextSize(13);dateAction.setPadding(0,6,0,6);parent.addView(dateAction,parent.indexOfChild(extras)+1);}
+            dateAction.setTextColor(Theme.accent());dateAction.setOnClickListener(v->{Activity a=ScreenWatcher.top();if(a!=null)ProfileDatePicker.show(a,key);});
+        }else if(dateAction!=null){if(dateAction.getParent() instanceof ViewGroup)((ViewGroup)dateAction.getParent()).removeView(dateAction);dateAction=null;}
         extras.setTextColor(view.getCurrentTextColor());
         if (!info.contentEquals(extras.getText())) extras.setText(info);
     }
@@ -158,5 +166,6 @@ final class ProfileFacts {
     private void remove() {
         if (extras != null && extras.getParent() instanceof ViewGroup) ((ViewGroup) extras.getParent()).removeView(extras);
         extras = null;
+        if(dateAction!=null&&dateAction.getParent() instanceof ViewGroup)((ViewGroup)dateAction.getParent()).removeView(dateAction);dateAction=null;
     }
 }

@@ -419,20 +419,8 @@ final class VideoInfo {
 
     /** Exact event time from a native repost record, never from the publication ID. */
     static long repostTimeOf(Object aweme) {
-        if(aweme==null)return 0;
-        long now=System.currentTimeMillis()/1000L;
-        long published=parseEventTime(get(aweme,"getCreateTime","createTime","create_time","mCreateTime"));
-        long result=repostFields(aweme,published,now,false);
-        if(result<0)return 0;
-        Object aid=get(aweme,"getAid","aid");
-        for(Object info:new Object[]{get(aweme,"getUpvoteInfo","upvoteInfo","upvote_info"),
-                get(aweme,"getRepostInfo","repostInfo","repost_info")}){
-            if(info==null)continue;
-            long nested=eventRecord(info,aid,published,now);
-            if(nested<0||result>0&&nested>0&&result!=nested)return 0;
-            if(nested>0)result=nested;
-        }
-        return result;
+        // A feed item can carry multiple repost records. Display the latest explicit event.
+        return RepostTimes.read(aweme);
     }
     private static long eventRecord(Object info,Object aid,long published,long now){
         if(info instanceof java.util.List){
