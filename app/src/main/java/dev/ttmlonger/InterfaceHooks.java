@@ -26,7 +26,7 @@ final class InterfaceHooks {
     private static String lastAction = "";
 
     static boolean on(String key) {
-        return prefs != null && prefs.getBoolean(key, key.equals("details"));
+        return prefs != null && prefs.getBoolean(key, (key.equals("details") || key.equals("comment_copy_body")));
     }
 
     static void set(String key, boolean value) {
@@ -91,6 +91,7 @@ final class InterfaceHooks {
         if (!CrashGuard.tripped && TabOrder.custom(act, true))
             TabOrder.applyTop(decor, 0, new int[]{600}, decor.getHeight());
         else TabOrder.reset(true);
+        TopTabs.apply(act);
         boolean reorder = !CrashGuard.tripped && TabOrder.custom(act, false);
         if (!reorder) TabOrder.reset(false);
         if (!on("labels") || CrashGuard.tripped) {

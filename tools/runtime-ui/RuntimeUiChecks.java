@@ -108,6 +108,9 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            result("top_tabs_independent", "top_hide_community".equals(TopTabs.setting("community"))&&"top_hide_friends".equals(TopTabs.setting("friends"))&&"top_hide_recommend".equals(TopTabs.setting("recommend"))&&TopTabs.setting("following")==null);
+            result("top_tabs_scoped_row",TopTabs.navigation(new java.util.HashSet<>(java.util.Arrays.asList("community","friends","recommend")),false)&&!TopTabs.navigation(new java.util.HashSet<>(java.util.Arrays.asList("friends","community","following")),true));
+            result("comment_copy_preserves_mentions","Спасибо @friend! https://example.org".equals(CommentSelect.body(new CopyCommentFixture()))&&CommentSelect.body(new Object())==null);
             result("mtp_api_version",cat.narezany.margyt.plugin.MargyPlugin.API==5);
             result("mtp_safe_id",MtpArchive.validId("margyt.hello")&&!MtpArchive.validId("../bad")&&!MtpArchive.validId("a/b"));
             try{
@@ -178,6 +181,7 @@ final class RuntimeUiChecks {
             result("streak_next_day",StreakLogic.manualVerdict("GREY",3,now-86400000L,0,now,tz)==StreakLogic.Verdict.SEND);
         } catch(Throwable e){fail("streak_checks",e);}
     }
+    public static final class CopyCommentFixture { public String getText(){return "Спасибо @friend! https://example.org";} public String getNickname(){return "Author";} }
     public static final class FakeFeedPost {
         final boolean ad;
         final int type;

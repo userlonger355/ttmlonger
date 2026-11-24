@@ -12,7 +12,7 @@ import java.util.Map;
 
 /** Allow-listed appearance/interface backup. Never export account, message, token, or A/B data. */
 final class SettingsBackup {
-    private static final String[] BOOL={"clean","labels","like","follow","repost","share","profile_copy","profile_counts","profile_date","profile_follow","details","message_clock","comment_select","own_brightness","avatar_contour_spin"};
+    private static final String[] BOOL={"clean","labels","like","follow","repost","share","profile_copy","profile_counts","profile_date","profile_follow","details","message_clock","comment_select","comment_copy_body","top_hide_community","top_hide_friends","top_hide_recommend","own_brightness","avatar_contour_spin"};
     private static final String[] CORE_BOOL={"vtTime","vtRepost","vtSeconds","vtRegion","amoled","keepLanguage","saveStickers","hideAds","hideLiveButton","hideLiveRooms"};
     private static final String[] CORE_INT={"accent","vtFormat","vtRegionMode","vtStyle","vtPos","vtOpacity"};
     private static final int MAX=32768;

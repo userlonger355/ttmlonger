@@ -39,6 +39,11 @@ final class InterfaceScreen extends Screen {
         body.addView(ui.menuRow(Icons.SLIDERS, "Порядок нижних вкладок", "Главная остаётся на месте", null,
                 v -> TabOrder.editor(act, false)));
         option(body, "labels", "Скрывать названия вкладок", "Оставить значки и счётчик входящих");
+        body.addView(ui.header("Скрыть верхние вкладки"));
+        body.addView(ui.note("Скрываются только кнопки верхней ленты. Сами разделы и свайпы TikTok сохраняются."));
+        option(body,"top_hide_community","Скрыть «Сообщество»",null);
+        option(body,"top_hide_friends","Скрыть «Друзья»",null);
+        option(body,"top_hide_recommend","Скрыть «Для вас»",null);
         body.addView(ui.header("Скрыть кнопки в ленте"));
         LinearLayout preview = new LinearLayout(act);
         preview.setOrientation(LinearLayout.HORIZONTAL);
@@ -73,6 +78,7 @@ final class InterfaceScreen extends Screen {
                     : "Может быть недоступно в этой версии TikTok");
         }
         body.addView(ui.header("Комментарии"));
+        option(body,"comment_copy_body","Копировать комментарий без юзернейма","Пункт «Копировать без юзернейма» при удержании комментария");
         option(body,"comment_select","Выделение текста комментария","Дополнительный пункт в штатном меню удержания");
         body.addView(ui.header("Жесты на видео"));
         FeedGestures.settings(this, body);
@@ -99,7 +105,7 @@ final class InterfaceScreen extends Screen {
                 FeedButtons.refresh();
                 refreshPreview();
             }
-            if (key.equals("labels")) InterfaceHooks.labels(act);
+            if (key.equals("labels") || key.startsWith("top_hide_")) InterfaceHooks.labels(act);
         }));
     }
 

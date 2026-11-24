@@ -38,14 +38,14 @@ final class TabOrder {
         return prefs(c).contains(top ? "top_tabs" : "tabs");
     }
 
-    private static String name(View v, int depth) {
+    static String name(View v, int depth) {
         if ("LIVE".contentEquals(v.getContentDescription() == null ? "" : v.getContentDescription())) return "live";
         if (v instanceof TextView) {
             String text = ((TextView) v).getText().toString().trim().toLowerCase(Locale.ROOT);
             switch (text) {
                 case "подписки": case "following": return "following";
                 case "сообщество": case "community": return "community";
-                case "рекомендации": case "for you": return "recommend";
+                case "рекомендации": case "для вас": case "for you": return "recommend";
                 case "live": return "live";
                 case "главная": case "home": return "home";
                 case "друзья": case "friends": return "friends";
@@ -112,7 +112,7 @@ final class TabOrder {
             boolean recommend = false;
             for (int i = 0; i < group.getChildCount(); i++) {
                 View child = group.getChildAt(i);
-                if (!child.isShown() || child.getWidth() == 0) continue;
+                if ((!child.isShown() && !TopTabs.hidden(child)) || child.getWidth() == 0) continue;
                 String key = name(child, 0);
                 if ("recommend".equals(key)) recommend = true;
                 if (TOP.contains(key) && !tabs.containsKey(key)) { tabs.put(key, child); places.add(child); }
