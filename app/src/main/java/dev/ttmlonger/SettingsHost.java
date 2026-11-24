@@ -43,12 +43,12 @@ final class SettingsHost {
         int ink=dark?0xfff5f5f5:0xff161823,muted=dark?0xff828282:0xff74747c,fill=dark?0xff1d1d1d:0xfff5f5f5;
         Ui.use(ModBlock.Palette.of(dark?0xff000000:0xffffffff));
         LinearLayout r=new LinearLayout(a);r.setTag(Ui.OWN_TAG);r.setOrientation(LinearLayout.HORIZONTAL);r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(dp(a,22),0,dp(a,20),0);r.setMinimumHeight(dp(a,48));
+        r.setPadding(dp(a,23),0,dp(a,24),0);r.setMinimumHeight(0);
         r.setBackground(new RippleDrawable(ColorStateList.valueOf(dark?0x22ffffff:0x16000000),new ColorDrawable(fill),null));
         ImageView icon=new ImageView(a);icon.setImageDrawable(Icons.of(Icons.SLIDERS,muted));
-        r.addView(icon,new LinearLayout.LayoutParams(dp(a,21),dp(a,21)));
-        TextView text=new TextView(a);text.setText("Настройки мода");text.setTextColor(ink);text.setTextSize(16);text.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);text.setGravity(Gravity.CENTER_VERTICAL);text.setSingleLine(true);
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-1,1);lp.leftMargin=dp(a,10);r.addView(text,lp);
+        r.addView(icon,new LinearLayout.LayoutParams(dp(a,16),dp(a,16)));
+        TextView text=new TextView(a);text.setText("Настройки мода");text.setTextColor(ink);text.setTextSize(16);text.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);text.setGravity(Gravity.CENTER_VERTICAL);text.setIncludeFontPadding(false);text.setSingleLine(true);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-1,1);lp.leftMargin=dp(a,9);r.addView(text,lp);
         ImageView chevron=new ImageView(a);chevron.setImageDrawable(Icons.of(Icons.CHEVRON_RIGHT,muted));r.addView(chevron,new LinearLayout.LayoutParams(dp(a,16),dp(a,16)));
         r.setContentDescription("Настройки мода");r.setClickable(true);r.setFocusable(true);r.setOnClickListener(v->ModMenu.show(a));return r;
     }
@@ -57,7 +57,7 @@ final class SettingsHost {
         Injector(Activity a){this.a=a;}
         @Override public void onGlobalLayout(){
             if(busy||a.isFinishing()||a.isDestroyed())return;
-            if(frame!=null){frame.invalidate();return;}
+            if(frame!=null)return;
             if(nativeRow!=null&&nativeRow.isAttachedToWindow())return;
             busy=true;
             try{
@@ -114,15 +114,15 @@ final class SettingsHost {
         return null;
     }
     private static class Found {
-        Rect first,second;boolean activity;
+        Rect first,second,firstText,secondText;boolean activity;
     }
     private static void nodes(AccessibilityNodeProvider provider,AccessibilityNodeInfo n,Rect clickable,Found out,int[] budget,int depth){
         if(n==null||--budget[0]<0||depth>32)return;
         Rect r=new Rect();n.getBoundsInScreen(r);
         Rect row=n.isClickable()&&!r.isEmpty()?r:clickable;
         CharSequence t=n.getText(),d=n.getContentDescription();
-        if(is(t,FIRST)||is(d,FIRST))out.first=new Rect(row==null?r:row);
-        if(is(t,SECOND)||is(d,SECOND))out.second=new Rect(row==null?r:row);
+        if(is(t,FIRST)||is(d,FIRST)){out.first=new Rect(row==null?r:row);if(!r.isEmpty())out.firstText=new Rect(r);}
+        if(is(t,SECOND)||is(d,SECOND)){out.second=new Rect(row==null?r:row);if(!r.isEmpty())out.secondText=new Rect(r);}
         if(is(t,new String[]{"активность","activity"})||is(d,new String[]{"активность","activity"}))out.activity=true;
         for(int i=0;i<n.getChildCount()&&budget[0]>0;i++){
             AccessibilityNodeInfo ch=null;
@@ -158,28 +158,32 @@ final class SettingsHost {
     private static final class InlineFrame extends FrameLayout {
         final Activity act;final ViewGroup content;final Injector owner;
         LinearLayout action;int cut=-1,delta,left,width;boolean dark;
-        long lastScan;boolean gesture,shifted,rowTouch;
+        long lastScan;int missing,gestureDelta;boolean gesture,shifted,rowTouch;View provider;
         InlineFrame(Activity a,ViewGroup c,Injector owner){
             super(a);this.act=a;content=c;this.owner=owner;setClipChildren(true);
             getViewTreeObserver().addOnPreDrawListener(()->{refresh();return true;});
         }
         private void refresh(){
-            long now=SystemClock.uptimeMillis();if(now-lastScan<80||getWidth()==0)return;lastScan=now;
+            long now=SystemClock.uptimeMillis();if(now==lastScan||getWidth()==0)return;lastScan=now;
             try{
                 AccessibilityManager am=(AccessibilityManager)act.getSystemService(Context.ACCESSIBILITY_SERVICE);
                 if(am!=null&&am.isTouchExplorationEnabled()){hideSlot();return;}
                 int visible=0;for(int i=0;i<content.getChildCount();i++)if(content.getChildAt(i).getVisibility()==VISIBLE)visible++;
                 if(visible>1){hideSlot();return;}
-                View v=findProvider(content,0);if(v==null){hideSlot();return;}
+                View v=provider;if(v==null||!v.isShown()||!v.isAttachedToWindow())provider=v=findProvider(content,0);if(v==null){hideSlot();return;}
                 Found f=locate(v);
-                if(f.first==null||f.second==null){hideSlot();return;}
-                Rect a=f.first,b=f.second;int[] pos=new int[2];getLocationOnScreen(pos);
+                if(f.first==null||f.second==null){if(++missing>=2)hideSlot();return;}
+                missing=0;
+                Rect a=f.firstText!=null?f.firstText:f.first,b=f.secondText!=null?f.secondText:f.second;int[] pos=new int[2];getLocationOnScreen(pos);
                 int h=b.centerY()-a.centerY();
                 if(h<dp(act,36)||h>dp(act,84)||Math.abs(a.centerX()-b.centerX())>dp(act,25)&&a.width()>getWidth()*.6f){hideSlot();return;}
                 int y=a.centerY()-h/2-pos[1];
                 if(y<dp(act,50)||y+h>getHeight()-dp(act,16)){hideSlot();return;}
-                int l=a.width()>getWidth()*.7f?Math.max(0,a.left-pos[0]):dp(act,8);
-                int w=a.width()>getWidth()*.7f?Math.min(getWidth()-l,a.width()):getWidth()-l*2;
+                Rect bounds=f.first;
+                int l=bounds.width()>getWidth()*.7f?Math.max(0,bounds.left-pos[0]):dp(act,8);
+                int w=bounds.width()>getWidth()*.7f?Math.min(getWidth()-l,bounds.width()):getWidth()-l*2;
+                // The Compose clickable bounds sometimes include the entire viewport. Keep native card margins.
+                if(l<dp(act,5)||w>getWidth()-dp(act,10)){l=dp(act,8);w=getWidth()-2*l;}
                 boolean night=(act.getResources().getConfiguration().uiMode&0x30)==0x20;
                 android.graphics.drawable.Drawable bg=content.getBackground();
                 if(bg instanceof ColorDrawable)night=ModBlock.luminance(((ColorDrawable)bg).getColor())<.5f;
@@ -190,7 +194,10 @@ final class SettingsHost {
                 boolean changed=cut!=y||delta!=h||left!=l||width!=w;
                 cut=y;delta=h;left=l;width=w;
                 if(changed||action.getVisibility()!=VISIBLE){
-                    FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)action.getLayoutParams();lp.width=w;lp.height=h;lp.leftMargin=l;lp.topMargin=y;action.setLayoutParams(lp);action.setVisibility(VISIBLE);invalidate();
+                    // Move the already measured row without scheduling another layout pass on every scroll frame.
+                    FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)action.getLayoutParams();lp.width=w;lp.height=h;lp.leftMargin=l;lp.topMargin=y;
+                    if(action.getMeasuredWidth()!=w||action.getMeasuredHeight()!=h)action.measure(MeasureSpec.makeMeasureSpec(w,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(h,MeasureSpec.EXACTLY));
+                    action.layout(l,y,l+w,y+h);if(action.getVisibility()!=VISIBLE)action.setVisibility(VISIBLE);invalidate();
                 }
                 owner.state="первый пункт «Активность» (визуальная вставка Compose)";
             }catch(Throwable ignored){hideSlot();}
@@ -201,19 +208,26 @@ final class SettingsHost {
             long time=getDrawingTime();
             int s=canvas.save();canvas.clipRect(0,0,getWidth(),cut);drawChild(canvas,content,time);canvas.restoreToCount(s);
             s=canvas.save();canvas.clipRect(0,cut+delta,getWidth(),getHeight());canvas.translate(0,delta);drawChild(canvas,content,time);canvas.restoreToCount(s);
-            s=canvas.save();canvas.clipRect(0,cut,getWidth(),cut+delta);canvas.drawColor(dark?0xff000000:0xffffffff);drawChild(canvas,action,time);canvas.restoreToCount(s);
+            s=canvas.save();canvas.clipRect(0,cut,getWidth(),cut+delta);canvas.drawColor(dark?0xff000000:0xffffffff);
+            // The first row has rounded upper corners, matching the stock Activity card.
+            android.graphics.Path mask=new android.graphics.Path();float radius=dp(act,8);
+            mask.addRoundRect(new android.graphics.RectF(left,cut,left+width,cut+delta),new float[]{radius,radius,radius,radius,0,0,0,0},android.graphics.Path.Direction.CW);
+            canvas.clipPath(mask);drawChild(canvas,action,time);canvas.restoreToCount(s);
+            // Fill the small rounded-corner gap left by the original first row.
+            android.graphics.Paint seam=new android.graphics.Paint();seam.setColor(dark?0xff1d1d1d:0xfff5f5f5);
+            canvas.drawRect(left,cut+delta,left+radius,cut+delta+radius,seam);canvas.drawRect(left+width-radius,cut+delta,left+width,cut+delta+radius,seam);
         }
         @Override public boolean dispatchTouchEvent(android.view.MotionEvent e){
             int type=e.getActionMasked();
             if(type==MotionEvent.ACTION_DOWN){
-                gesture=true;rowTouch=cut>=0&&e.getY()>=cut&&e.getY()<cut+delta;
+                gesture=true;gestureDelta=delta;rowTouch=cut>=0&&e.getY()>=cut&&e.getY()<cut+delta;
                 shifted=cut>=0&&e.getY()>=cut+delta;
             }
             if(!gesture||(!rowTouch&&!shifted)){boolean r=super.dispatchTouchEvent(e);if(type==MotionEvent.ACTION_UP||type==MotionEvent.ACTION_CANCEL)gesture=false;return r;}
             MotionEvent copy=MotionEvent.obtain(e);
             try{
                 if(rowTouch&&action!=null){copy.offsetLocation(-action.getLeft(),-action.getTop());action.dispatchTouchEvent(copy);return true;}
-                copy.offsetLocation(0,-delta);return content.dispatchTouchEvent(copy);
+                copy.offsetLocation(0,-gestureDelta);return content.dispatchTouchEvent(copy);
             }finally{copy.recycle();if(type==MotionEvent.ACTION_UP||type==MotionEvent.ACTION_CANCEL){gesture=false;rowTouch=false;shifted=false;}}
         }
     }

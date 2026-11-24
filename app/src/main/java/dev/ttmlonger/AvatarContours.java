@@ -22,7 +22,7 @@ import de.robv.android.xposed.XposedHelpers;
  * Original circles remain untouched; only known circle draw/clip calls are substituted. */
 final class AvatarContours {
     static final String[] LABELS={"Круг","Скруглённый","Скверкл","Печенье","Клевер","Вспышка","Волна","Ромб","Шестигранник","Сердечко","Цветок","Арка"};
-    private static final String[] OWNERS={"X.1Fnt","X.1Fnu","X.0HEe","X.0GvU"};
+    private static final String[] OWNERS={"X.1Fnt","X.1Fnu","X.0HEe","X.0GvU","com.facebook.drawee.drawable.RoundedBitmapDrawable","com.facebook.drawee.drawable.RoundedDrawable","com.facebook.drawee.drawable.RoundedNinePatchDrawable","com.facebook.drawee.drawable.RoundedCornersDrawable","com.facebook.drawee.drawable.RoundedColorDrawable"};
     private static final WeakHashMap<Path,float[]> circles=new WeakHashMap<>();
     private static final java.util.Set<String> BUILDERS=new java.util.HashSet<>(java.util.Arrays.asList("X.1Fnt","X.0HEe","X.0GvU"));
     private static final java.util.Set<String> DRAWERS=new java.util.HashSet<>(java.util.Arrays.asList("X.1Fnu","X.0HEe","X.0GvU"));
@@ -37,6 +37,8 @@ final class AvatarContours {
     private static volatile int spinSeconds=9;
     private static volatile long spinStart=SystemClock.uptimeMillis();
     private static volatile int hooks;
+    private static final ThreadLocal<Integer> avatarRender=new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> makingContour=new ThreadLocal<>();
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final WeakHashMap<Drawable,Boolean> waiting=new WeakHashMap<>();
     private static boolean posted;
@@ -44,7 +46,7 @@ final class AvatarContours {
     static Path contour(int id,float cx,float cy,float radius,float angle){
         Path path=new Path();
         id=clamp(id);
-        if(id==0){path.addCircle(cx,cy,radius,Path.Direction.CW);return path;}
+        if(id==0){makingContour.set(true);try{path.addCircle(cx,cy,radius,Path.Direction.CW);}finally{makingContour.remove();}return path;}
         if(id==1){
             float side=radius*.96f;
             path.addRoundRect(new RectF(-side,-side,side,side),radius*.35f,radius*.35f,Path.Direction.CW);
@@ -131,10 +133,10 @@ final class AvatarContours {
                 }
             }
             android.util.Log.i("TTMLonger","Avatar builder anchors="+matchedBuilders+" methods="+builderHooks+" draw="+hooks);
-            if(matchedBuilders==0)return;
+            // The scoped ImageView and circular shader paths remain useful even when the old anchors move.
             XposedBridge.hookAllMethods(Path.class,"addCircle",new XC_MethodHook(){
                 @Override protected void beforeHookedMethod(MethodHookParam p){
-                    if(CrashGuard.tripped||p.args.length!=4||!(p.thisObject instanceof Path))return;
+                    if(CrashGuard.tripped||makingContour.get()!=null||p.args.length!=4||!(p.thisObject instanceof Path))return;
                     boolean known=building.get()!=null;
                     if(!known)for(StackTraceElement frame:Thread.currentThread().getStackTrace()){
                         if(BUILDERS.contains(frame.getClassName())){known=true;break;}
@@ -145,6 +147,8 @@ final class AvatarContours {
                         float x=((Number)p.args[0]).floatValue(),y=((Number)p.args[1]).floatValue(),r=((Number)p.args[2]).floatValue();
                         if(!(r>0)||!Float.isFinite(r)||!Float.isFinite(x)||!Float.isFinite(y))return;
                         boolean empty=path.isEmpty();
+                        // Fresco's rounded drawing also serves non-avatar icons. Only change its paths in a recognized avatar scope; otherwise wait for bitmap rendering.
+                        if(building.get()!=null&&drawing.get()!=null&&drawing.get().getClass().getName().startsWith("com.facebook.")&&avatarRender.get()==null)return;
                         if(empty)synchronized(circles){circles.put(path,new float[]{x,y,r,shape});}
                         if(shape==0)return;
                         addMask(path,shape,x,y,r);
@@ -160,14 +164,20 @@ final class AvatarContours {
             XposedBridge.hookAllMethods(Path.class,"rewind",reset);
             XC_MethodHook draw=new XC_MethodHook(){
                 @Override protected void beforeHookedMethod(MethodHookParam p){
-                    if(CrashGuard.tripped||drawing.get()==null||p.args.length==0||!(p.args[0] instanceof Path))return;
+                    if(CrashGuard.tripped||(drawing.get()==null&&avatarRender.get()==null)||p.args.length==0||!(p.args[0] instanceof Path))return;
                     try{
                         Path original=(Path)p.args[0];float[] at;
                         synchronized(circles){at=circles.get(original);}
-                        if(at==null)return;
+                        if(at==null){
+                            if(shape==0||!circularPath(original))return;
+                            if(avatarRender.get()==null&&!roundedBitmap(drawing.get()))return;
+                            RectF bounds=new RectF();original.computeBounds(bounds,true);
+                            p.args[0]=contour(shape,bounds.centerX(),bounds.centerY(),bounds.width()/2f,animates()?angle(SystemClock.uptimeMillis()):0);
+                            if(animates()&&drawing.get()!=null)again(drawing.get());return;
+                        }
                         // Static shape was already inserted at construction. Rotate only a pure mask
                         // with the same bounds; preserve composite border paths.
-                        if(Looper.myLooper()==Looper.getMainLooper())knownDrawables.put(drawing.get(),true);
+                        if(drawing.get()!=null&&Looper.myLooper()==Looper.getMainLooper())knownDrawables.put(drawing.get(),true);
                         if(!animates()&&(int)at[3]==shape)return;
                         Path unturned=contour((int)at[3],at[0],at[1],at[2],0);
                         RectF originalBounds=new RectF(),maskBounds=new RectF();
@@ -175,14 +185,34 @@ final class AvatarContours {
                         if(Math.abs(originalBounds.left-maskBounds.left)>1||Math.abs(originalBounds.right-maskBounds.right)>1||
                             Math.abs(originalBounds.top-maskBounds.top)>1||Math.abs(originalBounds.bottom-maskBounds.bottom)>1)return;
                         p.args[0]=contour(shape,at[0],at[1],at[2],animates()?angle(SystemClock.uptimeMillis()):0);
-                        if(animates())again(drawing.get());
+                        if(animates()&&drawing.get()!=null)again(drawing.get());
                     }catch(Throwable ignored){}
                 }
             };
             XposedBridge.hookAllMethods(Canvas.class,"drawPath",draw);
             XposedBridge.hookAllMethods(Canvas.class,"clipPath",draw);
+            XposedBridge.hookAllMethods(Canvas.class,"drawCircle",new XC_MethodHook(){
+                @Override protected void beforeHookedMethod(MethodHookParam p){
+                    if(shape==0||CrashGuard.tripped||p.args.length!=4||!(p.args[3] instanceof Paint))return;
+                    Paint paint=(Paint)p.args[3];if(!(paint.getShader() instanceof BitmapShader))return;
+                    if(avatarRender.get()==null&&!roundedBitmap(drawing.get()))return;
+                    float x=((Number)p.args[0]).floatValue(),y=((Number)p.args[1]).floatValue(),r=((Number)p.args[2]).floatValue();if(r<=3||!Float.isFinite(r))return;
+                    ((Canvas)p.thisObject).drawPath(contour(shape,x,y,r,animates()?angle(SystemClock.uptimeMillis()):0),paint);p.setResult(null);
+                    if(animates()&&drawing.get()!=null)again(drawing.get());
+                }
+            });
         }catch(Throwable t){FlagStore.log(t);}
         android.util.Log.i("TTMLonger","Avatar contour draw hooks="+hooks);
+    }
+    private static boolean circularPath(Path path){
+        try{RectF r=new RectF();path.computeBounds(r,true);if(r.width()<8||Math.abs(r.width()-r.height())>r.width()*.025f)return false;
+            PathMeasure m=new PathMeasure(path,true);float length=m.getLength();if(Math.abs(length-(float)Math.PI*r.width())>r.width()*.06f||m.nextContour())return false;
+            m.setPath(path,true);float[] xy=new float[2];for(int i=0;i<8;i++){if(!m.getPosTan(length*i/8f,xy,null))return false;double dist=Math.hypot(xy[0]-r.centerX(),xy[1]-r.centerY());if(Math.abs(dist-r.width()/2f)>r.width()*.035f)return false;}return true;
+        }catch(Throwable t){return false;}
+    }
+    private static boolean roundedBitmap(Drawable d){
+        if(d==null)return false;String n=d.getClass().getName();if(!n.contains("RoundedBitmapDrawable"))return false;
+        try{Object value=d.getClass().getMethod("isCircle").invoke(d);return Boolean.TRUE.equals(value);}catch(Throwable ignored){return false;}
     }
     private static void again(Drawable d){
         if(Looper.myLooper()!=Looper.getMainLooper()||d.getCallback()==null)return;
@@ -199,7 +229,7 @@ final class AvatarContours {
     private static final WeakHashMap<View,Boolean> avatarViews=new WeakHashMap<>();
     private static final WeakHashMap<View,Boolean> visibleAvatars=new WeakHashMap<>();
     private static boolean avatarView(View v){
-        Boolean hit=avatarViews.get(v);if(hit!=null)return hit;
+        Boolean hit=avatarViews.get(v);if(Boolean.TRUE.equals(hit))return true;
         boolean yes=false;
         try{
             String name=v.getClass().getName().toLowerCase(java.util.Locale.ROOT);
@@ -208,12 +238,21 @@ final class AvatarContours {
                 String id=v.getResources().getResourceEntryName(v.getId()).toLowerCase(java.util.Locale.ROOT);
                 yes=(id.contains("avatar")||id.contains("head_image")||id.contains("user_head"))&&!id.contains("border")&&!id.contains("ring")&&!id.contains("edit")&&!id.contains("badge");
             }
+            if(!yes){
+                // Avatar wrapper names also identify obfuscated inner image widgets.
+                android.view.ViewParent parent=v.getParent();for(int i=0;i<3&&parent instanceof View;i++,parent=parent.getParent()){
+                    View pv=(View)parent;String tag=pv.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+                    if(pv.getId()!=View.NO_ID)try{tag+=" "+pv.getResources().getResourceEntryName(pv.getId()).toLowerCase(java.util.Locale.ROOT);}catch(Throwable ignored){}
+                    if(tag.contains("avatar")&&!tag.contains("ring")&&!tag.contains("edit")&&!tag.contains("enlarge")){yes=true;break;}
+                }
+            }
+            if(!yes&&v instanceof android.widget.ImageView)yes=roundedBitmap(((android.widget.ImageView)v).getDrawable());
         }catch(Throwable ignored){}
-        avatarViews.put(v,yes);return yes;
+        if(yes)avatarViews.put(v,true);return yes;
     }
     private static void installAvatarViews(){
         try{
-            XposedHelpers.findAndHookMethod(View.class,"draw",Canvas.class,new XC_MethodHook(){
+            XC_MethodHook render=new XC_MethodHook(){
                 @Override protected void beforeHookedMethod(MethodHookParam p){
                     if(CrashGuard.tripped||!(p.thisObject instanceof android.widget.ImageView))return;
                     View v=(View)p.thisObject;
@@ -224,18 +263,23 @@ final class AvatarContours {
                     Canvas canvas=(Canvas)p.args[0];
                     if(canvas==null)return;
                     float cx=v.getWidth()/2f,cy=v.getHeight()/2f,r=Math.min(cx,cy);
-                    // Round native masks remain handled by the original builder hooks.
-                    // Clip this rendering route to the same geometric contour, leaving the photo stationary.
-                    int save=canvas.save();p.setObjectExtra("ttm_avatar_save",save);
-                    canvas.clipPath(contour(shape,cx,cy,r,animates()?angle(SystemClock.uptimeMillis()):0));
+                    Integer depth=avatarRender.get();avatarRender.set(depth==null?1:depth+1);p.setObjectExtra("ttm_avatar_scope",true);
+                    // Do not stack another shape over a native round bitmap: the shader/path hook changes it at source.
+                    if(!roundedBitmap(((android.widget.ImageView)v).getDrawable())){
+                        int save=canvas.save();p.setObjectExtra("ttm_avatar_save",save);
+                        canvas.clipPath(contour(shape,cx,cy,r,animates()?angle(SystemClock.uptimeMillis()):0));
+                    }
                     if(Looper.myLooper()==Looper.getMainLooper())visibleAvatars.put(v,true);
                 }
                 @Override protected void afterHookedMethod(MethodHookParam p){
+                    if(Boolean.TRUE.equals(p.getObjectExtra("ttm_avatar_scope"))){Integer d=avatarRender.get();if(d==null||d<=1)avatarRender.remove();else avatarRender.set(d-1);if(animates())((View)p.thisObject).postInvalidateDelayed(33);}
                     Object save=p.getObjectExtra("ttm_avatar_save");
                     if(save instanceof Integer){try{((Canvas)p.args[0]).restoreToCount((Integer)save);}catch(Throwable ignored){}
                         if(animates())((View)p.thisObject).postInvalidateDelayed(33);}
                 }
-            });
+            };
+            // ImageView.onDraw is called when the hardware render node is recorded; View.draw alone misses this route.
+            XposedHelpers.findAndHookMethod(android.widget.ImageView.class,"onDraw",Canvas.class,render);
         }catch(Throwable t){FlagStore.log(t);}
     }
     private static final int[][] GROUPS={{0,1,2},{3,4,10,5,6},{7,8,9,11}};
