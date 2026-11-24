@@ -328,14 +328,33 @@ final class StoryShare {
             // frame only if the third slot is visibly empty. No separate Dialog or timeout.
             if(!(root instanceof FrameLayout))return;
             Rect rr=rect(root);
-            if(!e.isStory())return; // no guessed overlays on full video share rows
+            if(!e.isStory()) {
+                // Obfuscated/recycler rows: insert below the actions only in a vertical
+                // container that owns both native action labels, not into the video decor.
+                for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()) {
+                    if(!(q instanceof LinearLayout))continue;
+                    LinearLayout host=(LinearLayout)q;
+                    if(host.getOrientation()!=LinearLayout.VERTICAL || host==root)continue;
+                    View aChild=childOf(first,host), bChild=childOf(second,host);
+                    if(aChild==null || aChild!=bChild || host.getWidth()<step*2)continue;
+                    if(aChild.getWidth()<host.getWidth()*.65f)continue;
+                    LinearLayout extra=new LinearLayout(root.getContext());
+                    extra.setTag(ACTION,Boolean.TRUE);
+                    extra.setOrientation(LinearLayout.HORIZONTAL);
+                    extra.setPadding(dp(root.getContext(),8),dp(root.getContext(),8),0,0);
+                    extra.addView(mine,new LinearLayout.LayoutParams(Math.max(step,dp(root.getContext(),84)),-2));
+                    host.addView(extra,host.indexOfChild(aChild)+1,new LinearLayout.LayoutParams(-1,-2));
+                    buttons.put(root,extra);bound.put(root,e);videoActions++;return;
+                }
+                return;
+            }
             int center=b.centerX()+(b.centerX()>a.centerX()?step:-step);
             int left=center-step/2-rr.left;
             int top=Math.min(a.top,b.top)-size-dp(root.getContext(),8)-rr.top;
             if(left<0||left+step>rr.width()||top<0||top+size+dp(root.getContext(),36)>rr.height())return;
             FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(step,-2,Gravity.TOP|Gravity.LEFT);
             lp.leftMargin=left;lp.topMargin=top;
-            root.addView(mine,lp);
+            ((FrameLayout)root).addView(mine,lp);
         }
         buttons.put(root,mine);bound.put(root,e);if(!e.isStory())videoActions++;
     }
