@@ -167,7 +167,11 @@ final class ModMenu extends Screen {
                 }));
 
         body.addView(ui.menuRow(Icons.SLIDERS,"Управление репостами","Просмотр собственных репостов и удаление выбранных",null,v -> RepostManager.show(act)));
+        body.addView(ui.menuRow(Icons.EYE_OFF,"Скрытые авторы","Локальный список по UID; без блокировки аккаунта",null,v -> FeedMute.show(act)));
         body = section(page, "Личные сообщения");
+        body.addView(ui.toggleRow(Icons.CLOCK,"Время каждого сообщения","Часы, минуты и секунды из модели сообщения",InterfaceHooks.on("message_clock"),on->{
+            InterfaceHooks.set("message_clock",on);MessageClock.refresh();
+        }));
         streakMenuRow = ui.menuRow(Icons.FLAME, "Огоньки", "Автопродление серии в чатах", StreakScreen.menuSummary(),
                 v -> StreakScreen.show(act));
         body.addView(streakMenuRow);
@@ -213,6 +217,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
+        body.addView(ui.menuRow(Icons.DOWNLOAD,"Резервная копия настроек","Экспорт и импорт JSON без данных аккаунта",null,v -> SettingsBackup.show(act)));
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
 

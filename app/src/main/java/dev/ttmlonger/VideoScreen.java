@@ -54,6 +54,7 @@ final class VideoScreen extends Screen {
         VideoTracker.Entry entry;
         TextView sub;
         TextView button;
+        android.widget.ProgressBar progress;
         String tags;
         boolean photo;
         boolean story;
@@ -263,6 +264,12 @@ final class VideoScreen extends Screen {
         row.sub = ui.text(row.tags.isEmpty() ? " " : row.tags, 12.5f, Ui.MUTED, false);
         row.sub.setPadding(0, ui.dp(4), ui.dp(8), 0);
         col.addView(row.sub);
+        row.progress=new android.widget.ProgressBar(act,null,android.R.attr.progressBarStyleHorizontal);
+        row.progress.setMax(100);
+        row.progress.setProgressTintList(android.content.res.ColorStateList.valueOf(TtStyle.primary()));
+        row.progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TtStyle.primary()));
+        row.progress.setVisibility(View.GONE);
+        col.addView(row.progress,new LinearLayout.LayoutParams(-1,ui.dp(8)));
         card.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         row.button = TtStyle.primary(act, row.photo ? "Сохранить фото" : "Сохранить", 36f, 14f);
@@ -280,7 +287,8 @@ final class VideoScreen extends Screen {
         });
         card.addView(row.button);
 
-        card.setLayoutParams(ui.matchWrap());
+        ui.decorate(card,0xff7361be);
+        refresh(row);
         return card;
     }
 
@@ -291,6 +299,8 @@ final class VideoScreen extends Screen {
         if (j != null && !j.state.isEmpty()) text = (text.isEmpty() ? "" : text + "\n") + j.state;
         row.sub.setText(text.isEmpty() ? " " : text);
         boolean running = j != null && j.running;
+        row.progress.setVisibility(j!=null?View.VISIBLE:View.GONE);
+        if(j!=null){row.progress.setIndeterminate(running&&j.percent<0);if(j.percent>=0)row.progress.setProgress(j.percent);}
         row.button.setEnabled(!running);
         row.button.setAlpha(running ? 0.5f : 1f);
         row.button.setText(running ? "Идёт…" : (j != null && j.ok ? "Ещё раз"

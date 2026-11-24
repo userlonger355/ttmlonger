@@ -123,7 +123,10 @@ public final class MainHook implements IXposedHookLoadPackage {
     private static void boot(Context ctx, ClassLoader cl) {
         if (ctx == null || !booted.compareAndSet(false, true)) return;
         try {
-            FlagStore.init(ctx);      // внутри читаются и Prefs
+            FlagStore.init(ctx);
+            try { MessageClock.install(cl); } catch(Throwable t){FlagStore.log(t);}
+            try { CommentSelect.install(cl); } catch(Throwable t){FlagStore.log(t);}
+            try { FeedMute.install(ctx,cl); } catch(Throwable t){FlagStore.log(t);}      // внутри читаются и Prefs
             try { AvatarContours.install(cl,ctx); } catch(Throwable t) { FlagStore.log(t); }
             try { BrightnessLock.install(ctx); } catch(Throwable t) { FlagStore.log(t); }
             try {

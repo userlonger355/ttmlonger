@@ -46,6 +46,7 @@ final class VideoSaver {
     static final class Job {
         final Object aweme;
         volatile String state = "";
+        volatile int percent = -1;
         volatile boolean running = true;
         volatile boolean ok;
 
@@ -63,6 +64,10 @@ final class VideoSaver {
         return null;
     }
 
+    static int percent(long done,long total) {
+        return total<=0?-1:(int)Math.max(0,Math.min(100,100.0*done/total));
+    }
+
     private static Job newJob(Object aweme) {
         synchronized (JOBS) {
             for (Job j : JOBS) {
@@ -70,7 +75,12 @@ final class VideoSaver {
             }
             Job j = new Job(aweme);
             JOBS.add(j);
-            while (JOBS.size() > 30) JOBS.remove(0);
+            while (JOBS.size() > 30) {
+                Job finished=null;
+                for(Job candidate:JOBS) if(!candidate.running){finished=candidate;break;}
+                if(finished==null)break;
+                JOBS.remove(finished);
+            }
             return j;
         }
     }
@@ -304,6 +314,7 @@ final class VideoSaver {
             int tries = 0;
             for (String url : urls) {
                 if (tries++ >= MAX_TRIES || System.currentTimeMillis() > deadline) break;
+                job.percent=-1;
                 job.state = "Скачиваю: адрес " + tries + " из " + Math.min(urls.size(), MAX_TRIES);
                 try {
                     fetch(url, tmp, job, deadline);
@@ -332,6 +343,7 @@ final class VideoSaver {
             String ext = "webm".equals(Mp4Check.formatOf(head, Math.max(n, 0))) ? "webm" : "mp4";
             String where = Media.saveFile(app, tmp, base + "." + ext, Media.mimeFor(ext));
             job.ok = true;
+            job.percent=100;
             job.state = "Сохранено: " + where;
             lastError = "-";
             Toasts.show(app, "Сохранено: " + where);
@@ -397,6 +409,7 @@ final class VideoSaver {
                         int pct = expected > 0 ? (int) (written * 100 / expected) : (int) (written >> 20);
                         if (pct != shown && job != null) {
                             shown = pct;
+                            job.percent=percent(written,expected);
                             job.state = expected > 0 ? "Скачиваю: " + pct + "%" : "Скачиваю: " + pct + " МБ";
                         }
                     }
@@ -422,6 +435,7 @@ final class VideoSaver {
         String where = null;
         String why = null;
         for (int i = 0; i < photos.size(); i++) {
+            job.percent=percent(i,photos.size());
             job.state = "Скачиваю фото " + (i + 1) + " из " + photos.size();
             boolean done = false;
             for (String url : photos.get(i)) {
@@ -445,7 +459,8 @@ final class VideoSaver {
             fail(app, job, why == null ? "нет рабочих адресов" : why);
             return;
         }
-        job.ok = true;
+        job.ok = saved == photos.size();
+        job.percent=percent(saved,photos.size());
         job.state = saved == photos.size() ? "Сохранено фото: " + saved
                 : "Сохранено фото: " + saved + " из " + photos.size();
         lastError = "-";

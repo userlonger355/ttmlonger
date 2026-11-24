@@ -108,6 +108,7 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            extraFeatureChecks();
             adChecks();
             glassGestureLogic();
             streakChecks();
@@ -197,6 +198,18 @@ final class RuntimeUiChecks {
         public long getRepostTime(){return repostTime;}
         public long getRepostTimestamp(){return repostTimestamp;}
         public String getRegion(){return region;}
+    }
+    private static void extraFeatureChecks() {
+        long now=System.currentTimeMillis(), sec=now/1000L;
+        result("message_clock_seconds",MessageClock.millis(sec,now)==sec*1000L);
+        result("message_clock_micros",MessageClock.millis(sec*1000000L,now)==sec*1000L);
+        result("message_clock_invalid",MessageClock.millis(12,now)==0);
+        result("muted_uid_valid",FeedMute.valid("123456789")&&!FeedMute.valid("0")&&!FeedMute.valid("abc"));
+        result("download_percent",VideoSaver.percent(50,200)==25&&VideoSaver.percent(1,0)==-1&&VideoSaver.percent(300,200)==100);
+        try{
+            java.util.Map<String,Object> backup=SettingsBackup.validate("{\"schema\":1,\"settings\":{\"vtTime\":true,\"vtOpacity\":101,\"token\":\"secret\",\"avatar_contour\":3}}");
+            result("backup_allowlist",backup.size()==2&&backup.containsKey("vtTime")&&backup.containsKey("avatar_contour"));
+        }catch(Throwable e){result("backup_allowlist",false);}
     }
     private static void metadataChecks() {
         try {

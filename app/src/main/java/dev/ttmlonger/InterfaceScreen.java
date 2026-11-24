@@ -72,6 +72,8 @@ final class InterfaceScreen extends Screen {
             option(body, button.key(), button.label, FeedButtons.supported(button) ? null
                     : "Может быть недоступно в этой версии TikTok");
         }
+        body.addView(ui.header("Комментарии"));
+        option(body,"comment_select","Выделение текста комментария","Дополнительный пункт в штатном меню удержания");
         body.addView(ui.header("Жесты на видео"));
         FeedGestures.settings(this, body);
         body.addView(ui.header("Подтверждение действий"));
