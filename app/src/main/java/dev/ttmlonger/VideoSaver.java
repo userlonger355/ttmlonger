@@ -197,9 +197,10 @@ final class VideoSaver {
                     : new String[]{"ownerWatermarkImage", "userWatermarkImage", "displayImageNoWatermark"};
             for (String name : names) {
                 java.lang.reflect.Field f = DownloadHooks.findField(image.getClass(), name);
-                if (f == null) continue;
                 try {
-                    groups.add(urlsOf(f.get(image)));
+                    Object model=f==null?null:f.get(image);
+                    if(model==null)model=DownloadHooks.call(image,"get"+Character.toUpperCase(name.charAt(0))+name.substring(1));
+                    groups.add(urlsOf(model));
                 } catch (Throwable ignored) {
                     // это поле не читается
                 }

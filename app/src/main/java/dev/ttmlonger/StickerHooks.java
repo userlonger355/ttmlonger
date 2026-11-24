@@ -37,7 +37,7 @@ final class StickerHooks {
             Class<?>[] p = m.getParameterTypes();
             // В личных сообщениях стикер встречается и в методах без нажатия (заполнение ячейки).
             // Нажатие всегда получает view, по которому тапнули, первым параметром.
-            if (ref.label.equals("im-sticker") && (p.length < 2 || !View.class.isAssignableFrom(p[0]))) continue;
+            if (ref.label.equals("im-sticker") && !stickerTap(m)) continue;
             synchronized (hooked) {
                 if (!hooked.add(m.toString())) continue;
             }
@@ -49,6 +49,15 @@ final class StickerHooks {
             }
         }
         status = count + " хуков из " + found + " найденных методов";
+    }
+
+    /** Stable parameter types; obfuscated names are only additional hints. */
+    static boolean stickerTap(Method m) {
+        Class<?>[] p=m.getParameterTypes();
+        if(m.getReturnType()!=void.class || p.length<2 || p.length>4 ||
+                !p[p.length-1].getName().equals("com.ss.android.ugc.aweme.im.message.template.card.StickerTemplate")) return false;
+        if(View.class.isAssignableFrom(p[0])) return true;
+        return p.length==4 && p[1].getName().equals("androidx.fragment.app.FragmentManager");
     }
 
     private static final class Tap extends XC_MethodHook {

@@ -394,6 +394,7 @@ final class StreakRunner {
 
         int ok = 0;
         int bad = 0;
+        java.util.List<String> greySubmitted=new java.util.ArrayList<>();
         int done = 0;
         for (String conv : due) {
             if (done++ >= StreakLogic.MAX_PER_ROUND) break;
@@ -411,6 +412,7 @@ final class StreakRunner {
             if (again != StreakLogic.Verdict.SEND) continue;
             if (StreakHooks.send(app, sticker, conv, owner, true)) {
                 schedule.submitted(owner, minute, conv, at);
+                if(StreakLogic.isGrey(fresh.status))greySubmitted.add(conv);
                 ok++;
                 sends++;
             } else {
@@ -421,9 +423,26 @@ final class StreakRunner {
             StreakStore.flush();
         }
         StreakStore.flush();
-        last = "отправлено " + ok + ", ошибок " + bad + "; " + head;
-        hint = "Передано TikTok: " + ok + (bad > 0 ? " · ошибок: " + bad : "");
+        int confirmed=verifyGrey(owner,greySubmitted);
+        last = "передано " + ok + ", подтверждено " + confirmed + ", ошибок " + bad + "; " + head;
+        hint = "Передано TikTok: " + ok + " · серые огоньки стали активными: "+confirmed
+                + " из "+greySubmitted.size()+(bad > 0 ? " · ошибок: " + bad : "");
         if (bad > 0 || due.size() > StreakLogic.MAX_PER_ROUND) request(StreakLogic.FAIL_BACKOFF_MS);
+    }
+
+    /** Read-only verification, at most two passes; never resubmit on unconfirmed result. */
+    private static int verifyGrey(String owner,java.util.List<String> sent) {
+        java.util.List<String> pending=new java.util.ArrayList<>(sent);
+        for(int pass=0;pass<2 && !pending.isEmpty();pass++) {
+            if(CrashGuard.tripped || !owner.equals(StreakHooks.liveOwner()))break;
+            try{Thread.sleep(3000L);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+            for(java.util.Iterator<String> it=pending.iterator();it.hasNext();) {
+                if(CrashGuard.tripped || !owner.equals(StreakHooks.liveOwner()))return sent.size()-pending.size();
+                StreakHooks.Info info=StreakHooks.read(it.next(),true);
+                if(info!=null && StreakLogic.ACTIVE.equals(info.status) && info.streak>=StreakLogic.FLAME_FROM)it.remove();
+            }
+        }
+        return sent.size()-pending.size();
     }
 
     static String checkSummary() {
@@ -590,6 +609,7 @@ final class StreakRunner {
         int ok = 0;
         int bad = 0;
         int row = 0;
+        java.util.List<String> greySubmitted=new java.util.ArrayList<>();
         boolean stopped = false;
         for (int i = 0; i < total; i++) {
             hint = "Отправляю всем: " + (i + 1) + " из " + total + "…";
@@ -602,6 +622,7 @@ final class StreakRunner {
                     schedule.lastAny(owner,conv),StreakStore.lastFail(conv),at,Zones.current())!=StreakLogic.Verdict.SEND) continue;
             if (StreakHooks.send(app, sticker, conv, owner, false)) {
                 schedule.submitted(owner, StreakSchedule.WHEN_GREY, conv, at);
+                if(StreakLogic.isGrey(fresh.status))greySubmitted.add(conv);
                 ok++;
                 sends++;
                 row = 0;
@@ -624,10 +645,11 @@ final class StreakRunner {
             }
         }
         StreakStore.flush();
+        int confirmed=verifyGrey(owner,greySubmitted);
         int skipped = Math.max(0,total-ok-bad);
         last = "Передано TikTok " + ok + " из " + total + ", ошибок " + bad + ", пропущено " + skipped;
         hint = "Передано TikTok: " + ok + " из " + total + (bad > 0 ? " · ошибок: " + bad : "")
-                + (skipped>0 ? " · не отправлено: "+skipped : "") + ". Продление проверьте в чатах.";
+                + (skipped>0 ? " · не отправлено: "+skipped : "") + ". Серые огоньки стали активными: "+confirmed+" из "+greySubmitted.size()+". Остальные проверьте в чатах.";
         String msg = hint;
 
         if (stopped) msg += ". Остановился после " + STOP_AFTER_FAILS + " ошибок подряд: " + StreakHooks.senderNote();

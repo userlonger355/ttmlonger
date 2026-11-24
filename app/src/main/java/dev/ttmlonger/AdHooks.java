@@ -44,6 +44,8 @@ final class AdHooks {
 
     private static final StringBuilder STATUS = new StringBuilder();
     private static volatile Class<?> listClass;
+    private static volatile Class<?> searchClass;
+    private static final String SEARCH_LIST="com.ss.android.ugc.aweme.search.pages.result.topsearch.core.model.SearchMixFeedList";
     private static volatile Field itemsField;
     private static volatile boolean itemsLooked;
     private static int hookedItems;
@@ -80,10 +82,7 @@ final class AdHooks {
 
     static void install(ClassLoader cl) {
         Class<?> c = XposedHelpers.findClassIfExists(ITEM_LIST, cl);
-        if (c == null) {
-            note("FeedItemList не найден");
-            return;
-        }
+        if (c == null) { note("FeedItemList не найден"); return; }
         listClass = c;
         hookedItems = hookNamed(c, "getItems", ITEMS);
         note("getItems " + (hookedItems > 0 ? "✓" : "✗"));
@@ -107,7 +106,62 @@ final class AdHooks {
         note("методов «на входе» " + extra);
         Field f = itemsField(c);
         note("поле items " + (f != null ? "✓" : "✗"));
+        hookedExtra+=installIngress(c);
+        searchClass=XposedHelpers.findClassIfExists(SEARCH_LIST,cl);
+        if(searchClass!=null) {
+            hookedItems+=hookNamed(searchClass,"getItems",ITEMS);
+            hookedExtra+=installIngress(searchClass);
+        }
+        // Runtime equivalent of ingress filtering: only known feed-page objects.
+        // No arbitrary list or network payload modifications.
+        for(String gson:new String[]{"com.google.gson.Gson","com.bytedance.mt.protector.impl.GsonProtectorUtils"}) {
+            Class<?> parser=XposedHelpers.findClassIfExists(gson,cl);
+            if(parser!=null) hookedExtra+=hookNamed(parser,"fromJson",PARSED);
+        }
     }
+
+    private static int installIngress(Class<?> type) {
+        int count=0;
+        for(Method m:type.getDeclaredMethods()) {
+            if(Modifier.isStatic(m.getModifiers()) || Modifier.isAbstract(m.getModifiers())) continue;
+            if(m.getName().equals("setItems") && m.getParameterTypes().length==1
+                    && m.getParameterTypes()[0]==List.class) {
+                try { XposedBridge.hookMethod(m,ASSIGNED); count++; }
+                catch(Throwable t){error(t);}
+            }
+        }
+        try {count+=XposedBridge.hookAllConstructors(type,PARSED).size();}
+        catch(Throwable t){error(t);}
+        return count;
+    }
+    private static boolean knownPage(Object o) {
+        return o!=null && ((listClass!=null && listClass.isInstance(o)) ||
+                (searchClass!=null && searchClass.isInstance(o)));
+    }
+    private static boolean searchPage(Object o) {return searchClass!=null && searchClass.isInstance(o);}
+    private static final XC_MethodHook ASSIGNED=new XC_MethodHook() {
+        @Override protected void beforeHookedMethod(MethodHookParam p) {
+            try {
+                if(!enabled() || !knownPage(p.thisObject) || !(p.args[0] instanceof List)) return;
+                p.args[0]=filter((List)p.args[0],Prefs.hideAds,!searchPage(p.thisObject)&&Prefs.hideLiveRooms);
+            }catch(Throwable t){error(t);}
+        }
+    };
+    private static final XC_MethodHook PARSED=new XC_MethodHook() {
+        @Override protected void afterHookedMethod(MethodHookParam p) {
+            try {
+                if(!enabled() || p.hasThrowable()) return;
+                Object page=p.method instanceof java.lang.reflect.Constructor ? p.thisObject:p.getResult();
+                if(!knownPage(page)) return;
+                Field f=itemsField(page.getClass());
+                if(f==null)return;
+                Object original=f.get(page);
+                if(!(original instanceof List))return;
+                List filtered=filter((List)original,Prefs.hideAds,!searchPage(page)&&Prefs.hideLiveRooms);
+                if(filtered!=original)writeBack(page,original,filtered);
+            }catch(Throwable t){error(t);}
+        }
+    };
 
     /** Подходит ли метод как «вход» страницы: открытый, без аргументов, не статический, не getItems, что-то возвращает. */
     static boolean simpleGetter(Method m) {
@@ -149,8 +203,8 @@ final class AdHooks {
                 boolean ads = Prefs.hideAds;
                 boolean rooms = Prefs.hideLiveRooms;
                 if (!ads && !rooms) return;
-                Class<?> lc = listClass;
-                if (lc != null && !lc.isInstance(param.thisObject)) return;
+                if (!knownPage(param.thisObject)) return;
+                if(searchPage(param.thisObject)) rooms=false;
                 Object r = param.getResult();
                 if (!(r instanceof List)) return;
                 List out = process((List) r, ads, rooms);
@@ -173,8 +227,8 @@ final class AdHooks {
                 boolean rooms = Prefs.hideLiveRooms;
                 if (!ads && !rooms) return;
                 Object page = param.thisObject;
-                Class<?> lc = listClass;
-                if (page == null || (lc != null && !lc.isInstance(page))) return;
+                if (!knownPage(page)) return;
+                if(searchPage(page)) rooms=false;
                 Field f = itemsField(page.getClass());
                 if (f == null) return;
                 Object cur = f.get(page);
@@ -244,7 +298,7 @@ final class AdHooks {
 
     private static Field itemsField(Class<?> c) {
         if (itemsLooked && itemsField != null && itemsField.getDeclaringClass().isAssignableFrom(c)) return itemsField;
-        Field f = DownloadHooks.findField(c, "items");
+        Field f = DownloadHooks.findField(c, searchClass!=null && searchClass.isAssignableFrom(c)?"mItems":"items");
         if (f != null && !List.class.isAssignableFrom(f.getType())) f = null;
         if (f != null && Modifier.isStatic(f.getModifiers())) f = null;
         if (f != null) itemsField = f;
@@ -305,8 +359,9 @@ final class AdHooks {
 
     /** Реклама ли этот пост: isAd() или явный флаг _isAd, который сервер ставит раньше, чем придёт сама реклама. */
     private static boolean advert(Shape s, Object post) throws Exception {
-        if (s.isAd != null && Boolean.TRUE.equals(s.isAd.invoke(post))) return true;
-        if (s.adFlag != null && Boolean.TRUE.equals(s.adFlag.get(post))) return true;
+        // The explicit flag can arrive before the native ad payload. Check independently.
+        try { if (s.adFlag != null && Boolean.TRUE.equals(s.adFlag.get(post))) return true; } catch(Throwable ignored){}
+        try { if (s.isAd != null && Boolean.TRUE.equals(s.isAd.invoke(post))) return true; } catch(Throwable ignored){}
         return false;
     }
 
@@ -337,7 +392,7 @@ final class AdHooks {
                 if (post == null) return KEEP;
             }
             Shape ps = post == item ? s : shapeOf(post.getClass());
-            if (ads && advert(ps, post)) {
+            if (ads && advert(ps, post) && !mine(ps,post)) {
                 s.ads++;
                 return AD;
             }

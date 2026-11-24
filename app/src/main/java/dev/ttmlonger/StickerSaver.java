@@ -175,13 +175,17 @@ final class StickerSaver {
             if (u != null && (url == null || u.length() > url.length())) url = u;
         }
         if (url == null) {
+            // Never offer the previous chat's sticker when the current model is unreadable.
+            latestUrl=null;
+            latestAt=0;
+            return;
         } else {
             latestUrl = url;
             latestAt = android.os.SystemClock.uptimeMillis();
         }
-        if (label.startsWith("comment")) {
+        if (label.startsWith("comment") || label.equals("im-sticker")) {
             lookForSheet();
-        } else if (url != null && viewFirst && args.length >= 3) {
+        } else if (url != null && viewFirst && args.length >= 2) {
             MAIN.postDelayed(new Runnable() {
                 @Override
                 public void run() {

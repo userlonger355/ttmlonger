@@ -344,6 +344,15 @@ final class StreakHooks {
      */
     private static Object acquire(Class<?> ic) {
         StringBuilder why = new StringBuilder();
+        // Known MargyT service accessor: use only if the actual returned instance matches the live interface.
+        try {
+            Class<?> nativeProvider=Class.forName("X.06p9",false,loader);
+            Method accessor=nativeProvider.getMethod("LIZ");
+            if(Modifier.isStatic(accessor.getModifiers()) && ic.isAssignableFrom(accessor.getReturnType())) {
+                Object nativeService=accessor.invoke(null);
+                if(ic.isInstance(nativeService)) {acquireNote="служба получена из проверенного адаптера"; return nativeService;}
+            }
+        }catch(Throwable ignored){}
         DexScan.Result r = scan;
         if (r != null) {
             List<DexScan.Ref> refs = r.refs("act:streak-get");
