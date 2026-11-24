@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class FlagTap {
     private static final int MAX_KEYS = 40;
+    private static final String[] CHAT_KEYS = {"im_voice_message", "dm_customize_message_bubble", "im_chat_wallpaper_chatroom"};
     private static final int MAX_STACKS = 2;
     private static final int MAX_FRAMES = 8;
     private static final int VALUE_MAX = 60;
@@ -71,7 +72,7 @@ final class FlagTap {
         synchronized (LOCK) {
             Seen s = SEEN.get(key);
             if (s == null) {
-                if (SEEN.size() >= MAX_KEYS) return;
+                if (SEEN.size() >= MAX_KEYS && !isCoreChatKey(key)) return;
                 s = new Seen();
                 s.first = show(original);
                 SEEN.put(key, s);
@@ -93,6 +94,29 @@ final class FlagTap {
             Seen s = SEEN.get(key);
             if (s != null && s.stacks.size() < MAX_STACKS && !s.stacks.contains(line)) s.stacks.add(line);
         }
+    }
+
+    private static boolean isCoreChatKey(String key) {
+        for (String k : CHAT_KEYS) if (k.equals(key)) return true;
+        return false;
+    }
+
+    /** Не содержит сообщений, идентификаторов пользователей или содержимого чатов. */
+    static String chatSummary() {
+        StringBuilder out = new StringBuilder();
+        synchronized (LOCK) {
+            for (String key : CHAT_KEYS) {
+                Seen s = SEEN.get(key);
+                FlagStore.Patch patch = FlagStore.getOverride(key);
+                out.append(key).append(": ");
+                if (s == null) out.append("не читался в этом запуске");
+                else out.append(s.first).append(" → ").append(s.last).append(" ×").append(s.count);
+                if (patch != null) out.append("; настроено ").append(patch.raw);
+                else out.append("; штатное значение");
+                out.append('\n');
+            }
+        }
+        return out.toString();
     }
 
     static int keys() {
