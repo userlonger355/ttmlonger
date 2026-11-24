@@ -240,8 +240,12 @@ final class AvatarContours {
     // Additional rendering route for explicitly named avatar image views.
     // Never match generic square pictures or arbitrary profile illustrations.
     private static final WeakHashMap<View,Boolean> avatarViews=new WeakHashMap<>();
+    private static final WeakHashMap<View,Boolean> chatAvatars=new WeakHashMap<>();
+    private static final java.util.Set<Method> extraDrawHooks=new java.util.HashSet<>();
+    private static XC_MethodHook viewRender;
     private static final WeakHashMap<View,Boolean> visibleAvatars=new WeakHashMap<>();
     private static boolean avatarView(View v){
+        if(Boolean.TRUE.equals(chatAvatars.get(v)))return true;
         Boolean hit=avatarViews.get(v);if(Boolean.TRUE.equals(hit))return true;
         boolean yes=false;
         try{
@@ -260,6 +264,7 @@ final class AvatarContours {
                 }
             }
             if(!yes&&v instanceof android.widget.ImageView)yes=roundedBitmap(((android.widget.ImageView)v).getDrawable());
+            if(!yes&&v instanceof android.widget.ImageView){String cn=v.getClass().getName().toLowerCase(java.util.Locale.ROOT);if(cn.contains("drawee")||cn.contains("fresco")){Object hierarchy=DownloadHooks.call(v,"getHierarchy");Object params=DownloadHooks.call(hierarchy,"getRoundingParams");yes=Boolean.TRUE.equals(DownloadHooks.call(params,"getRoundAsCircle"));}}
         }catch(Throwable ignored){}
         if(yes)avatarViews.put(v,true);return yes;
     }
@@ -267,7 +272,7 @@ final class AvatarContours {
         try{
             XC_MethodHook render=new XC_MethodHook(){
                 @Override protected void beforeHookedMethod(MethodHookParam p){
-                    if(CrashGuard.tripped||!(p.thisObject instanceof android.widget.ImageView))return;
+                    if(CrashGuard.tripped||!(p.thisObject instanceof View)||avatarRender.get()!=null)return;
                     View v=(View)p.thisObject;
                     if(!avatarView(v)||v.getWidth()<12||v.getHeight()<12||Math.abs(v.getWidth()-v.getHeight())>Math.min(v.getWidth(),v.getHeight())*.15f)return;
                     if(Screen.isOwnDecor(v.getRootView()))return;
@@ -278,7 +283,7 @@ final class AvatarContours {
                     float cx=v.getWidth()/2f,cy=v.getHeight()/2f,r=Math.min(cx,cy);
                     Integer depth=avatarRender.get();avatarRender.set(depth==null?1:depth+1);p.setObjectExtra("ttm_avatar_scope",true);
                     // Do not stack another shape over a native round bitmap: the shader/path hook changes it at source.
-                    if(!roundedBitmap(((android.widget.ImageView)v).getDrawable())){
+                    if(!(v instanceof android.widget.ImageView)||!roundedBitmap(((android.widget.ImageView)v).getDrawable())){
                         int save=canvas.save();p.setObjectExtra("ttm_avatar_save",save);
                         canvas.clipPath(contour(shape,cx,cy,r,animates()?angle(SystemClock.uptimeMillis()):0));
                     }
@@ -292,8 +297,52 @@ final class AvatarContours {
                 }
             };
             // ImageView.onDraw is called when the hardware render node is recorded; View.draw alone misses this route.
+            viewRender=render;
             XposedHelpers.findAndHookMethod(android.widget.ImageView.class,"onDraw",Canvas.class,render);
+            XposedHelpers.findAndHookMethod(View.class,"draw",Canvas.class,render);
         }catch(Throwable t){FlagStore.log(t);}
+    }
+    // Called from the existing throttled screen watcher, not for every frame.
+    static void scanAvatars(View root){
+        if(shape==0||CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
+        boolean inbox=hasInbox(root,0,new int[]{260});
+        if(inbox){for(View v:chatAvatars.keySet().toArray(new View[0]))if(v==null||v.getRootView()==root)chatAvatars.remove(v);}
+        scanAvatarTree(root,root,inbox,0,new int[]{1600});
+    }
+    private static boolean hasInbox(View v,int depth,int[] budget){
+        if(v==null||!v.isShown()||depth>18||--budget[0]<0)return false;
+        if(v instanceof TextView){String s=((TextView)v).getText().toString().trim().toLowerCase(java.util.Locale.ROOT);if(s.equals("входящие")||s.equals("inbox")){int[] xy=new int[2];v.getLocationOnScreen(xy);if(xy[1]<v.getResources().getDisplayMetrics().heightPixels*.18f)return true;}}
+        if(v instanceof android.view.ViewGroup){android.view.ViewGroup g=(android.view.ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(hasInbox(g.getChildAt(i),depth+1,budget))return true;}return false;
+    }
+    private static void scanAvatarTree(View v,View root,boolean inbox,int depth,int[] budget){
+        if(v==null||!v.isShown()||depth>35||--budget[0]<0)return;
+        float density=v.getResources().getDisplayMetrics().density;int w=v.getWidth(),h=v.getHeight();String n=v.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+        boolean image=v instanceof android.widget.ImageView||n.contains("drawee")||n.contains("fresco")||n.contains("avatar");
+        if(image&&w>=density*23&&w<=density*160&&Math.abs(w-h)<=Math.max(3,w*.15f)){
+            boolean hit=avatarView(v);
+            if(!hit&&inbox&&w>=density*36&&w<=density*88){
+                int[] xy=new int[2];v.getLocationOnScreen(xy);
+                if(xy[0]<density*42&&xy[1]>density*170)for(android.view.ViewParent q=v.getParent();q instanceof android.view.ViewGroup;q=q.getParent()){
+                    android.view.ViewGroup row=(android.view.ViewGroup)q;if(row==root||row.getHeight()>density*125)break;
+                    if(row.getWidth()>root.getWidth()*.65f&&row.getHeight()>=h&&textRight(row,xy[0]+w,xy[1],h,0,new int[]{80})){chatAvatars.put(v,true);hit=true;break;}
+                }
+            }
+            if(hit){hookAvatarDraw(v.getClass());if(!visibleAvatars.containsKey(v)){visibleAvatars.put(v,true);v.invalidate();}}
+        }
+        if(v instanceof android.view.ViewGroup){android.view.ViewGroup g=(android.view.ViewGroup)v;for(int i=0;i<g.getChildCount();i++)scanAvatarTree(g.getChildAt(i),root,inbox,depth+1,budget);}
+    }
+    private static boolean textRight(View v,int x,int y,int h,int depth,int[] budget){
+        if(v==null||!v.isShown()||depth>10||--budget[0]<0)return false;
+        if(v instanceof TextView&&!((TextView)v).getText().toString().trim().isEmpty()){int[] xy=new int[2];v.getLocationOnScreen(xy);if(xy[0]>=x&&xy[1]>=y-h/4&&xy[1]<y+h)return true;}
+        if(v instanceof android.view.ViewGroup){android.view.ViewGroup g=(android.view.ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(textRight(g.getChildAt(i),x,y,h,depth+1,budget))return true;}return false;
+    }
+    private static void hookAvatarDraw(Class<?> cls){
+        if(viewRender==null)return;
+        for(Class<?> k=cls;k!=null&&k!=View.class&&k!=android.widget.ImageView.class;k=k.getSuperclass()){
+            for(String name:new String[]{"draw","onDraw","dispatchDraw"})try{
+                Method m=k.getDeclaredMethod(name,Canvas.class);if(java.lang.reflect.Modifier.isAbstract(m.getModifiers())||!extraDrawHooks.add(m))continue;XposedBridge.hookMethod(m,viewRender);
+            }catch(Throwable ignored){}
+        }
     }
     private static final int[][] GROUPS={{0,1,2},{3,4,10,5,6},{7,8,9,11}};
     private static final String[] GROUP_NAMES={"Классические","Material You","Другие"};

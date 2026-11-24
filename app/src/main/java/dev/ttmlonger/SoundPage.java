@@ -19,6 +19,7 @@ final class SoundPage {
         if(m==null||guard.get()!=null)return;guard.set(true);try{String id=id(m);if(id.matches("[0-9]{5,24}"))synchronized(music){music.put(id,m);}}catch(Throwable ignored){}finally{guard.remove();}
     }
     private static String norm(String s){return s==null?"":s.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);}
+    private static String titleKey(String s){String v=norm(s);for(String prefix:new String[]{"звук пользователя ","оригинальный звук – ","оригинальный звук - ","original sound - ","original sound – ","original sound by "})if(v.startsWith(prefix))return v.substring(prefix.length()).trim();return v;}
     static Object find(Activity a){
         if(a==null)return null;String name=a.getClass().getName().toLowerCase(Locale.ROOT);
         List<String> labels=new ArrayList<>();collect(a.getWindow().getDecorView(),labels,0,new int[]{1200});
@@ -32,7 +33,9 @@ final class SoundPage {
         Object match=null;String matchId="";
         for(Object m:models){
             Object title=DownloadHooks.call(m,"getTitle");String text=norm(title==null?"":title.toString());String mid=id(m);
-            if(mid.isEmpty()||text.length()<4||!labels.contains(text))continue;
+            if(mid.isEmpty()||text.length()<3)continue;
+            boolean matched=false;for(String l:labels)if(l.equals(text)||titleKey(l).equals(titleKey(text))){matched=true;break;}
+            if(!matched)continue;
             if(match!=null&&!matchId.equals(mid))return null;match=m;matchId=mid;
         }return match;
     }

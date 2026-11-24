@@ -182,6 +182,7 @@ final class ScreenWatcher {
             CommentTools.apply(decor);
             if(CommentWallpaper.panel(decor)!=null)return;
             StoryShare.update(act, decor);
+            AvatarContours.scanAvatars(decor);
             ChatTicks.apply(decor);
             DisplayInfo di = new DisplayInfo(act);
             Scan s = new Scan();

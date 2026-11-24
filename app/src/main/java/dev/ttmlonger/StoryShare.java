@@ -26,6 +26,7 @@ final class StoryShare {
     private static final int WATCH = 0x7ff0cb12;
     private static final int ACTION = 0x7ff0cb13;
     private static final WeakHashMap<View, View> buttons = new WeakHashMap<>();
+    private static final WeakHashMap<View, RowSlot> wrapped = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> hidden = new WeakHashMap<>();
     private static final WeakHashMap<View, VideoTracker.Entry> bound = new WeakHashMap<>();
     private static VideoTracker.Entry active;
@@ -219,37 +220,81 @@ final class StoryShare {
         } catch(Throwable ignored) {}
     }
     private static void soundAction(View root,Scan s,Activity act){
-        if(CrashGuard.tripped||!Prefs.dlAlways){remove(root);return;}
+        if(CrashGuard.tripped||!Prefs.dlAlways||s.soundReport==null){remove(root);return;}
         View old=buttons.get(root);if(old!=null&&old.isAttachedToWindow())return;
-        Object music=SoundPage.find(act);if(music==null||s.qr==null||s.soundReport==null)return;
-        ViewGroup row=sharedRow(s.qr,s.soundReport);
-        if(row==null){soundFallback(root,s,music);return;}
-        View sample=childOf(s.soundReport,row);if(sample==null){soundFallback(root,s,music);return;}
-        int step=Math.abs(rect(s.soundReport).centerX()-rect(s.qr).centerX());if(step<dp(root.getContext(),40))return;
-        if(row.getWidth()<step*3){soundFallback(root,s,music);return;}
-        Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor(),size=Math.min(dp(c,56),Math.round(step*.72f));
-        LinearLayout tile=new LinearLayout(c);tile.setTag(ACTION,Boolean.TRUE);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
-        ImageView icon=new ImageView(c);icon.setImageDrawable(Icons.of(Icons.MUSIC,ink));GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);icon.setBackground(bg);int pad=Math.round(size*.27f);icon.setPadding(pad,pad,pad,pad);tile.addView(icon,new LinearLayout.LayoutParams(size,size));
-        TextView label=new TextView(c);label.setText("Сохранить звук");label.setGravity(Gravity.CENTER);label.setTextColor(ink);label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,s.soundReport.getTextSize());label.setTypeface(s.soundReport.getTypeface());label.setMaxLines(2);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(c,8);tile.addView(label,lp);
-        tile.setContentDescription("Сохранить звук");tile.setOnClickListener(v->AudioSaver.startMusic(c,music));
-        if(row instanceof LinearLayout){int occupied=0;for(int i=0;i<row.getChildCount();i++)if(row.getChildAt(i).getVisibility()!=View.GONE)occupied+=row.getChildAt(i).getWidth();if(occupied+step>row.getWidth()+dp(c,4)){soundFallback(root,s,music);return;}row.addView(tile,new LinearLayout.LayoutParams(step,-2));}
-        else if(row instanceof GridLayout){GridLayout.LayoutParams gp=new GridLayout.LayoutParams();gp.width=step;gp.height=-2;row.addView(tile,gp);}else return;
-        buttons.put(root,tile);
+        if(old!=null)remove(root);
+        // Button availability is independent of whether the music model has arrived.
+        // Resolve against the sound page at click time rather than hiding the action.
+        if(insertAction(root,s.soundReport,s.qr,(size)->{
+            View v=tile(root.getContext(),s.soundReport,size,null,true);
+            v.setOnClickListener(w->{Object music=SoundPage.find(act);if(music==null){Toasts.show(root.getContext(),"Звук ещё не распознан. Откройте страницу звука заново.");return;}AudioSaver.startMusic(root.getContext(),music);});
+            return v;
+        }))return;
     }
-    private static void soundFallback(View root,Scan s,Object music){
-        for(android.view.ViewParent q=s.soundReport.getParent();q instanceof ViewGroup;q=q.getParent()){
-            if(!(q instanceof LinearLayout))continue;LinearLayout host=(LinearLayout)q;
-            if(host==root||host.getOrientation()!=LinearLayout.VERTICAL||host.getWidth()<root.getWidth()*.6f)continue;
-            View a=childOf(s.soundReport,host),b=childOf(s.qr,host);if(a==null||a!=b||a.getWidth()<host.getWidth()*.65f)continue;
-            Context c=root.getContext();int ink=s.soundReport.getCurrentTextColor();LinearLayout action=new LinearLayout(c);action.setTag(ACTION,Boolean.TRUE);action.setGravity(Gravity.CENTER_VERTICAL);action.setPadding(dp(c,16),dp(c,8),dp(c,16),dp(c,8));action.setMinimumHeight(dp(c,44));
-            ImageView icon=new ImageView(c);icon.setImageDrawable(Icons.of(Icons.MUSIC,ink));action.addView(icon,new LinearLayout.LayoutParams(dp(c,20),dp(c,20)));
-            TextView label=new TextView(c);label.setText("Сохранить звук");label.setTextColor(ink);label.setTextSize(14);label.setPadding(dp(c,12),0,0,0);action.addView(label,new LinearLayout.LayoutParams(0,-2,1));
-            action.setOnClickListener(v->AudioSaver.startMusic(c,music));host.addView(action,host.indexOfChild(a)+1,new LinearLayout.LayoutParams(-1,-2));buttons.put(root,action);return;
+    private interface TileFactory{View make(int size);}
+    private static final class RowSlot{
+        final LinearLayout parent;final View nativeRow;final android.widget.FrameLayout frame;final ViewGroup.LayoutParams original;
+        RowSlot(LinearLayout p,View n,android.widget.FrameLayout f,ViewGroup.LayoutParams lp){parent=p;nativeRow=n;frame=f;original=lp;}
+        void restore(){
+            if(frame.getParent()!=parent||nativeRow.getParent()!=frame)return;
+            int index=parent.indexOfChild(frame);frame.removeView(nativeRow);parent.removeView(frame);parent.addView(nativeRow,index,original);
         }
     }
     private static void remove(View root) {
-        View button=buttons.remove(root); bound.remove(root);
-        if(button!=null && button.getParent() instanceof ViewGroup) ((ViewGroup)button.getParent()).removeView(button);
+        View button=buttons.remove(root);bound.remove(root);
+        if(button!=null&&button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
+        RowSlot row=wrapped.remove(root);if(row!=null)row.restore();
+    }
+    // Try a true native action row first, otherwise add a slot inside a measured
+    // wrapper around only that row. A wrapper inherits the sheet's swipe transform.
+    private static boolean insertAction(View root,TextView report,TextView neighbor,TileFactory factory){
+        Context c=root.getContext();Rect label=rect(report);if(label.width()==0||label.height()==0)return false;
+        int step=Math.round(root.getWidth()/6f);
+        if(neighbor!=null){Rect nr=rect(neighbor);int dx=Math.abs(nr.centerX()-label.centerX());if(dx>=dp(c,44)&&dx<=dp(c,140)&&Math.abs(nr.top-label.top)<=dp(c,24))step=dx;}
+        step=Math.max(dp(c,44),Math.min(dp(c,112),step));
+        for(android.view.ViewParent q=report.getParent();q instanceof ViewGroup;q=q.getParent()){
+            if(q==root)break;ViewGroup row=(ViewGroup)q;
+            if(!(row instanceof GridLayout)&&!(row instanceof LinearLayout&&((LinearLayout)row).getOrientation()==LinearLayout.HORIZONTAL))continue;
+            View template=childOf(report,row);if(template==null||template.getWidth()<dp(c,40)||template.getWidth()>dp(c,150)||template.getHeight()>dp(c,155)||row.getWidth()<step*2)continue;
+            int occupied=0,visible=0;for(int k=0;k<row.getChildCount();k++){View child=row.getChildAt(k);if(child.getVisibility()==View.GONE)continue;visible++;occupied+=child.getWidth();if(child.getLayoutParams() instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams lp=(ViewGroup.MarginLayoutParams)child.getLayoutParams();occupied+=lp.leftMargin+lp.rightMargin;}}
+            int w=template.getWidth();View mine=factory.make(Math.min(dp(c,56),Math.round(w*.72f)));
+            if(row instanceof LinearLayout){
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,-2);
+                if(template.getLayoutParams() instanceof LinearLayout.LayoutParams){LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();lp.topMargin=src.topMargin;lp.bottomMargin=src.bottomMargin;lp.leftMargin=src.leftMargin;lp.rightMargin=src.rightMargin;lp.gravity=src.gravity;}
+                if(occupied+w+lp.leftMargin+lp.rightMargin>row.getWidth()-row.getPaddingLeft()-row.getPaddingRight()+dp(c,2))continue;
+                row.addView(mine,row.indexOfChild(template)+1,lp);
+            }else{
+                GridLayout grid=(GridLayout)row;if(grid.getColumnCount()<2||visible>=grid.getColumnCount())continue;
+                GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=w;lp.height=-2;grid.addView(mine,lp);
+            }
+            buttons.put(root,mine);return true;
+        }
+        for(android.view.ViewParent q=report.getParent();q instanceof ViewGroup;q=q.getParent()){
+            if(q==root)break;if(!(q instanceof LinearLayout))continue;
+            LinearLayout host=(LinearLayout)q;if(host.getOrientation()!=LinearLayout.VERTICAL||host.getWidth()<root.getWidth()*.65f)continue;
+            View one=childOf(report,host);if(one==null||one.getWidth()<host.getWidth()*.65f||one.getHeight()>dp(c,180)||one.getHeight()<dp(c,42))continue;
+            if(neighbor!=null&&childOf(neighbor,host)!=one)continue;
+            Rect rr=rect(one);int center=label.centerX();
+            if(neighbor!=null)center=Math.max(center,rect(neighbor).centerX());
+            int left=center+step-step/2-rr.left;
+            int size=Math.min(dp(c,56),Math.round(step*.72f));
+            int top=label.top-rr.top-size-dp(c,8);
+            if(left<0||left+step>rr.width()||top< -dp(c,5)||top+size>rr.height())continue;
+            // Ensure the next slot is actually unused by a native action.
+            if(slotOccupied(one,rr.left+left,rr.left+left+step,label.top,report,neighbor,0,new int[]{160}))continue;
+            View mine=factory.make(size);ViewGroup.LayoutParams original=one.getLayoutParams();int index=host.indexOfChild(one);
+            android.widget.FrameLayout frame=new android.widget.FrameLayout(c);frame.setClipChildren(false);frame.setClipToPadding(false);
+            host.removeViewAt(index);host.addView(frame,index,original);
+            frame.addView(one,new android.widget.FrameLayout.LayoutParams(-1,-2));
+            android.widget.FrameLayout.LayoutParams lp=new android.widget.FrameLayout.LayoutParams(step,-2,Gravity.TOP|Gravity.LEFT);lp.leftMargin=left;lp.topMargin=Math.max(0,top);frame.addView(mine,lp);
+            wrapped.put(root,new RowSlot(host,one,frame,original));buttons.put(root,mine);return true;
+        }
+        return false;
+    }
+    private static boolean slotOccupied(View v,int left,int right,int y,TextView report,TextView neighbor,int depth,int[] budget){
+        if(v==null||v.getVisibility()!=View.VISIBLE||depth>16||--budget[0]<0)return false;
+        if(v instanceof TextView&&v!=report&&v!=neighbor&&!norm(((TextView)v).getText()).isEmpty()){Rect r=rect(v);if(r.centerX()>left&&r.centerX()<right&&Math.abs(r.top-y)<dp(v.getContext(),30))return true;}
+        if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(slotOccupied(g.getChildAt(i),left,right,y,report,neighbor,depth+1,budget))return true;}return false;
     }
     private static int dp(Context c,float x){return Math.round(x*c.getResources().getDisplayMetrics().density);}
     private static View childOf(View v, ViewGroup parent) {
@@ -358,47 +403,8 @@ final class StoryShare {
         if(s.save!=null)return; // stock action already exists
         if(!s.send)return;
         if(e!=null&&!e.isStory())e=null;
-        TextView first=s.report,second=s.mute;
-        // The report-only menu is normal for non-followed users and some story types.
-        // Derive the native tile width from the report item, not from a second action.
-        Context c=root.getContext();
-        for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()){
-            if(q==root)break;
-            ViewGroup row=(ViewGroup)q;
-            if(!(row instanceof GridLayout)&&!(row instanceof LinearLayout&&((LinearLayout)row).getOrientation()==LinearLayout.HORIZONTAL))continue;
-            View template=childOf(first,row);if(template==null)continue;
-            int w=template.getWidth();if(w<dp(c,44)||w>dp(c,160)||row.getWidth()<w*2-dp(c,2)||template.getHeight()>dp(c,155))continue;
-            int occupied=0,visible=0;
-            for(int i=0;i<row.getChildCount();i++){View child=row.getChildAt(i);if(child.getVisibility()==View.GONE)continue;visible++;occupied+=child.getWidth();if(child.getLayoutParams() instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams lp=(ViewGroup.MarginLayoutParams)child.getLayoutParams();occupied+=lp.leftMargin+lp.rightMargin;}}
-            int size=Math.min(dp(c,56),Math.round(w*.72f));
-            View mine=storyTile(root,first,size,act,e);
-            if(row instanceof LinearLayout){
-                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,-2);
-                if(template.getLayoutParams() instanceof LinearLayout.LayoutParams){LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();lp.topMargin=src.topMargin;lp.bottomMargin=src.bottomMargin;lp.leftMargin=src.leftMargin;lp.rightMargin=src.rightMargin;lp.gravity=src.gravity;}
-                if(occupied+w+lp.leftMargin+lp.rightMargin>row.getWidth()-row.getPaddingLeft()-row.getPaddingRight()+dp(c,2))continue;
-                row.addView(mine,row.indexOfChild(template)+1,lp);
-            }else{
-                GridLayout grid=(GridLayout)row;int cols=grid.getColumnCount();if(cols<2||visible>=cols)continue;
-                GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=w;lp.height=-2;grid.addView(mine,lp);
-            }
-            buttons.put(root,mine);if(e!=null)bound.put(root,e);return;
-        }
-        // Fallback in the actual measured sheet, immediately after the native report row.
-        for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()){
-            if(q==root)break;
-            if(!(q instanceof LinearLayout))continue;
-            LinearLayout host=(LinearLayout)q;if(host.getOrientation()!=LinearLayout.VERTICAL||host.getWidth()<root.getWidth()*.65f)continue;
-            View one=childOf(first,host);
-            if(one==null||one.getWidth()<host.getWidth()*.65f||one.getHeight()>dp(c,180)||one.getHeight()<dp(c,42))continue;
-            if(second!=null&&childOf(second,host)!=one)continue;
-            if(s.link!=null&&childOf(s.link,host)==one)continue;
-            int step=Math.max(dp(c,56),Math.round(host.getWidth()/6f));int size=Math.min(dp(c,56),Math.round(step*.72f));
-            LinearLayout extra=new LinearLayout(c);extra.setTag(ACTION,Boolean.TRUE);extra.setOrientation(LinearLayout.HORIZONTAL);extra.setGravity(Gravity.START);
-            extra.setPadding(one.getPaddingLeft(),dp(c,4),one.getPaddingRight(),dp(c,4));
-            extra.addView(storyTile(root,first,size,act,e),new LinearLayout.LayoutParams(step,-2));
-            host.addView(extra,host.indexOfChild(one)+1,new LinearLayout.LayoutParams(-1,-2));
-            buttons.put(root,extra);if(e!=null)bound.put(root,e);return;
-        }
+        final VideoTracker.Entry entry=e;
+        if(insertAction(root,s.report,s.mute,size->storyTile(root,s.report,size,act,entry))&&entry!=null)bound.put(root,entry);
     }
     private static View storyTile(View root,TextView sample,int diameter,Activity act,VideoTracker.Entry e){
         // A button can be shown while the native media model is still loading.
