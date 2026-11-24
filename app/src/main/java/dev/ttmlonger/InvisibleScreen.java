@@ -46,7 +46,7 @@ final class InvisibleScreen extends Screen {
                     InterfaceHooks.on("read_reply"),on->{InterfaceHooks.set("read_reply",on);refresh();}));
             else body.addView(ui.note("Разрешение прочтения при ответе: тело отправки сообщения не распознано."));
         } else body.addView(ui.note("Статус прочтения: классы запроса не распознаны в этой версии TikTok. Блокировка не включается."));
-        body.addView(toggleRow(-1,"Галочки прочтения","В распознанном чате заменяет «Прочитано» на ✓✓ и «Отправлено» на ✓. Статус сообщения не меняется.",
+        body.addView(toggleRow(-1,"Галочки прочтения","В распознанном чате заменяет «Прочитано» на ☑️☑️ и «Отправлено» на ☑️. Статус сообщения не меняется.",
                 InterfaceHooks.on("chat_ticks"),on->{InterfaceHooks.set("chat_ticks",on);refresh();}));
         body.addView(toggleRow(Icons.EYE_OFF, "Не показывать «печатает…»",
                 "Собеседник не увидит, что вы набираете сообщение. Мод убирает тело запроса «печатает», и сервер "
@@ -96,7 +96,7 @@ final class InvisibleScreen extends Screen {
 
     private void refresh() {
         if (status != null) status.setText(Invisible.status()+"\n"+ReadPrivacy.status());
-        if(preview!=null)preview.setText("Пример переписки\n\nПривет! Видел новое видео?\n00:30:12\n\n                     Да, огонь\n                     00:31:05  "+(InterfaceHooks.on("chat_ticks")?"✓✓":"Прочитано")+"\n\n"+(Prefs.hideTyping?"Набор текста скрыт":"Набор текста обычный")+" · "+(ReadPrivacy.ready()&&ReadPrivacy.enabled()?"Блокировка прочтения включена":"Обычное прочтение"));
+        if(preview!=null)preview.setText("Пример переписки\n\nСмотри, что я нашёл сегодня!\n21:14:08\n\n                     Ого, это очень красиво!\n                     21:14:32  "+(InterfaceHooks.on("chat_ticks")?"☑️☑️":"Прочитано")+"\n\n"+(Prefs.hideTyping?"Набор текста скрыт":"Набор текста обычный")+" · "+(ReadPrivacy.ready()&&ReadPrivacy.enabled()?"Блокировка прочтения включена":"Обычное прочтение"));
     }
 
     private void copy() {
