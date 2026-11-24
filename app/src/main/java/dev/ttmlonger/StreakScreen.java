@@ -2,8 +2,6 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.TimePickerDialog;
-import android.content.DialogInterface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -76,10 +74,10 @@ final class StreakScreen extends Screen {
         body.addView(ui.note("Это пример переписки. Стикер здесь не отправляется."));
         body.addView(ui.header("Правила продления"));
         LinearLayout rules = ui.panel(body);
-        timeRow = ui.menuRow(Icons.CLOCK, "Когда отправлять", "", null, v -> pickTime());
+        timeRow = ui.menuRow(Icons.CLOCK, "Время отправки", "", null, v -> pickTime());
         rules.addView(timeRow);
         rules.addView(ui.divider());
-        stickerRow = ui.menuRow(Icons.STICKER, "Стикер", "", null, v -> StickerPickScreen.show(act, this::refresh));
+        stickerRow = ui.menuRow(Icons.STICKER, "Стикер для отправки", "", null, v -> StickerPickScreen.show(act, this::refresh));
         rules.addView(stickerRow);
         forgetRow = ui.row(Icons.CLOSE, "Снять выбор стикера", null, null, false, v -> {
             StreakSticker.forget();
@@ -130,13 +128,7 @@ final class StreakScreen extends Screen {
         }
         int minute = schedule.minute(owner);
         int initial = minute >= 0 ? minute : Prefs.streakMinute;
-        TimePickerDialog picker = new TimePickerDialog(act, Ui.dialogTheme(),
-                (v, hour, min) -> setTime(owner, hour * 60 + min), initial / 60, initial % 60, true);
-        picker.setTitle("Время отправки");
-        picker.setButton(DialogInterface.BUTTON_NEUTRAL, "Без расписания", (dialog, which) -> setTime(owner, -1));
-        markOwn(picker);
-        picker.show();
-        Ui.style(picker);
+        StreakTimeSheet.show(act, initial, value -> setTime(owner,value));
     }
 
     private void setTime(String owner, int minute) {
