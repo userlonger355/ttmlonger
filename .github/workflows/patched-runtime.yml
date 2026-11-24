@@ -10,6 +10,7 @@ on:
       - tools/patched-apk-smoke.sh
       - tools/native-arm64-smoke.sh
       - tools/runtime-ui/**
+      - tools/guest-feed-smoke.py
       - app/src/main/java/dev/ttmlonger/**
 
 permissions:
@@ -144,6 +145,7 @@ jobs:
           PATCHED_APK: ${{ steps.patch.outputs.apk }}
           TTM_MEDIA_DIR: ${{ runner.temp }}/ttmlonger-media
           TTM_UI_CHECKS: "1"
+          TTM_GUEST_CHECKS: "1"
         run: bash "$GITHUB_WORKSPACE/tools/native-arm64-smoke.sh" "$PATCHED_APK" 127.0.0.1:5555
       - name: Upload screen captures and startup video
         if: always()

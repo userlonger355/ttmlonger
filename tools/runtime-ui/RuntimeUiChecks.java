@@ -423,6 +423,35 @@ final class RuntimeUiChecks {
     private static void fail(String id,Throwable e) {
         fails++; Log.e(TAG,"RESULT "+id+" FAIL "+e.getClass().getSimpleName());
     }
+    // CI-only: after menu regression checks, observe the actual TikTok window while ADB navigates guest UI.
+    private static void guestBarProbe(int attempt) {
+        if(attempt>=100) return;
+        try {
+            Activity a=ScreenWatcher.top();
+            if(a!=null && !a.isFinishing()) {
+                BarFinder.Found f=BarFinder.find(a.getWindow().getDecorView());
+                if(f!=null) {
+                    boolean home=false, profile=false;
+                    for(View tab:f.tabs) {
+                        home |= text(tab,"Home")!=null || text(tab,"Главная")!=null
+                            || "Home".contentEquals(tab.getContentDescription()==null?"":tab.getContentDescription());
+                        profile |= text(tab,"Profile")!=null || text(tab,"Профиль")!=null
+                            || "Profile".contentEquals(tab.getContentDescription()==null?"":tab.getContentDescription());
+                    }
+                    if(home && profile) {
+                        if(!GlassCfg.glass()) { GlassCfg.setStyle(GlassCfg.GLASS); GlassBar.refresh(); }
+                        Field lf=GlassBar.class.getDeclaredField("live"); lf.setAccessible(true);
+                        GlassSession live=(GlassSession)lf.get(null);
+                        if(live!=null && live.bar==f.bar && live.isAttached()) {
+                            Log.i("TTMGuest","NATIVE_GLASS_ATTACHED tabs="+f.tabs.size()+" selected="+live.selectedTab());
+                        }
+                    }
+                }
+            }
+        } catch(Throwable e) { Log.w("TTMGuest","PROBE_ERROR "+e.getClass().getSimpleName()); }
+        main.postDelayed(() -> guestBarProbe(attempt+1),1200);
+    }
+
     private static void finish() {
         try {
             if(glass!=null) {
@@ -440,5 +469,6 @@ final class RuntimeUiChecks {
             skip("live_feed_ads_media_repost_content");
         } catch(Throwable e) { fail("cleanup",e); }
         Log.i(TAG,"DONE pass="+passes+" fail="+fails+" skip="+skips);
+        main.postDelayed(() -> guestBarProbe(0),1500);
     }
 }
