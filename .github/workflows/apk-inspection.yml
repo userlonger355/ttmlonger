@@ -1,0 +1,54 @@
+name: Inspect Android test APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/navigation-metadata-20261124
+    paths:
+      - .github/workflows/apk-inspection.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TIKTOK_APK_URL: ${{ secrets.TIKTOK_APK_URL }}
+      LSPATCH_APK_URL: ${{ secrets.LSPATCH_APK_URL }}
+      SHIZUKU_APK_URL: ${{ secrets.SHIZUKU_APK_URL }}
+    steps:
+      - name: Check configured inputs and inspect APK metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TIKTOK_APK_URL" || -z "$LSPATCH_APK_URL" || -z "$SHIZUKU_APK_URL" ]]; then
+            echo "::notice::Set the three APK URL repository secrets before running this inspection."
+            exit 0
+          fi
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(dirname "$aapt")/apksigner"
+          test -x "$aapt"
+          test -x "$apksigner"
+          inspect() {
+            local name="$1" url="$2"
+            local apk="$work/$name.apk"
+            if [[ "$url" != https://www.dropbox.com/* ]]; then
+              echo "::error::Expected a Dropbox HTTPS URL for $name"
+              return 1
+            fi
+            echo "Inspecting $name"
+            curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 180 --max-filesize 1073741824 --output "$apk" "$url"
+            unzip -tq "$apk" >/dev/null
+            "$apksigner" verify "$apk"
+            "$aapt" dump badging "$apk" | grep -E '^(package:|sdkVersion:|targetSdkVersion:|native-code:)'
+            sha256sum "$apk" | awk '{print "SHA256: " $1}'
+          }
+          inspect TikTok "$TIKTOK_APK_URL"
+          inspect LSPatch "$LSPATCH_APK_URL"
+          inspect Shizuku "$SHIZUKU_APK_URL"
+          echo "All APK archives and signatures verified. Compatibility and live testing remain separate steps."
