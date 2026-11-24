@@ -14,22 +14,27 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     env:
       TIKTOK_APK_URL: ${{ secrets.TIKTOK_APK_URL }}
       LSPATCH_APK_URL: ${{ secrets.LSPATCH_APK_URL }}
       SHIZUKU_APK_URL: ${{ secrets.SHIZUKU_APK_URL }}
     steps:
+      - uses: actions/checkout@v4
       - name: Check configured inputs and inspect APK metadata
+        id: inspect
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "$TIKTOK_APK_URL" || -z "$LSPATCH_APK_URL" || -z "$SHIZUKU_APK_URL" ]]; then
             echo "::notice::Set the three APK URL repository secrets before running this inspection."
+            echo "### APK inspection skipped — repository secrets are missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          work="$(mktemp -d)"
-          trap 'rm -rf "$work"' EXIT
+          work="$RUNNER_TEMP/ttmlonger-apks"
+          mkdir -p "$work"
+          chmod 700 "$work"
           aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           apksigner="$(dirname "$aapt")/apksigner"
           test -x "$aapt"
@@ -52,3 +57,22 @@ jobs:
           inspect LSPatch "$LSPATCH_APK_URL"
           inspect Shizuku "$SHIZUKU_APK_URL"
           echo "All APK archives and signatures verified. Compatibility and live testing remain separate steps."
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "### All three APK archives passed structural and signature checks" >> "$GITHUB_STEP_SUMMARY"
+      - name: Enable KVM
+        if: steps.inspect.outputs.ready == 'true'
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Launch unmodified TikTok on a clean emulator
+        if: steps.inspect.outputs.ready == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash "$GITHUB_WORKSPACE/tools/apk-smoke.sh" "$RUNNER_TEMP/ttmlonger-apks/TikTok.apk"
+
+      - name: Remove APK inputs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ttmlonger-apks"
