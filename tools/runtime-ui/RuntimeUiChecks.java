@@ -84,6 +84,7 @@ final class RuntimeUiChecks {
         }
         return false;
     }
+    private static View findGrid(View v){if(v instanceof ModMenu.CardGrid)return v;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View found=findGrid(g.getChildAt(i));if(found!=null)return found;}}return null;}
     private static ViewGroup preview(View v) {
         if (v instanceof ViewGroup) {
             ViewGroup g=(ViewGroup)v;
@@ -107,6 +108,9 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Перехват запросов")==null
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
+            View grid=findGrid(menu.getWindow().getDecorView());
+            result("menu_card_grid",grid instanceof ModMenu.CardGrid);
+            result("menu_card_title_preserved",text(menu.getWindow().getDecorView(),"Регион")!=null&&text(menu.getWindow().getDecorView(),"Нижняя панель")!=null);
             metadataChecks();
             TextView saveOffer=TtStyle.saveOffer(activity);
             saveOffer.measure(View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));

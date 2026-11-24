@@ -2,6 +2,8 @@ package dev.ttmlonger;
 
 import android.app.Activity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.view.Gravity;
 import android.widget.HorizontalScrollView;
 import android.widget.EditText;
@@ -250,7 +252,80 @@ final class ModMenu extends Screen {
             streakValue.setText(StreakScreen.menuSummary());
             Ui.valueOf(streakMenuRow).setText(StreakScreen.menuSummary());
         });
+        for(LinearLayout group:sections)for(int j=0;j<group.getChildCount();j++)makeCard((LinearLayout)group.getChildAt(j));
         filter();
+    }
+
+    /** Reuse the original row and listener. Move its contents to a vertical card. */
+    private void makeCard(LinearLayout row){
+        TextView title=Ui.titleOf(row),sub=Ui.subtitleOf(row),value=Ui.valueOf(row);
+        if(title==null)return;
+        View icon=null,chevron=null;ModSwitch toggle=null;
+        for(int j=0;j<row.getChildCount();j++){
+            View child=row.getChildAt(j);
+            if(child instanceof ModSwitch)toggle=(ModSwitch)child;
+            else if(child instanceof ImageView){
+                if(child.getTag() instanceof Integer)icon=child;else chevron=child;
+            }
+        }
+        View col=(View)title.getParent();
+        row.removeAllViews();
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setGravity(Gravity.TOP|Gravity.START);
+        row.setPadding(ui.dp(14),ui.dp(14),ui.dp(14),ui.dp(15));
+        row.setMinimumHeight(ui.dp(136));
+        row.setBackground(ui.round(Ui.CARD,24));
+        row.setForeground(ui.ripple());
+        row.setClipToOutline(true);
+        LinearLayout top=new LinearLayout(act);top.setGravity(Gravity.CENTER_VERTICAL);
+        if(icon!=null){top.addView(icon,new LinearLayout.LayoutParams(ui.dp(26),ui.dp(26)));}
+        else top.addView(ui.icon(Icons.SLIDERS,Ui.MUTED,26));
+        top.addView(new View(act),new LinearLayout.LayoutParams(0,1,1));
+        if(toggle!=null)top.addView(toggle,new LinearLayout.LayoutParams(-2,-2));
+        else if(chevron!=null){top.addView(chevron,new LinearLayout.LayoutParams(ui.dp(18),ui.dp(18)));}
+        row.addView(top,ui.matchWrap());
+        title.setTextSize(16.5f);title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        title.setPadding(0,ui.dp(12),0,ui.dp(3));
+        if(sub!=null){sub.setTextSize(12.5f);sub.setPadding(0,ui.dp(2),0,0);}
+        row.addView(col,ui.matchWrap());
+        if(value!=null){
+            value.setSingleLine(false);value.setMaxLines(2);value.setMaxWidth(Integer.MAX_VALUE);
+            value.setPadding(0,ui.dp(7),0,0);value.setTextSize(13);
+            row.addView(value,ui.matchWrap());
+        }
+        Ui.pressMotion(row);
+    }
+
+    /** Equal-width cards with natural text height. Filtering reflows without empty slots. */
+    static final class CardGrid extends LinearLayout {
+        final int gap,side,minimum;
+        CardGrid(Activity a,Ui ui){super(a);gap=ui.dp(8);side=ui.dp(14);minimum=ui.dp(310);setOrientation(VERTICAL);setClipChildren(false);setClipToPadding(false);}
+        private int columns(int width){return width>=minimum&&getResources().getConfiguration().fontScale<=1.3f?2:1;}
+        @Override protected void onMeasure(int ws,int hs){
+            int width=View.MeasureSpec.getSize(ws);int cols=columns(width);
+            int cell=Math.max(1,(width-2*side-(cols-1)*gap)/cols), y=gap;
+            ArrayList<View> row=new ArrayList<>(cols);
+            int h=0;
+            for(int k=0;k<getChildCount();k++){
+                View child=getChildAt(k);if(child.getVisibility()==GONE)continue;
+                child.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
+                h=Math.max(h,child.getMeasuredHeight());row.add(child);
+                if(row.size()==cols){for(View one:row)one.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));y+=h+gap;row.clear();h=0;}
+            }
+            if(!row.isEmpty()){for(View one:row)one.measure(View.MeasureSpec.makeMeasureSpec(cell,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));y+=h+gap;}
+            setMeasuredDimension(width,resolveSize(y,hs));
+        }
+        @Override protected void onLayout(boolean changed,int l,int t,int r,int b){
+            int cols=columns(r-l),index=0,y=gap,h=0;
+            boolean rtl=getLayoutDirection()==View.LAYOUT_DIRECTION_RTL;
+            for(int k=0;k<getChildCount();k++){
+                View child=getChildAt(k);if(child.getVisibility()==GONE)continue;
+                int w=child.getMeasuredWidth(),ch=child.getMeasuredHeight();
+                int x=side+(index%cols)*(w+gap);if(rtl)x=(r-l)-x-w;
+                child.layout(x,y,x+w,y+ch);h=Math.max(h,ch);index++;
+                if(index%cols==0){y+=h+gap;h=0;}
+            }
+        }
     }
 
     private void recovery() {
@@ -272,10 +347,11 @@ final class ModMenu extends Screen {
         LinearLayout tile = new LinearLayout(act);
         tile.setOrientation(LinearLayout.VERTICAL);
         tile.setPadding(ui.dp(16), ui.dp(15), ui.dp(12), ui.dp(16));
-        tile.setBackground(ui.round(Ui.CARD,18));
+        tile.setBackground(ui.round(Ui.CARD,24));
         tile.setClipToOutline(true);
         tile.setForeground(ui.ripple());
         tile.setFocusable(true);
+        Ui.pressMotion(tile);
         tile.setOnClickListener(v -> open.run());
         int tint = Ui.MUTED;
         tile.addView(ui.icon(icon, tint, 27));
@@ -297,17 +373,22 @@ final class ModMenu extends Screen {
         chip.setPadding(ui.dp(14), 0, ui.dp(14), 0);
         chip.setMinimumHeight(ui.dp(44));
         chip.setFocusable(true);
+        Ui.pressMotion(chip);
         chip.setOnClickListener(v -> {
+            if(selected==index)return;
             selected = index;
             filter();
+            if(Ui.motionEnabled()){
+                LinearLayout target=sections.get(index);target.animate().cancel();target.setAlpha(0.65f);target.setTranslationY(ui.dp(7));
+                target.animate().alpha(1f).translationY(0f).setDuration(230).setInterpolator(Ui.motionCurve()).start();
+            }
             tabScroll.smoothScrollTo(chip.getLeft() - ui.dp(14), 0);
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.setMarginEnd(ui.dp(6));
         tabs.addView(chip, lp);
         labels.add(chip);
-        LinearLayout card = new LinearLayout(act);
-        card.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout card = new CardGrid(act,ui);
         page.addView(card,ui.matchWrap());
         sections.add(card);
         return card;
@@ -324,7 +405,7 @@ final class ModMenu extends Screen {
             TextView chip = labels.get(i);
             boolean current = i == selected;
             chip.setSelected(current);
-            chip.setBackground(current ? ui.round(Ui.INK,22) : ui.glassCard(0xff8562bd,22));
+            chip.setBackground(current ? ui.round(Ui.INK,16) : ui.round(Ui.CARD,24));
             chip.setTextColor(current ? Ui.BG : Ui.INK);
             boolean matchGroup = VideoScreen.normalize(chip.getText().toString()).contains(q);
             boolean visible = false;

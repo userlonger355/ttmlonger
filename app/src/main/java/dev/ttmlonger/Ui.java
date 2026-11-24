@@ -145,10 +145,25 @@ final class Ui {
         return d;
     }
     int cardTint(int icon) { return INK; }
+    static boolean motionEnabled(){return android.os.Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled();}
+    static android.view.animation.Interpolator motionCurve(){return new android.view.animation.PathInterpolator(0.2f,0f,0f,1f);}
+    static void pressMotion(View view){
+        if(!motionEnabled())return;
+        android.animation.StateListAnimator states=new android.animation.StateListAnimator();
+        for(boolean pressed:new boolean[]{true,false}){
+            android.animation.AnimatorSet set=new android.animation.AnimatorSet();
+            float scale=pressed?.965f:1f;
+            set.playTogether(android.animation.ObjectAnimator.ofFloat(view,View.SCALE_X,scale),android.animation.ObjectAnimator.ofFloat(view,View.SCALE_Y,scale));
+            set.setDuration(pressed?105:230);set.setInterpolator(motionCurve());
+            states.addState(pressed?new int[]{android.R.attr.state_pressed,android.R.attr.state_enabled}:new int[]{},set);
+        }
+        view.setStateListAnimator(states);
+    }
     void decorate(LinearLayout r,int tint) {
         r.setBackground(glassCard(tint,20));
         r.setClipToOutline(true);
         r.setForeground(ripple());
+        pressMotion(r);
         LinearLayout.LayoutParams lp=matchWrap();
         lp.setMargins(dp(10),dp(5),dp(10),dp(5));
         r.setLayoutParams(lp);

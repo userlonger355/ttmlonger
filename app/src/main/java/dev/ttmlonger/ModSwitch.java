@@ -28,6 +28,7 @@ final class ModSwitch extends View {
         on = initial;
         pos = initial ? 1f : 0f;
         setClickable(true);
+        setFocusable(true);
         setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -53,8 +54,10 @@ final class ModSwitch extends View {
 
     private void animateTo(float target) {
         if (anim != null) anim.cancel();
+        if(!Ui.motionEnabled()){pos=target;invalidate();return;}
         anim = ValueAnimator.ofFloat(pos, target);
-        anim.setDuration(160);
+        anim.setDuration(260);
+        anim.setInterpolator(Ui.motionCurve());
         anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator a) {
@@ -90,7 +93,7 @@ final class ModSwitch extends View {
 
         // Кружок с мягкой тенью.
         float pad = 2f * d;
-        float r = h / 2f - pad;
+        float r = h / 2f - pad - (1f-pos)*3f*d;
         float cx = h / 2f + (w - h) * pos;
         float cy = h / 2f;
         paint.setColor(0x33000000);
