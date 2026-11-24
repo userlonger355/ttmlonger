@@ -1,0 +1,77 @@
+name: Patched TikTok runtime test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/navigation-metadata-20261124
+    paths:
+      - .github/workflows/patched-runtime.yml
+      - tools/patched-apk-smoke.sh
+      - app/src/main/java/dev/ttmlonger/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: patched-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build module
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Retrieve verified test input and embed module
+        id: patch
+        env:
+          TIKTOK_APK_URL: ${{ secrets.TIKTOK_APK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TIKTOK_APK_URL" ]]; then
+            echo "::error::Missing TIKTOK_APK_URL"
+            exit 1
+          fi
+          [[ "$TIKTOK_APK_URL" == https://www.dropbox.com/* ]]
+          work="$RUNNER_TEMP/ttmlonger-runtime"
+          mkdir -p "$work/output"
+          chmod 700 "$work"
+          curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 180 --max-filesize 1073741824 --output "$work/TikTok.apk" "$TIKTOK_APK_URL"
+          echo "7321ae3537572004956e2308c7eb5b1d82e6eb536c2c2fac432f3d8a1801ff70  $work/TikTok.apk" | sha256sum -c
+          curl --silent --fail --location --proto '=https' --proto-redir '=https' --max-time 120 --output "$work/lspatch.jar" "https://github.com/JingMatrix/LSPatch/releases/download/v1.2/lspatch-v1.2-487-release.jar"
+          echo "d238fdc414d121b7fa454d8b4ccf420df3a8c97d563761861ff92bd9c5da2165  $work/lspatch.jar" | sha256sum -c
+          java -jar "$work/lspatch.jar" --help
+          # Embed the built module; leave signature bypass disabled.
+          java -jar "$work/lspatch.jar" -o "$work/output" -m "$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk" "$work/TikTok.apk"
+          mapfile -t outputs < <(find "$work/output" -maxdepth 1 -type f -name '*.apk')
+          [[ "${#outputs[@]}" == 1 ]]
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          "$(dirname "$aapt")/apksigner" verify "${outputs[0]}"
+          echo "apk=${outputs[0]}" >> "$GITHUB_OUTPUT"
+          echo "### Test APK patched and signature verified" >> "$GITHUB_STEP_SUMMARY"
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Run patched TikTok in Android 14
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          PATCHED_APK: ${{ steps.patch.outputs.apk }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash "$GITHUB_WORKSPACE/tools/patched-apk-smoke.sh" "$PATCHED_APK"
+      - name: Remove third-party APKs and patcher
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ttmlonger-runtime"
