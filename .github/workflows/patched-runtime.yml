@@ -32,6 +32,11 @@ jobs:
           gradle-version: "8.9"
       - name: Build module
         run: gradle --no-daemon :app:assembleDebug
+      - name: Set up Java 21 for LSPatch
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
       - name: Retrieve verified test input and embed module
         id: patch
         env:
