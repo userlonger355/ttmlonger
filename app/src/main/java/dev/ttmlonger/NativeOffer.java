@@ -39,6 +39,8 @@ final class NativeOffer {
                 try {
                     final Activity act = ScreenWatcher.top();
                     if (act == null) return;
+                    VideoTracker.Entry current = VideoTracker.entryFor(video);
+                    if ((current != null && current.isStory()) || StoryShare.isStoryScreen(act.getWindow().getDecorView())) return;
                     final Context app = act.getApplicationContext() != null ? act.getApplicationContext() : act;
                     shown++;
                     Pill.show(act, "↓  Сохранить через мод", 0.40f, SHOW_MS, new Runnable() {
