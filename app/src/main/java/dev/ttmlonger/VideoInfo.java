@@ -605,6 +605,8 @@ final class VideoInfo {
         return id!=null && !id.isEmpty() && id.equals(b.aid());
     }
 
+    static VideoTracker.Entry currentEntry(Activity a){if(a==null||android.os.Looper.myLooper()!=android.os.Looper.getMainLooper())return null;Hit h=locate(a);return h==null?null:h.entry;}
+
     private static Hit locate(Activity a) {
         NativeDates.Binding direct=NativeDates.visible(a.getWindow().getDecorView());
         if(direct!=null) return new Hit(direct.entry,direct.anchor);

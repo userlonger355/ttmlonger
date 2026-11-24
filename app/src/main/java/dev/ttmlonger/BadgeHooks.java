@@ -101,12 +101,13 @@ final class BadgeHooks {
         @Override
         protected void afterHookedMethod(MethodHookParam param) {
             try {
-                if (!Prefs.badgesOn || CrashGuard.tripped) return;
+                if ((!Prefs.badgesOn&&!MtpRuntime.running()) || CrashGuard.tripped) return;
                 Object r = param.getResult();
                 if (!(r instanceof String)) return;
                 String name = (String) r;
+                name=MtpRuntime.name(uidOf(param.thisObject),name);
                 String out = BadgeStore.dress(name, uidOf(param.thisObject));
-                if (out != name) param.setResult(out);
+                if (!java.util.Objects.equals(out,r)) param.setResult(out);
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
@@ -143,9 +144,12 @@ final class BadgeHooks {
         @Override
         protected void beforeHookedMethod(MethodHookParam param) {
             try {
-                if (!BadgeStore.marking() || CrashGuard.tripped) return;
+                if ((!BadgeStore.marking()&&!MtpRuntime.running()) || CrashGuard.tripped) return;
                 if (param.args == null || param.args.length < 2 || !(param.args[0] instanceof CharSequence)) return;
                 CharSequence text = (CharSequence) param.args[0];
+                if(!(param.thisObject instanceof EditText)&&!Screen.isOwnDecor(((TextView)param.thisObject).getRootView())){
+                    CharSequence changed=MtpRuntime.text(text);if(changed!=null&&changed!=text){text=changed;param.args[0]=changed;}
+                }
                 if (!BadgeLogic.hasSymbol(text)) return;
                 if (param.thisObject instanceof EditText) {
                     param.args[0] = BadgeLogic.strip(text.toString());
@@ -167,10 +171,7 @@ final class BadgeHooks {
 
     /** Ставится при запуске (после чтения настроек); без выключателя ничего не делает. */
     static void install(ClassLoader cl) {
-        if (!Prefs.badgesOn) {
-            note = "выключено";
-            return;
-        }
+        // Keep the name hook available for MTP even when visual badges are disabled.
         startedOn = true;
         ImportedBadges.load();
         BadgeStore.load();

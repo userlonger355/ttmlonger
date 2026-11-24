@@ -85,6 +85,14 @@ final class RegionHooks {
         hookAll(TelephonyManager.class, "getSimSpecificCarrierId", carrierId);
 
         installCard();
+        String[] methods={"getSimCountryIso","getNetworkCountryIso","getSimOperator","getNetworkOperator","getSimOperatorName","getNetworkOperatorName"};
+        String[] keys={"sim_country","network_country","sim_operator","network_operator","sim_operator_name","network_operator_name"};
+        for(int i=0;i<methods.length;i++){
+            final String key=keys[i];
+            hookAll(TelephonyManager.class,methods[i],new XC_MethodHook(-100){
+                @Override protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable()&&p.getResult() instanceof String)p.setResult(MtpRuntime.region(key,(String)p.getResult()));}
+            });
+        }
     }
 
     /** «Карта есть»: только когда настоящей нет (результат настоящего вызова уже известен). */

@@ -174,6 +174,7 @@ public final class MainHook implements IXposedHookLoadPackage {
                 FlagStore.log(t);
             }
             RegionHooks.installLocale();
+            try { MtpRuntime.install(ctx,cl); } catch(Throwable t){FlagStore.log(t);}
             if (FlagHooks.count() == 0) FlagHooks.retryLater(cl);
             DexHooks.start(ctx, cl);  // второй читатель флагов и нажатия на стикеры: поиск в dex, в фоне
             android.util.Log.i("TTMLonger", "TTMLONGER_BOOT_READY " + Targets.VERSION + " flagHooks=" + FlagHooks.count());
@@ -187,10 +188,12 @@ public final class MainHook implements IXposedHookLoadPackage {
                     @Override
                     public void onActivityResumed(Activity a) {
                         ScreenWatcher.onResumed(a);
+                        MtpRuntime.resumed(a);
                     }
 
                     @Override
                     public void onActivityCreated(Activity a, Bundle b) {
+                        MtpRuntime.created(a);
                     }
 
                     @Override
@@ -199,6 +202,7 @@ public final class MainHook implements IXposedHookLoadPackage {
 
                     @Override
                     public void onActivityPaused(Activity a) {
+                        MtpRuntime.paused(a);
                     }
 
                     @Override

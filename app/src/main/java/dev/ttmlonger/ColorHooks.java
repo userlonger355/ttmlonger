@@ -44,11 +44,11 @@ final class ColorHooks {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 try {
-                    if (!active()) return;
+                    if (!active()&&!MtpRuntime.running()) return;
                     Object r = param.getResult();
                     if (r instanceof Integer) {
                         int c = (Integer) r;
-                        int m = map(c, night(param.thisObject));
+                        int m = MtpRuntime.colour(map(c, night(param.thisObject)));
                         if (m != c) param.setResult(m);
                     } else if (r instanceof ColorStateList) {
                         ColorStateList repl = mapList((ColorStateList) r, night(param.thisObject));

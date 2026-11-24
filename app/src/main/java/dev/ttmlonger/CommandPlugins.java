@@ -13,7 +13,7 @@ final class CommandPlugins extends Screen {
     private static final int MAX=16,MAX_BYTES=65536;
     private final static String PREF="ttmlonger_commands";
     private CommandPlugins(Activity a){super(a);}
-    static void show(Activity a){new CommandPlugins(a).open("Плагины","Локальные JSON-команды. Исполняемые .mtp и скрипты не поддерживаются.");}
+    static void show(Activity a){new CommandPlugins(a).open("Плагины","Локальные JSON-команды и доверенные MTP-плагины.");}
     private android.content.SharedPreferences prefs(){return act.getSharedPreferences(PREF,0);}
     static JSONObject parse(String text)throws Exception{
         if(text.length()>MAX_BYTES)throw new IOException("Файл слишком большой");
@@ -36,6 +36,7 @@ final class CommandPlugins extends Screen {
         return clean.put("rows",out);
     }
     @Override void build(LinearLayout body){
+        body.addView(ui.menuRow(Icons.SLIDERS,"MTP · MargyT API 5","Установка, запуск и настройки DEX-плагинов",null,v->MtpScreen.show(act)));
         body.addView(ui.menuRow(Icons.DOWNLOAD,"Установить JSON-плагин","Выбрать локальный файл",null,v->install()));
         body.addView(ui.note("Поддержка формата commands-plugin.json из MargyT: команды открывают информационные окна. Нет доступа к сети, хукам, аккаунту и произвольному коду."));
         for(Map.Entry<String,?> e:new TreeMap<>(prefs().getAll()).entrySet()){

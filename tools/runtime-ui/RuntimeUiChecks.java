@@ -108,6 +108,8 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            result("mtp_api_version",cat.narezany.margyt.plugin.MargyPlugin.API==5);
+            result("mtp_safe_id",MtpArchive.validId("margyt.hello")&&!MtpArchive.validId("../bad")&&!MtpArchive.validId("a/b"));
             try{
                 result("plugin_window_manifest",CommandPlugins.parse("{\"schema\":1,\"id\":\"hello\",\"name\":\"Hello\",\"author\":\"test\",\"version\":\"1\",\"rows\":[{\"title\":\"Hi\",\"action\":\"window\",\"value\":\"Hello\"}]}").getJSONArray("rows").length()==1);
                 boolean rejected=false;try{CommandPlugins.parse("{\"schema\":1,\"id\":\"hello\",\"name\":\"Hello\",\"author\":\"test\",\"version\":\"1\",\"rows\":[{\"title\":\"Hi\",\"action\":\"exec\",\"value\":\"x\"}]}");}catch(Exception expected){rejected=true;}

@@ -208,12 +208,13 @@ final class AdHooks {
                 if (CrashGuard.tripped || param.hasThrowable()) return;
                 boolean ads = Prefs.hideAds;
                 boolean rooms = Prefs.hideLiveRooms;
-                if (!ads && !rooms) return;
+                if (!ads && !rooms && !MtpRuntime.running()) return;
                 if (!knownPage(param.thisObject)) return;
                 if(searchPage(param.thisObject)) rooms=false;
                 Object r = param.getResult();
                 if (!(r instanceof List)) return;
                 List out = process((List) r, ads, rooms);
+                if(!searchPage(param.thisObject))out=MtpRuntime.feed(out);
                 if (out != r) {
                     param.setResult(out);
                     writeBack(param.thisObject, r, out);
