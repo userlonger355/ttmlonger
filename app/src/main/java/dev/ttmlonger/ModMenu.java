@@ -218,6 +218,7 @@ final class ModMenu extends Screen {
                 }));
 
         body.addView(ui.menuRow(Icons.DOWNLOAD,"Резервная копия настроек","Экспорт и импорт JSON без данных аккаунта",null,v -> SettingsBackup.show(act)));
+        body.addView(ui.menuRow(Icons.SLIDERS,"Плагины","Локальные JSON-команды · установка и управление",null,v -> CommandPlugins.show(act)));
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
 

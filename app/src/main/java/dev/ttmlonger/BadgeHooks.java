@@ -131,9 +131,10 @@ final class BadgeHooks {
         if (list.isEmpty()) return null;
         SpannableStringBuilder b = null;
         for (BadgeLogic.Mark m : list) {
-            if (BadgeSet.byIndex(m.index) == null) continue;
+            BadgeArt artwork=BadgeSet.byIndex(m.index)!=null?art(m.index):ImportedBadges.art(m.index);
+            if(artwork==null)continue;
             if (b == null) b = new SpannableStringBuilder(t);
-            b.setSpan(new BadgeSpan(art(m.index)), m.start, m.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            b.setSpan(new BadgeSpan(artwork), m.start, m.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return b;
     }
@@ -171,6 +172,7 @@ final class BadgeHooks {
             return;
         }
         startedOn = true;
+        ImportedBadges.load();
         BadgeStore.load();
         BadgeRemote.start();
         int n = 0;

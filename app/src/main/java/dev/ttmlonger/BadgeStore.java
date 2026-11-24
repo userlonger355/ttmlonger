@@ -159,6 +159,8 @@ final class BadgeStore {
         return out;
     }
 
+    static synchronized void importedChanged(){rebuild();}
+
     private static void rebuild() {
         Map<String, String> next = new HashMap<>();
         java.util.Set<String> uids = new java.util.LinkedHashSet<>(remote.keySet());
@@ -169,6 +171,11 @@ final class BadgeStore {
             StringBuilder sb = new StringBuilder();
             for (String id : ids) sb.append(BadgeLogic.mark(BadgeSet.indexOf(id)));
             if (sb.length() > 0) next.put(uid, sb.toString());
+        }
+        for(Map.Entry<String,String> e:ImportedBadges.marks().entrySet()){
+            String previous=next.get(e.getKey());
+            String joined=(previous==null?"":previous)+e.getValue();
+            next.put(e.getKey(),joined.substring(0,Math.min(joined.length(),MAX_SHOWN*BadgeLogic.WIDTH)));
         }
         marks = next;
     }

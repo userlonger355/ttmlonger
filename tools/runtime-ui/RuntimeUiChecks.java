@@ -108,6 +108,12 @@ final class RuntimeUiChecks {
                 && text(menu.getWindow().getDecorView(),"Настройки разработчика TikTok")!=null);
             stage("menu");
             metadataChecks();
+            try{
+                result("plugin_window_manifest",CommandPlugins.parse("{\"schema\":1,\"id\":\"hello\",\"name\":\"Hello\",\"author\":\"test\",\"version\":\"1\",\"rows\":[{\"title\":\"Hi\",\"action\":\"window\",\"value\":\"Hello\"}]}").getJSONArray("rows").length()==1);
+                boolean rejected=false;try{CommandPlugins.parse("{\"schema\":1,\"id\":\"hello\",\"name\":\"Hello\",\"author\":\"test\",\"version\":\"1\",\"rows\":[{\"title\":\"Hi\",\"action\":\"exec\",\"value\":\"x\"}]}");}catch(Exception expected){rejected=true;}
+                result("plugin_exec_rejected",rejected);
+                result("margyt_badge_catalog",ImportedBadges.count("{\"badges\":[{\"id\":\"helper\",\"colour\":\"64B5F6\",\"users\":[\"1234567890123456789\"]}]}")==1);
+            }catch(Exception e){fail("plugin_badge_import",e);}
             result("inbox_badge_count",InboxBadge.count("99+")==100&&InboxBadge.count("Входящие")==0&&InboxBadge.count("12")==12);
             result("inbox_badge_new_notification",InboxBadge.next(12,10)==10&&InboxBadge.next(10,11)==0);
             result("inbox_badge_labels",InboxBadge.label("Сообщения")&&InboxBadge.label("Inbox")&&!InboxBadge.label("Profile"));
