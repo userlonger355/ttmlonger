@@ -36,6 +36,7 @@ final class GlassBarScreen extends Screen {
     private LinearLayout liveRow;
     private LinearLayout fillRow;
     private LinearLayout presetRow;
+    private LinearLayout profileRows;
     private LinearLayout physRow;
     private LinearLayout modeRow;
     private LinearLayout plusRow;
@@ -165,6 +166,11 @@ final class GlassBarScreen extends Screen {
         box.addView(ui.header("Стекло"));
         presetRow = chipRow();
         box.addView(presetRow);
+        box.addView(ui.header("Мои профили"));
+        box.addView(ui.note("Три слота для сохранения всего оформления и физики. Выбор Оригинал / Liquid Glass не меняется."));
+        profileRows = new LinearLayout(act);
+        profileRows.setOrientation(LinearLayout.VERTICAL);
+        box.addView(profileRows);
         slider(box, "Непрозрачность", "Сила подкраски капсулы: сама капсула непрозрачная", GlassCfg.TR_MIN,
                 GlassCfg.TR_MAX, () -> GlassCfg.tr, v -> GlassCfg.setTr(v), v -> v + "%");
         slider(box, "Насыщенность", "Цвета значков внутри линзы", GlassCfg.SA_MIN, GlassCfg.SA_MAX,
@@ -377,7 +383,38 @@ final class GlassBarScreen extends Screen {
     private void syncAll() {
         for (Runnable r : syncs) r.run();
         syncPresets();
+        syncProfiles();
         if (previewSession != null) previewSession.refresh();
+    }
+
+    private void syncProfiles() {
+        profileRows.removeAllViews();
+        for (int i=0;i<GlassProfiles.COUNT;i++) {
+            final int slot=i;
+            boolean exists=GlassProfiles.exists(slot);
+            profileRows.addView(ui.row(Icons.SLIDERS,"Применить профиль "+(i+1),
+                    exists?"Сохранённое оформление":"Пока пусто",null,false,v -> {
+                if(GlassProfiles.apply(slot)) applyAll();
+                else Toasts.show(act,"Профиль пуст или недоступен");
+            }));
+            profileRows.addView(ui.row(Icons.COPY,"Сохранить профиль "+(i+1),
+                    exists?"Заменить сохранённое оформление":"Записать текущие параметры",null,false,v -> {
+                if(GlassProfiles.exists(slot)) {
+                    android.app.AlertDialog d=new android.app.AlertDialog.Builder(act,Ui.dialogTheme())
+                        .setTitle("Заменить профиль?")
+                        .setMessage("Предыдущее оформление этого профиля будет заменено.")
+                        .setNegativeButton("Отмена",null)
+                        .setPositiveButton("Заменить",(dlg,which)->saveProfile(slot)).create();
+                    Screen.markOwn(d); d.show(); Ui.style(d);
+                } else saveProfile(slot);
+            }));
+        }
+    }
+    private void saveProfile(int slot) {
+        if(GlassProfiles.store(slot)) {
+            syncProfiles();
+            Toasts.show(act,"Профиль сохранён");
+        } else Toasts.show(act,"Не удалось сохранить профиль");
     }
 
     private void syncPresets() {

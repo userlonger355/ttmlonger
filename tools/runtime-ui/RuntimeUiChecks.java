@@ -251,6 +251,22 @@ final class RuntimeUiChecks {
             result("glass_disk_roundtrip",GlassCfg.tr==47 && !GlassCfg.bk);
             GlassCfg.resetLook();
             result("glass_reset_keeps_style",GlassCfg.style==GlassCfg.GLASS && GlassCfg.tr==55);
+            result("profile_empty_slot",!GlassProfiles.exists(2) && !GlassProfiles.apply(2));
+            GlassCfg.setTr(34);
+            GlassCfg.setPk(420);
+            GlassCfg.setPlus(3);
+            result("profile_store",click(glass,"Сохранить профиль 1") && GlassProfiles.exists(0));
+            GlassCfg.setTr(70);
+            GlassCfg.setPk(900);
+            GlassCfg.setPlus(0);
+            result("profile_apply",click(glass,"Применить профиль 1")
+                && GlassCfg.tr==34 && GlassCfg.pk==420 && GlassCfg.plus==3);
+            result("profile_style_preserved",GlassCfg.style==GlassCfg.GLASS);
+            GlassCfg.setTr(77);
+            result("profile_second_slot",GlassProfiles.store(1));
+            result("profile_independent",GlassProfiles.apply(0) && GlassCfg.tr==34
+                && GlassProfiles.apply(1) && GlassCfg.tr==77);
+            result("profile_invalid_slot",!GlassProfiles.store(-1) && !GlassProfiles.apply(3));
         } catch(Throwable e) { fail("glass_config_exception",e); }
         finally { GlassCfg.load(original); GlassCfg.save(); GlassBar.refresh(); }
         try {
