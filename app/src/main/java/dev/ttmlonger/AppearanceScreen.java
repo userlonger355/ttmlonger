@@ -72,6 +72,7 @@ final class AppearanceScreen extends Screen {
         rp.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(4));
         body.addView(restartCard, rp);
 
+        body.addView(ui.menuRow(Icons.IMAGE,"Форма аватарок","10 контуров · вращение · предпросмотр",null,v -> AvatarContours.editor(act)));
         buildAccentCard(body);
         buildFontCard(body);
         buildIconCard(body);

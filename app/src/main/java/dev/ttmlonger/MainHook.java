@@ -49,6 +49,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
         try {
             AvatarHooks.install(cl);
+            AvatarContours.install(cl,ctx);
         } catch (Throwable t) {
             FlagStore.log(t);
         }

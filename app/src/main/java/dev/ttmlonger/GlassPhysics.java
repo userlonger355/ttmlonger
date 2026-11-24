@@ -60,8 +60,8 @@ final class GlassPhysics {
     void step(double dtIn) {
         double dt = Math.max(0.0, Math.min(0.05, dtIn));
         if (dt <= 0.0) return;
-        double k = drag ? GlassCfg.pk * 0.85 : GlassCfg.pk;
-        double cd = drag ? GlassCfg.pd * 0.92 : GlassCfg.pd;
+        double k = drag ? GlassCfg.pk * 1.15 : GlassCfg.pk;
+        double cd = drag ? Math.max(GlassCfg.pd, 2.0 * Math.sqrt(k) * 0.85) : GlassCfg.pd;
         double jl = GlassCfg.jl / 10.0;
         int n = Math.max(1, (int) Math.ceil(dt / 0.004));
         double h = dt / n;
@@ -76,7 +76,7 @@ final class GlassPhysics {
             pos += vel * h;
             pvl += (300.0 * (pressT - press) - 19.0 * pvl) * h;
             press += pvl * h;
-            double want = Math.max(-0.3, Math.min(0.3, vel * 0.022 * jl));
+            double want = Math.max(-0.24, Math.min(0.24, vel * 0.018 * jl));
             sxv += (320.0 * (want - sx) - 17.0 * sxv) * h;
             sx += sxv * h;
             if (pos < 0 || pos > last) {
