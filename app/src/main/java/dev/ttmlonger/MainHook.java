@@ -124,7 +124,20 @@ public final class MainHook implements IXposedHookLoadPackage {
             FlagStore.init(ctx);      // внутри читаются и Prefs
             try {
                 InterfaceHooks.install(ctx);
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
+            try {
+                BrowserLinks.install();
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
+            try {
                 FeedButtons.install(cl);
+            } catch (Throwable t) {
+                FlagStore.log(t);
+            }
+            try {
                 ProfileFacts.install(cl);
             } catch (Throwable t) {
                 FlagStore.log(t);

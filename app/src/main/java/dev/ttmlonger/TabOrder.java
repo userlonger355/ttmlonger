@@ -121,20 +121,27 @@ final class TabOrder {
                 places.sort((a,b) -> Integer.compare(a.getLeft(), b.getLeft()));
                 List<String> order = order(group.getContext(), true);
                 if (group.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) java.util.Collections.reverse(order);
-                int i = 0;
-                for (String key : order) {
-                    View tab = tabs.get(key);
-                    if (tab != null && places.get(i++).getWidth() < tab.getWidth() - 1) {
-                        reset(true);
-                        return true;
-                    }
+                // Keep fixed tabs in place. Pack each uninterrupted run using actual title widths.
+                ArrayList<View> ordered = new ArrayList<>();
+                int first = 0;
+                while (first < places.size()) {
+                    int end = first + 1;
+                    while (end < places.size() && Math.abs(group.indexOfChild(places.get(end))
+                            - group.indexOfChild(places.get(end - 1))) == 1) end++;
+                    List<View> run = places.subList(first, end);
+                    for (String key : order) if (run.contains(tabs.get(key))) ordered.add(tabs.get(key));
+                    first = end;
                 }
-                i = 0;
-                for (String key : order) {
-                    View tab = tabs.get(key);
-                    if (tab == null) continue;
-                    View to = places.get(i++);
-                    float delta = to.getLeft() + (to.getWidth() - tab.getWidth()) / 2f - tab.getLeft();
+                int cursor = places.get(0).getLeft();
+                for (int i = 0; i < ordered.size(); i++) {
+                    View tab = ordered.get(i);
+                    if (i > 0) {
+                        View before = places.get(i - 1), at = places.get(i);
+                        if (Math.abs(group.indexOfChild(before) - group.indexOfChild(at)) > 1) cursor = at.getLeft();
+                        else cursor += at.getLeft() - before.getRight();
+                    }
+                    float delta = cursor - tab.getLeft();
+                    cursor += tab.getWidth();
                     Float previous = topOffsets.put(tab, delta);
                     if (previous == null || previous != delta)
                         tab.setTranslationX(tab.getTranslationX() - (previous == null ? 0 : previous) + delta);

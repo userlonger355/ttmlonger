@@ -18,8 +18,25 @@ final class ModMenu extends Screen {
     }
 
     @Override
-    void build(LinearLayout body) {
-        body.addView(ui.header("Основное"));
+    void build(LinearLayout page) {
+        android.widget.EditText search = new android.widget.EditText(act);
+        search.setSingleLine(true);
+        search.setHint("Поиск по настройкам мода");
+        search.setTextColor(Ui.INK);
+        search.setHintTextColor(Ui.MUTED);
+        search.setBackground(ui.round(Ui.FIELD, 16));
+        search.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10));
+        LinearLayout.LayoutParams inset = ui.matchWrap();
+        inset.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), 0);
+        page.setFocusableInTouchMode(true);
+        page.requestFocus();
+        page.addView(search, inset);
+        if (CrashGuard.tripped) {
+            page.addView(ui.menuRow(Icons.FLAG, "Включена защита от сбоев",
+                    "После нескольких коротких запусков часть функций приостановлена. Открыть настройки защиты",
+                    null, v -> FlagsScreen.show(act)));
+        }
+        LinearLayout body = section(page, "Основное");
         regionRow = ui.menuRow(Icons.GLOBE, "Регион", null, regionSummary(), new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -52,7 +69,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.header("Лента"));
+        body = section(page, "Лента");
         body.addView(ui.menuRow(Icons.CLOCK, "Время и регион видео",
                 "Точное время публикации, флаг и код страны над именем автора", VideoInfoScreen.menuSummary(),
                 new View.OnClickListener() {
@@ -110,7 +127,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.header("Сохранение"));
+        body = section(page, "Сохранение");
         body.addView(ui.menuRow(Icons.DOWNLOAD, "Скачивание", "Без водяного знака, качество, обход запрета", null,
                 new View.OnClickListener() {
                     @Override
@@ -135,7 +152,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.header("Личные сообщения"));
+        body = section(page, "Личные сообщения");
         body.addView(ui.menuRow(Icons.FLAME, "Огонёк", "Само продлевает серию дней в чате", StreakScreen.menuSummary(),
                 new View.OnClickListener() {
                     @Override
@@ -154,7 +171,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.header("Функции TikTok"));
+        body = section(page, "Функции TikTok");
         body.addView(toggleRow(Icons.IMAGE, "Баннер профиля",
                 "Установка баннера в «Изменить профиль». Нужен перезапуск TikTok",
                 FlagStore.allOn(Targets.BANNER_FLAGS), new ModSwitch.Listener() {
@@ -186,7 +203,7 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.header("Для опытных"));
+        body = section(page, "Для опытных");
         body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
                 "Внутренние флаги (A/B) для тестирования функций", null,
                 new View.OnClickListener() {
@@ -199,7 +216,53 @@ final class ModMenu extends Screen {
         TextView ver = ui.text("TTMLonger " + Targets.VERSION, 13, Ui.MUTED, false);
         ver.setGravity(android.view.Gravity.CENTER);
         ver.setPadding(0, ui.dp(28), 0, ui.dp(8));
-        body.addView(ver, ui.matchWrap());
+        page.addView(ver, ui.matchWrap());
+        TextView empty = ui.note("По этому запросу настроек нет");
+        page.addView(empty);
+        empty.setVisibility(View.GONE);
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void afterTextChanged(android.text.Editable s) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String q = VideoScreen.normalize(s.toString());
+                boolean any = false;
+                for (int i = 1; i < page.getChildCount(); i++) {
+                    View item = page.getChildAt(i);
+                    if (!(item instanceof LinearLayout) || !(item.getTag() instanceof TextView)) continue;
+                    LinearLayout card = (LinearLayout) item;
+                    TextView header = (TextView) card.getTag();
+                    boolean group = VideoScreen.normalize(header.getText().toString()).contains(q);
+                    boolean visible = false;
+                    for (int j = 0; j < card.getChildCount(); j++) {
+                        View row = card.getChildAt(j);
+                        TextView title = Ui.titleOf(row);
+                        TextView sub = Ui.subtitleOf(row);
+                        String words = (title == null ? "" : title.getText()) + " " + (sub == null ? "" : sub.getText());
+                        boolean match = group || VideoScreen.normalize(words).contains(q);
+                        row.setVisibility(match ? View.VISIBLE : View.GONE);
+                        visible |= match;
+                    }
+                    header.setVisibility(visible ? View.VISIBLE : View.GONE);
+                    card.setVisibility(header.getVisibility());
+                    any |= visible;
+                }
+                empty.setVisibility(any ? View.GONE : View.VISIBLE);
+            }
+        });
+    }
+
+    private LinearLayout section(LinearLayout page, String title) {
+        TextView heading = ui.header(title);
+        page.addView(heading);
+        LinearLayout card = new LinearLayout(act);
+        card.setTag(heading);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(ui.round(Ui.DARK ? Ui.CARD : Ui.FIELD, 18));
+        card.setClipToOutline(true);
+        LinearLayout.LayoutParams lp = ui.matchWrap();
+        lp.setMargins(ui.dp(12), 0, ui.dp(12), ui.dp(2));
+        page.addView(card, lp);
+        return card;
     }
 
     private static String regionSummary() {

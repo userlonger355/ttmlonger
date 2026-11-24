@@ -33,6 +33,15 @@ final class FeedButtons {
 
     private static final WeakHashMap<View, Slot> slots = new WeakHashMap<>();
     private static boolean applying;
+    private static final java.util.EnumSet<Button> supported = java.util.EnumSet.noneOf(Button.class);
+
+    static synchronized boolean supported(Button button) {
+        return supported.contains(button);
+    }
+
+    private static synchronized void found(Button button) {
+        supported.add(button);
+    }
 
     static void install(ClassLoader cl) {
         XposedBridge.hookAllMethods(View.class, "setVisibility", new XC_MethodHook() {
@@ -50,7 +59,7 @@ final class FeedButtons {
                 Method content = cls.getMethod("getContentView");
                 XC_MethodHook bind = new XC_MethodHook() {
                     @Override protected void afterHookedMethod(MethodHookParam p) throws Throwable {
-                        if (p.hasThrowable()) return;
+                        if (p.hasThrowable() || !cls.isInstance(p.thisObject)) return;
                         Object obj = content.invoke(p.thisObject);
                         if (!(obj instanceof View)) return;
                         View view = (View) obj;
@@ -58,14 +67,16 @@ final class FeedButtons {
                         apply(view, slots.get(view));
                     }
                 };
-                for (Method m : cls.getDeclaredMethods()) {
-                    if (m.getReturnType() != void.class) continue;
-                    if ((m.getName().equals("onViewCreated") && Arrays.equals(m.getParameterTypes(), new Class<?>[]{View.class}))
-                            || (m.getName().equals("s4") && Arrays.equals(m.getParameterTypes(), new Class<?>[]{Object.class}))) {
-                        XposedBridge.hookMethod(m, bind);
+                for (Class<?> owner = cls; owner != null && owner != Object.class; owner = owner.getSuperclass()) {
+                    for (Method m : owner.getDeclaredMethods()) {
+                        if (m.getReturnType() != void.class) continue;
+                        if ((m.getName().equals("onViewCreated") && Arrays.equals(m.getParameterTypes(), new Class<?>[]{View.class}))
+                                || (m.getName().equals("s4") && Arrays.equals(m.getParameterTypes(), new Class<?>[]{Object.class}))) {
+                            if (!java.lang.reflect.Modifier.isAbstract(m.getModifiers()) && XposedBridge.hookMethod(m, bind) != null) found(button);
+                        }
                     }
                 }
-            } catch (ReflectiveOperationException | LinkageError ignored) {
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
                 // This component is optional and varies between releases.
             }
         }

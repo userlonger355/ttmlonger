@@ -35,7 +35,6 @@ final class InterfaceHooks {
 
     static void install(Context ctx) {
         prefs = ctx.getSharedPreferences("ttmlonger_interface", Context.MODE_PRIVATE);
-        BrowserLinks.install();
         XC_MethodHook clean = new XC_MethodHook() {
             @Override protected void beforeHookedMethod(MethodHookParam p) {
                 if (!on("clean") || CrashGuard.tripped || p.args.length < 2) return;

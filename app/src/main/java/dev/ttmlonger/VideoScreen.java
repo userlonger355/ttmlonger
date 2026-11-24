@@ -1,6 +1,10 @@
 package dev.ttmlonger;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -14,6 +18,7 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,7 +30,8 @@ import java.util.concurrent.ThreadFactory;
  * и для историй, у которых в TikTok нет кнопки «Сохранить».
  */
 final class VideoScreen extends Screen {
-    private static final int MAX_ROWS = 8;
+    private static final String[] TYPES = {"Все публикации", "Видео", "Фото", "Истории"};
+    private static final String[] SORTS = {"По просмотру", "Сначала новые публикации", "Сначала старые публикации"};
     private static final long PLAYING_MS = 20_000L;
     private static final ExecutorService THUMBS = Executors.newFixedThreadPool(2, new ThreadFactory() {
         @Override
@@ -38,6 +44,11 @@ final class VideoScreen extends Screen {
 
     private final List<Row> rows = new ArrayList<>();
     private LinearLayout bodyView;
+    private LinearLayout results;
+    private TextView empty;
+    private String query = "";
+    private int type;
+    private int sort;
 
     private static final class Row {
         VideoTracker.Entry entry;
@@ -45,6 +56,10 @@ final class VideoScreen extends Screen {
         TextView button;
         String tags;
         boolean photo;
+        boolean story;
+        String searchable;
+        long published;
+        LinearLayout card;
     }
 
     private VideoScreen(Activity act) {
@@ -72,58 +87,140 @@ final class VideoScreen extends Screen {
         }
 
         Set<String> seenIds = new HashSet<>();
-        int n = 0;
+
         for (final VideoTracker.Entry e : all) {
-            if (n >= MAX_ROWS) break;
+
             String aid = null;
             try {
                 aid = e.aid();
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
-            if (aid != null && !seenIds.add(aid)) continue;
+            if (aid != null && !aid.isEmpty() && !seenIds.add(aid)) continue;
 
             final Row row = new Row();
             row.entry = e;
             List<String> tags = new ArrayList<>();
             if (e == playing) tags.add("играет сейчас");
-            boolean story = false;
+
             try {
-                story = e.isStory();
+                row.story = e.isStory();
                 row.photo = !VideoSaver.photoCandidates(e.aweme).isEmpty();
             } catch (Throwable t) {
                 FlagStore.log(t);
             }
-            if (story) tags.add("история");
+            if (row.story) tags.add("история");
             if (row.photo) tags.add("фото");
             if (e.isProhibited()) tags.add("запрет скачивания");
             row.tags = join(tags);
 
-            String title = titleOf(e, aid);
-            body.addView(rowView(row, title, VideoSaver.coverUrl(e), app));
+            String author = e.author();
+            String desc = e.desc();
+            VideoInfo.Keys keys = VideoInfo.keysOf(e);
+            row.searchable = normalize(android.text.TextUtils.join(" ", keys.names) + " "
+                    + (author == null ? "" : author) + " " + (desc == null ? "" : desc) + " " + (aid == null ? "" : aid));
+            row.published = VideoInfo.metaOf(e).created;
+            row.card = rowView(row, titleOf(author, desc, aid), VideoSaver.coverUrl(e), app);
             rows.add(row);
-            n++;
+
         }
 
         if (rows.isEmpty()) {
-            body.addView(ui.note("Пока ничего нет. Закройте меню, откройте видео или историю в TikTok, "
-                    + "подождите, пока оно начнёт играть, вызовите меню двумя пальцами и зайдите сюда снова."));
+            body.addView(ui.note("Пока нет недавних публикаций. Откройте ролик в ленте и вернитесь сюда."));
+            return;
         }
-
-        body.addView(ui.note("Сохраняйте для себя. Чужие видео и истории не публикуйте без согласия автора."));
-
+        body.setFocusableInTouchMode(true);
+        body.requestFocus();
+        EditText search = new EditText(act);
+        search.setSingleLine(true);
+        search.setTextColor(Ui.INK);
+        search.setHintTextColor(Ui.MUTED);
+        search.setHint("Автор, описание или ID");
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        search.setBackground(ui.round(Ui.FIELD, 12));
+        search.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
+        LinearLayout.LayoutParams field = ui.matchWrap();
+        field.setMargins(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(4));
+        body.addView(search, field);
+        addChoice(body, true);
+        addChoice(body, false);
+        results = new LinearLayout(act);
+        results.setOrientation(LinearLayout.VERTICAL);
+        body.addView(results);
+        empty = ui.note("Совпадений нет. Измените запрос или тип публикации.");
+        body.addView(empty);
+        arrange();
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                query = normalize(s.toString());
+                filter();
+            }
+            @Override public void afterTextChanged(Editable e) { }
+        });
+        body.addView(ui.note("Список содержит недавние публикации текущего запуска TikTok."));
         tick();
     }
 
-    private static String titleOf(VideoTracker.Entry e, String aid) {
-        String author = null;
-        String desc = null;
-        try {
-            author = e.author();
-            desc = e.desc();
-        } catch (Throwable t) {
-            FlagStore.log(t);
+    private void addChoice(LinearLayout body, boolean byType) {
+        String[] choices = byType ? TYPES : SORTS;
+        String title = byType ? "Тип публикации" : "Порядок";
+        LinearLayout row = ui.menuRow(-1, title, null, choices[0], null);
+        row.setOnClickListener(v -> {
+            AlertDialog d = new AlertDialog.Builder(act, Ui.dialogTheme()).setTitle(title)
+                    .setSingleChoiceItems(choices, byType ? type : sort, (dialog, i) -> {
+                        TextView value = Ui.valueOf(row);
+                        if (value != null) value.setText(choices[i]);
+                        if (byType) {
+                            type = i;
+                            filter();
+                        } else {
+                            sort = i;
+                            arrange();
+                        }
+                        dialog.dismiss();
+                    }).setNegativeButton("Отмена", null).create();
+            markOwn(d);
+            d.show();
+            Ui.style(d);
+        });
+        body.addView(row);
+    }
+
+    static String normalize(String value) {
+        return value.toLowerCase(Locale.ROOT).replace('ё', 'е').replace('\u00a0', ' ').trim();
+    }
+
+    static boolean matches(String text, String query, int type, boolean photo, boolean story) {
+        if (type == 1 && (photo || story) || type == 2 && !photo || type == 3 && !story) return false;
+        for (String word : query.split("\\s+")) if (!text.contains(word)) return false;
+        return true;
+    }
+
+    static int compareDate(long a, long b, int sort) {
+        if (a == 0 || b == 0) return a == b ? 0 : a == 0 ? 1 : -1;
+        return sort == 1 ? Long.compare(b, a) : Long.compare(a, b);
+    }
+
+    private void arrange() {
+        List<Row> ordered = new ArrayList<>(rows);
+        if (sort != 0) ordered.sort((a,b) -> compareDate(a.published, b.published, sort));
+        results.removeAllViews();
+        for (Row row : ordered) results.addView(row.card);
+        filter();
+    }
+
+    private void filter() {
+        boolean any = false;
+        for (Row row : rows) {
+            boolean show = matches(row.searchable, query, type, row.photo, row.story);
+            row.card.setVisibility(show ? View.VISIBLE : View.GONE);
+            any |= show;
         }
+        empty.setVisibility(any ? View.GONE : View.VISIBLE);
+    }
+
+    private static String titleOf(String author, String desc, String aid) {
         StringBuilder b = new StringBuilder();
         if (author != null) b.append('@').append(author.startsWith("@") ? author.substring(1) : author);
         if (desc != null && !desc.isEmpty()) {
@@ -194,6 +291,7 @@ final class VideoScreen extends Screen {
         if (j != null && !j.state.isEmpty()) text = (text.isEmpty() ? "" : text + "\n") + j.state;
         row.sub.setText(text.isEmpty() ? " " : text);
         boolean running = j != null && j.running;
+        row.button.setEnabled(!running);
         row.button.setAlpha(running ? 0.5f : 1f);
         row.button.setText(running ? "Идёт…" : (j != null && j.ok ? "Ещё раз"
                 : (row.photo ? "Сохранить фото" : "Сохранить")));
