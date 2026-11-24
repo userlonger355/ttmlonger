@@ -62,4 +62,24 @@ if ! grep -q 'TTMLONGER_BOOT_READY' <<< "$logs"; then
   exit 1
 fi
 echo "### Patched TikTok started and TTMLonger initialization reached its completion marker" >> "$GITHUB_STEP_SUMMARY"
-echo "Individual feature hooks still need separate checks."
+if [[ "${TTM_UI_CHECKS:-0}" == 1 ]]; then
+  echo "Collecting UI regression results"
+  for attempt in $(seq 1 100); do
+    ui_logs="$(adb logcat -d -s TTMRuntimeUI:I '*:S')"
+    printf '%s\n' "$ui_logs" > "$media/ui-results.log"
+    stage="$(sed -n 's/.*TTMRuntimeUI: STAGE \([a-zA-Z0-9_-]*\).*/\1/p' <<< "$ui_logs" | tail -n 1)"
+    if [[ -n "$stage" && ! -f "$media/ui-$stage.png" ]]; then capture "ui-$stage"; fi
+    if grep -q 'TTMRuntimeUI: DONE ' <<< "$ui_logs"; then break; fi
+    sleep 1
+  done
+  grep -E 'TTMRuntimeUI: (RESULT|GLASS_RENDER|NATIVE_BAR|DONE)' "$media/ui-results.log" | tee -a "$GITHUB_STEP_SUMMARY"
+  if ! grep -q 'TTMRuntimeUI: DONE ' "$media/ui-results.log"; then
+    echo "::error::UI checks did not complete"
+    exit 1
+  fi
+  if grep -q 'TTMRuntimeUI: RESULT .* FAIL' "$media/ui-results.log"; then
+    echo "::error::One or more UI checks failed"
+    exit 1
+  fi
+fi
+echo "Account-dependent features still need separate checks."
