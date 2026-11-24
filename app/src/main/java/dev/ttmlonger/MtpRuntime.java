@@ -28,6 +28,7 @@ public final class MtpRuntime {
     static final class Slot{
         final String id;final MtpArchive pkg;final List<Row> rows=new CopyOnWriteArrayList<>();
         volatile MargyPlugin plugin;volatile boolean enabled;volatile String status="Выключен";
+        volatile String settingsError="";
         volatile TextView offer,progress;
         Slot(MtpArchive p){pkg=p;id=p.id;}
     }
@@ -60,7 +61,7 @@ public final class MtpRuntime {
     private static void start(Slot s){
         if(!ready()||CrashGuard.tripped||s.enabled)return;
         try{
-            s.rows.clear();
+            s.rows.clear();s.settingsError="";
             ClassLoader sdk=MargyPlugin.class.getClassLoader();
             // Module classes must retain their identity, with TikTok classes as a fallback.
             ClassLoader parent=new ClassLoader(sdk){
@@ -130,17 +131,43 @@ public final class MtpRuntime {
     public static void away(String id,Runnable r){Slot s=enabled(id);if(s==null)return;new Thread(()->{if(enabled(id)!=s)return;try{r.run();}catch(Throwable e){fault(s,e);}},"ttm-mtp-"+id).start();}
     public static void row(String id,int k,String title,String detail,String key,String[] options,int min,int max,int def,PluginContext.Tapped action){
         Slot s=enabled(id);if(s==null)return;if(s.rows.size()>=64||title==null||title.length()>160||key!=null&&key.length()>80||max<min||(long)max-min>100000)throw new IllegalArgumentException("row");
+        if(k>=1&&k<=3&&(key==null||key.isEmpty()))throw new IllegalArgumentException("setting key");
+        if(k==2){if(options==null||options.length==0||options.length>32)throw new IllegalArgumentException("options");for(String option:options)if(option==null||option.length()>160)throw new IllegalArgumentException("option");}
         s.rows.add(new Row(k,title,detail,key,options==null?null:options.clone(),min,max,Math.max(min,Math.min(max,def)),action));
     }
-    static void changed(Slot s,String key){if(enabled(s.id)!=s)return;try{s.plugin.onSettingsChanged(key);}catch(Throwable e){fault(s,e);}}
-    static boolean open(Slot s,Activity a){if(enabled(s.id)!=s)return false;try{
+    static SharedPreferences settingsPrefs(Slot s){return app.getSharedPreferences("margyt_plugin_"+s.id,0);}
+    static boolean boolValue(Slot s,Row r){Object v=settingsPrefs(s).getAll().get(r.key);return v instanceof Boolean?(Boolean)v:r.def!=0;}
+    static int intValue(Slot s,Row r){Object v=settingsPrefs(s).getAll().get(r.key);return Math.max(r.min,Math.min(r.max,v instanceof Integer?(Integer)v:r.def));}
+    static boolean saveSetting(Slot s,Row r,int value){
+        if(enabled(s.id)!=s||r.key==null||r.key.isEmpty()||r.kind<1||r.kind>3)return false;
+        SharedPreferences.Editor edit=settingsPrefs(s).edit();
+        if(r.kind==1)edit.putBoolean(r.key,value!=0);else edit.putInt(r.key,Math.max(r.min,Math.min(r.max,value)));
+        edit.apply();changed(s,r.key);return true;
+    }
+    private static void settingsFault(Slot s,Throwable error){
+        Throwable cause=error instanceof java.lang.reflect.InvocationTargetException&&error.getCause()!=null?error.getCause():error;
+        s.settingsError=cause.getClass().getSimpleName()+(cause.getMessage()==null?"":": "+cause.getMessage());
+        android.util.Log.e("TTMPlugin","Settings "+s.id,cause);
+    }
+    static void changed(Slot s,String key){if(enabled(s.id)!=s)return;try{s.plugin.onSettingsChanged(key);}catch(Throwable e){settingsFault(s,e);}}
+    static boolean customSettings(Slot s){
+        if(s.plugin==null)return false;
+        Class<?> c=s.plugin.getClass();
+        try{if(c.getMethod("onOpenSettings",Activity.class).getDeclaringClass()!=MargyPlugin.class)return true;}catch(Exception ignored){}
+        for(String name:new String[]{"openSettings","showSettings","showSettingsDialog"})for(Class<?> type:new Class<?>[]{Activity.class,Context.class})try{
+            java.lang.reflect.Method m=c.getMethod(name,type);if(m.getReturnType()==void.class||m.getReturnType()==boolean.class)return true;
+        }catch(Exception ignored){}
+        return false;
+    }
+    static boolean open(Slot s,Activity a){if(enabled(s.id)!=s||a==null||a.isFinishing()||a.isDestroyed())return false;s.settingsError="";try{
         if(s.plugin.onOpenSettings(a))return true;
         for(String name:new String[]{"openSettings","showSettings","showSettingsDialog"})for(Class<?> type:new Class<?>[]{Activity.class,Context.class})try{
             java.lang.reflect.Method m=s.plugin.getClass().getMethod(name,type);
             if(m.getReturnType()==void.class){m.invoke(s.plugin,a);return true;}if(m.getReturnType()==boolean.class&&Boolean.TRUE.equals(m.invoke(s.plugin,a)))return true;
         }catch(NoSuchMethodException ignored){}
         return false;
-    }catch(Throwable e){fault(s,e);return false;}}
+    }catch(Throwable e){settingsFault(s,e);return false;}}
+    static void settingAction(Slot s,Row row){if(enabled(s.id)!=s||row.action==null)return;try{row.action.tapped();}catch(Throwable e){settingsFault(s,e);Activity a=activity();if(a!=null)Toasts.show(a,"Ошибка настройки плагина: "+s.settingsError);}}
     public static void window(String id,String title,String message){ui(id,()->{Activity a=activity();if(a==null)return;AlertDialog d=new AlertDialog.Builder(a,Ui.dialogTheme()).setTitle(title).setMessage(message).setPositiveButton("Готово",null).create();Screen.markOwn(d);d.show();Ui.style(d);});}
     public static void choose(String id,String title,String[] options,PluginContext.Selected callback){if(options==null||options.length==0||options.length>32)throw new IllegalArgumentException("options");String[] copy=options.clone();ui(id,()->{Activity a=activity();if(a==null)return;AlertDialog d=new AlertDialog.Builder(a,Ui.dialogTheme()).setTitle(title).setItems(copy,(x,n)->{if(callback!=null)ui(id,()->callback.selected(n));}).setNegativeButton("Отмена",null).create();Screen.markOwn(d);d.show();Ui.style(d);});}
     private static void detach(TextView v){if(v!=null&&v.getParent() instanceof ViewGroup)((ViewGroup)v.getParent()).removeView(v);}

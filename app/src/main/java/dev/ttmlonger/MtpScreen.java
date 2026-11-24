@@ -15,7 +15,7 @@ final class MtpScreen extends Screen{
             body.addView(ui.header(s.pkg.manifest.optString("name_ru",s.pkg.manifest.optString("name"))+" · "+s.pkg.manifest.optString("version")));
             body.addView(ui.note("Автор: "+s.pkg.manifest.optString("author")+" · "+s.status));
             body.addView(ui.menuRow(Icons.SLIDERS,s.enabled?"Выключить":"Включить","DEX · без песочницы",null,v->{if(s.enabled){MtpRuntime.stop(s);reload();}else approve(s);}));
-            if(s.enabled)body.addView(ui.menuRow(Icons.SLIDERS,"Настройки плагина",null,null,v->{if(!MtpRuntime.open(s,act))settings(act,s);}));
+            if(s.enabled)body.addView(ui.menuRow(Icons.SLIDERS,"Настройки плагина",null,null,v->settings(act,s)));
             body.addView(ui.menuRow(Icons.TRASH,"Удалить",null,null,v->{AlertDialog d=new AlertDialog.Builder(act,Ui.dialogTheme()).setTitle("Удалить "+s.id+"?").setNegativeButton("Отмена",null).setPositiveButton("Удалить",(x,w)->{MtpRuntime.remove(s);reload();}).create();markOwn(d);d.show();Ui.style(d);}));
         }
     }
@@ -38,16 +38,22 @@ final class MtpScreen extends Screen{
             .setMessage("Автор: "+p.manifest.optString("author")+"\nAPI: "+p.manifest.optInt("min_api",1)+"\nSHA-256: "+p.digest+"\nУстанавливается выключенным. Автор не проверен; исполняемый код не анализировался.")
             .setNegativeButton("Отмена",null).setPositiveButton("Установить",(x,w)->{try{MtpRuntime.add(p);reload();}catch(Exception e){Toasts.show(act,"Не удалось установить");}}).create();markOwn(d);d.show();Ui.style(d);
     }
-    private static void settings(Activity a,MtpRuntime.Slot s){new Screen(a){
+    static void settings(Activity a,MtpRuntime.Slot s){new Screen(a){
         void build(LinearLayout body){
-            android.content.SharedPreferences p=a.getSharedPreferences("margyt_plugin_"+s.id,0);
-            if(s.rows.isEmpty())body.addView(ui.note("Плагин не зарегистрировал настройки."));
+            if(!s.settingsError.isEmpty())body.addView(ui.note("Ошибка настроек: "+s.settingsError));
+            if(MtpRuntime.customSettings(s))body.addView(ui.menuRow(Icons.SLIDERS,"Окно настроек плагина","Открыть собственный интерфейс MTP",null,v->{
+                dialog.dismiss();
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(()->{
+                    if(!MtpRuntime.open(s,a))settings(a,s);
+                });
+            }));
+            if(s.rows.isEmpty())body.addView(ui.note("Стандартных настроек нет. Если собственное окно не работает, плагин может зависеть от внутренних классов MargyT."));
             for(MtpRuntime.Row r:s.rows){
                 if(r.kind==4){body.addView(ui.header(r.title));continue;}
-                if(r.kind==0){body.addView(ui.menuRow(Icons.SLIDERS,r.title,r.detail,null,v->{if(r.action!=null)MtpRuntime.ui(s.id,r.action::tapped);}));continue;}
-                if(r.kind==1){body.addView(toggleRow(-1,r.title,r.detail,p.getBoolean(r.key,r.def!=0),on->{p.edit().putBoolean(r.key,on).apply();MtpRuntime.changed(s,r.key);}));continue;}
-                if(r.kind==2&&r.options!=null&&r.options.length>0){int current=Math.max(0,Math.min(r.options.length-1,p.getInt(r.key,r.def)));LinearLayout row=ui.menuRow(Icons.SLIDERS,r.title,r.detail,r.options[current],v->{AlertDialog d=new AlertDialog.Builder(a,Ui.dialogTheme()).setTitle(r.title).setSingleChoiceItems(r.options,current,(x,n)->{p.edit().putInt(r.key,n).apply();MtpRuntime.changed(s,r.key);x.dismiss();TextView val=Ui.valueOf((LinearLayout)v);if(val!=null)val.setText(r.options[n]);}).setNegativeButton("Отмена",null).create();markOwn(d);d.show();Ui.style(d);});body.addView(row);continue;}
-                if(r.kind==3){body.addView(ui.header(r.title));SeekBar slider=new SeekBar(a);slider.setMax(r.max-r.min);slider.setProgress(Math.max(0,Math.min(r.max-r.min,p.getInt(r.key,r.def)-r.min)));TextView label=ui.note(String.valueOf(r.min+slider.getProgress()));body.addView(label);body.addView(slider);slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar b){}public void onProgressChanged(SeekBar b,int n,boolean user){label.setText(String.valueOf(r.min+n));}public void onStopTrackingTouch(SeekBar b){p.edit().putInt(r.key,r.min+b.getProgress()).apply();MtpRuntime.changed(s,r.key);}});}
+                if(r.kind==0){body.addView(ui.menuRow(Icons.SLIDERS,r.title,r.detail,null,v->{MtpRuntime.settingAction(s,r);}));continue;}
+                if(r.kind==1){body.addView(toggleRow(-1,r.title,r.detail,MtpRuntime.boolValue(s,r),on->MtpRuntime.saveSetting(s,r,on?1:0)));continue;}
+                if(r.kind==2&&r.options!=null&&r.options.length>0){int current=Math.max(0,Math.min(r.options.length-1,MtpRuntime.intValue(s,r)));LinearLayout row=ui.menuRow(Icons.SLIDERS,r.title,r.detail,r.options[current],v->{AlertDialog d=new AlertDialog.Builder(a,Ui.dialogTheme()).setTitle(r.title).setSingleChoiceItems(r.options,MtpRuntime.intValue(s,r),(x,n)->{MtpRuntime.saveSetting(s,r,n);x.dismiss();TextView val=Ui.valueOf((LinearLayout)v);if(val!=null)val.setText(r.options[n]);}).setNegativeButton("Отмена",null).create();markOwn(d);d.show();Ui.style(d);});body.addView(row);continue;}
+                if(r.kind==3){body.addView(ui.header(r.title));SeekBar slider=new SeekBar(a);slider.setMax(r.max-r.min);slider.setProgress(Math.max(0,Math.min(r.max-r.min,p.getInt(r.key,r.def)-r.min)));TextView label=ui.note(String.valueOf(r.min+slider.getProgress()));body.addView(label);body.addView(slider);slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar b){}public void onProgressChanged(SeekBar b,int n,boolean user){label.setText(String.valueOf(r.min+n));}public void onStopTrackingTouch(SeekBar b){MtpRuntime.saveSetting(s,r,r.min+b.getProgress());}});}
             }
         }
     }.open(s.id,"Настройки MTP");}

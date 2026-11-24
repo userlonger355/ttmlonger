@@ -285,9 +285,20 @@ final class RuntimeUiChecks {
             if(slot==null)throw new IllegalStateException("missing fixture slot");
             MtpRuntime.approve(slot);
             result("mtp_real_dex_start",slot.enabled&&slot.plugin!=null&&"fixture.mtp.Probe".equals(slot.plugin.getClass().getName()));
-            result("mtp_real_dex_context",slot.enabled&&slot.rows.size()==1&&"CI fixture".equals(slot.rows.get(0).title));
+            result("mtp_real_dex_context",slot.enabled&&slot.rows.size()==5&&"CI fixture".equals(slot.rows.get(0).title));
             result("mtp_real_dex_readonly",slot.enabled&&slot.plugin.margyt().folder().isDirectory()
                 &&(android.system.Os.stat(new java.io.File(slot.plugin.margyt().folder(),"classes.dex").getAbsolutePath()).st_mode&0222)==0);
+            result("mtp_setting_toggle",MtpRuntime.saveSetting(slot,slot.rows.get(1),1)&&slot.plugin.margyt().getBoolean("toggle",false));
+            result("mtp_setting_choice",MtpRuntime.saveSetting(slot,slot.rows.get(2),1)&&slot.plugin.margyt().getInt("choice",-1)==1);
+            result("mtp_setting_slider",MtpRuntime.saveSetting(slot,slot.rows.get(3),75)&&slot.plugin.margyt().getInt("strength",-1)==75);
+            result("mtp_setting_callback","strength".equals(slot.plugin.margyt().getString("changed","")));
+            MtpRuntime.settingAction(slot,slot.rows.get(4));
+            result("mtp_setting_action","done".equals(slot.plugin.margyt().getString("action","")));
+            result("mtp_custom_settings_failure_isolated",MtpRuntime.customSettings(slot)&&!MtpRuntime.open(slot,activity)&&slot.enabled&&slot.settingsError.contains("fixture settings failure"));
+            ArrayList<Dialog> before=dialogs();MtpScreen.settings(activity,slot);
+            Dialog settings=newest(before);
+            result("mtp_settings_render",settings!=null&&text(settings.getWindow().getDecorView(),"CI toggle")!=null&&text(settings.getWindow().getDecorView(),"CI choice")!=null);
+            if(settings!=null)settings.dismiss();
             MtpRuntime.stop(slot);
             result("mtp_real_dex_stop",!slot.enabled&&slot.plugin==null);
         }catch(Throwable e){fail("mtp_real_dex",e);}finally{if(slot!=null)MtpRuntime.remove(slot);}
