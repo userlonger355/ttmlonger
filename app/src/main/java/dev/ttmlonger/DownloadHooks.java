@@ -107,7 +107,7 @@ final class DownloadHooks {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
-                        if (!CrashGuard.tripped && Prefs.vtMaster()) VideoTracker.bound(param.thisObject);
+                        if (!CrashGuard.tripped && (Prefs.vtMaster() || Prefs.dlAlways)) VideoTracker.bound(param.thisObject);
                     } catch (Throwable ignored) {
                         // не мешаем TikTok
                     }
@@ -115,6 +115,7 @@ final class DownloadHooks {
             };
             count("Aweme.getAuthor→плашки", hookAll(aweme, "getAuthor", bound));
             count("Aweme.getDesc→плашки", hookAll(aweme, "getDesc", bound));
+            count("Aweme.getPhotoModeImageInfo→истории", hookAll(aweme, "getPhotoModeImageInfo", bound));
         }
 
         if (acl != null) {

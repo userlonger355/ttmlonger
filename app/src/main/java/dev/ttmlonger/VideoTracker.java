@@ -75,7 +75,7 @@ final class VideoTracker {
         boolean isStory() {
             for (String name : new String[]{"getIsTikTokStory", "isTikTokStory", "isStory"}) {
                 Object v = DownloadHooks.call(aweme, name);
-                if (Boolean.TRUE.equals(v)) return true;
+                if (Boolean.TRUE.equals(v) || v instanceof Number && ((Number)v).intValue()==1) return true;
             }
             return false;
         }

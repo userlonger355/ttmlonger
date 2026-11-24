@@ -52,7 +52,7 @@ final class StoryShare {
 
     private static final class Scan {
         TextView report, mute, save, notInterested, favorite, link, soundReport, qr;
-        boolean send, storyMarker, reply;
+        boolean send, storyMarker, reply, storyTime, storyClose;
         final List<String> labels = new ArrayList<>();
         final List<View> downloads = new ArrayList<>();
         boolean sheet() { return soundReport!=null&&send || report != null && (mute != null || send || link != null || notInterested != null || save != null); }
@@ -69,7 +69,8 @@ final class StoryShare {
     private static void scan(View v, Scan s, int depth, int[] budget) {
         if(v==null || --budget[0]<0 || depth>42 || v.getVisibility()!=View.VISIBLE || v.getTag(ACTION)!=null) return;
         String n=name(v), desc=norm(v.getContentDescription());
-        if(n.contains("story") && (n.contains("player") || n.contains("viewer") || n.contains("progress") || n.contains("reply") || n.contains("container"))) s.storyMarker=true;
+        if(n.contains("story") && (n.contains("player") || n.contains("viewer") || n.contains("progress") || n.contains("reply") || n.contains("container") || n.contains("detail"))) s.storyMarker=true;
+        if(desc.equals("закрыть")||desc.equals("close"))s.storyClose=true;
         if(desc.equals("скачать") || desc.equals("сохранить историю") || desc.equals("download") ||
                 desc.equals("save story") || n.contains("story_download") || n.contains("story_save")) {
             if(v.isClickable() || v.hasOnClickListeners()) s.downloads.add(v);
@@ -86,7 +87,8 @@ final class StoryShare {
             if(a.equals("не интересно") || a.equals("неинтересно") || a.equals("not interested")) s.notInterested=t;
             if(a.equals("в избранное") || a.equals("добавить в избранное") || a.equals("add to favorites") || a.equals("favorites")) s.favorite=t;
             if(a.equals("ссылка") || a.equals("копировать ссылку") || a.equals("copy link")) s.link=t;
-            if(a.equals("сохранить историю") || a.equals("скачать историю") || a.equals("save story") ||
+            if(a.matches(".*(?:[0-9]+\\s*(?:ч\\.|мин\\.|дн\\.|сек\\.)\\s*назад|[0-9]+\\s*(?:h|m|d)\\s*ago)$"))s.storyTime=true;
+            if(a.equals("скачать") || a.equals("сохранить историю") || a.equals("скачать историю") || a.equals("save story") ||
                     a.equals("download story") || a.equals("сохранить видео") || a.equals("save video") ||
                     a.equals("сохранить") || a.equals("download")) s.save=t;
             if(a.startsWith("написать") || hint.startsWith("написать") || a.startsWith("send message") ||
@@ -99,6 +101,7 @@ final class StoryShare {
     }
     private static Scan scan(View root) { Scan s=new Scan(); scan(root,s,0,new int[]{2800}); return s; }
 
+    private static boolean storyContext(Scan s){return s.storyMarker||s.reply||s.storyTime&&s.storyClose;}
     private static VideoTracker.Entry select(Scan s) {
         VideoTracker.Entry recent=null, matched=null;
         long now=VideoTracker.now();
@@ -119,7 +122,8 @@ final class StoryShare {
             }
         }
         if(matched!=null) return matched;
-        return s.storyMarker && recent!=null && now-recent.lastTouch()<15000L ? recent:null;
+        // A prefetched story is not sufficient proof of which story is currently shown.
+        return null;
     }
     private static VideoTracker.Entry selectVideo(Scan s) {
         VideoTracker.Entry best=null;
@@ -149,7 +153,7 @@ final class StoryShare {
         try {
             Scan s=scan(root);
             if(s.sheet()) return false;
-            return s.storyMarker || s.reply && select(s)!=null;
+            return storyContext(s) && (s.storyMarker||select(s)!=null);
         } catch(Throwable t) { return false; }
     }
     static boolean excludeSticker(View root) {
@@ -165,20 +169,17 @@ final class StoryShare {
             Scan s=scan(root);
             if(s.sheet()) {
                 if(s.soundReport!=null){soundAction(root,s,act);return;}
-                show(root,s,activeActivity.get()==act?active:null);
+                show(root,s,activeActivity.get()==act?active:null,act,storyContext(s)||(activeActivity.get()==act&&active!=null&&active.isStory()));
                 return;
             }
             remove(root);
             if(CrashGuard.tripped || !Prefs.dlAlways) { restore(root); return; }
             VideoTracker.Entry e=select(s);
-            boolean story=s.storyMarker || s.reply && e!=null;
+            boolean story=s.storyMarker || storyContext(s)&&e!=null;
             if(story) {
-                if(e!=null) { active=e; activeActivity=new java.lang.ref.WeakReference<>(act); }
-                // Only hide explicitly identified native download buttons in a story viewer.
-                for(View v:s.downloads) {
-                    if(!hidden.containsKey(v)) hidden.put(v,v.getVisibility());
-                    v.setVisibility(View.INVISIBLE);
-                }
+                active=e; activeActivity=new java.lang.ref.WeakReference<>(act);
+                // Keep native download controls intact; a custom sheet may not be recognized.
+                restore(root);
             } else {
                 restore(root);
                 VideoTracker.Entry video=selectVideo(s);
@@ -202,15 +203,19 @@ final class StoryShare {
             if(!s.sheet()) { remove(root); return; }
             Activity a=ScreenWatcher.top();
             if(s.soundReport!=null){soundAction(root,s,a);return;}
+            boolean story=false;
             if(a!=null) {
                 View decor=a.getWindow().getDecorView();
                 Scan behind=scan(decor);
                 if(!behind.sheet()) {
-                    VideoTracker.Entry e=behind.storyMarker || behind.reply ? select(behind):selectVideo(behind);
-                    if(e!=null){active=e;activeActivity=new java.lang.ref.WeakReference<>(a);}
-                }
+                    VideoTracker.Entry e=select(behind);
+                    story=behind.storyMarker||storyContext(behind)&&e!=null;
+                    if(story){NativeDates.Binding nativeCell=NativeDates.visible(decor);if(nativeCell!=null&&nativeCell.entry.isStory())e=nativeCell.entry;}
+                    else e=selectVideo(behind);
+                    active=e;activeActivity=new java.lang.ref.WeakReference<>(a);
+                }else story=storyContext(behind)||(activeActivity.get()==a&&active!=null&&active.isStory());
             }
-            show(root,s,activeActivity.get()==a?active:null);
+            show(root,s,activeActivity.get()==a?active:null,a,story);
         } catch(Throwable ignored) {}
     }
     private static void soundAction(View root,Scan s,Activity act){
@@ -279,7 +284,7 @@ final class StoryShare {
         bg.setColor(Theme.onColor(ink)==Color.BLACK?0xff363636:0xffe8e8e8);
         icon.setBackground(bg); int pad=Math.round(diameter*.27f);icon.setPadding(pad,pad,pad,pad);
         col.addView(icon,new LinearLayout.LayoutParams(diameter,diameter));
-        String title=audio?"Скачать звук":e.isStory()?"Скачать":"Сохранить через мод";
+        String title=audio?"Скачать звук":e==null||e.isStory()?"Скачать":"Сохранить через мод";
         TextView label=new TextView(c);label.setText(title);label.setTextColor(ink);
         label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,sample.getTextSize());label.setGravity(Gravity.CENTER);
         label.setTypeface(sample.getTypeface());label.setMaxLines(2);
@@ -335,72 +340,84 @@ final class StoryShare {
         }
         return best;
     }
-    private static void show(View root, Scan s, VideoTracker.Entry e) {
+    private static void show(View root, Scan s, VideoTracker.Entry e,Activity act,boolean storyContext) {
         if(CrashGuard.tripped || !Prefs.dlAlways || s.report==null) {remove(root);return;}
-        // Freeze the selected story for the life of this share sheet, including when playback pauses.
         VideoTracker.Entry pinned=bound.get(root);
         View old=buttons.get(root);
-        if(old!=null && old.isAttachedToWindow() && pinned!=null) {
-            if(!pinned.isStory() && !Prefs.dlPill) remove(root);
-            else if(pinned.isStory() && (!s.send || s.mute==null || s.save!=null))remove(root);
+        boolean story=storyContext||e!=null&&e.isStory();
+        if(old!=null&&old.isAttachedToWindow()){
+            if(pinned!=null&&!pinned.isStory()&&!Prefs.dlPill||!s.send||s.save!=null&&story){remove(root);return;}
+            if(pinned==null&&story&&e!=null&&e.isStory())bound.put(root,e);
             return;
         }
         if(old!=null)remove(root);
-        if(e==null || (!e.isStory() && !Prefs.dlPill) || (e.isStory() && s.save!=null)) return;
-        if(!e.isStory() && s.mute!=null && s.notInterested==null && s.save==null) return;
-        if(!e.isStory()){compactInSheet(root,s,e);return;}
-        TextView first=s.report, second=s.mute;
-        if(second==null || second==first)return;
-        Rect a=rect(first), b=rect(second);
-        if(a.width()==0||b.width()==0||Math.abs(a.top-b.top)>dp(root.getContext(),24))return;
-        ViewGroup row=sharedRow(first,second);
-        int step=Math.abs(b.centerX()-a.centerX());
-        if(step<dp(root.getContext(),45))return;
-        int size=Math.min(dp(root.getContext(),56),Math.round(step*.72f));
-        View mine=tile(root.getContext(),first,size,e,false);
-        // Never attach to window decor or position a tile using screen coordinates.
-        // The action has to participate in the same measurement and translation as the sheet.
-        if(row instanceof LinearLayout && row!=root) {
-            View template=childOf(second,row);
-            if(template==null)return;
-            int w=template.getWidth()>0?template.getWidth():step;
-            int occupied=0;
-            for(int i=0;i<row.getChildCount();i++){
-                View child=row.getChildAt(i);if(child.getVisibility()!=View.GONE)occupied+=child.getWidth();
-            }
-            if(row.getWidth()>=occupied+w-dp(root.getContext(),2)){
-                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,-2);
-                if(template.getLayoutParams() instanceof LinearLayout.LayoutParams){
-                    LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();
-                    lp.topMargin=src.topMargin;lp.bottomMargin=src.bottomMargin;lp.gravity=src.gravity;
-                }
-                row.addView(mine,row.indexOfChild(template)+1,lp);
-                buttons.put(root,mine);bound.put(root,e);return;
-            }
-        }else if(row instanceof GridLayout&&row!=root){
-            GridLayout grid=(GridLayout)row;
-            if(grid.getColumnCount()>=3&&grid.getChildCount()<grid.getColumnCount()){
-                GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=step;lp.height=-2;
-                grid.addView(mine,lp);buttons.put(root,mine);bound.put(root,e);return;
-            }
+        if(!story){
+            if(e==null||!Prefs.dlPill||s.mute!=null&&s.notInterested==null&&s.save==null)return;
+            compactInSheet(root,s,e);return;
         }
-        // An obfuscated or full actions row can be followed by a regular measured row,
-        // but only inside the actual vertical sheet containing both report and mute.
-        // If no safe layout exists, leave the native UI untouched.
+        if(s.save!=null)return; // stock action already exists
+        if(!s.send)return;
+        if(e!=null&&!e.isStory())e=null;
+        TextView first=s.report,second=s.mute;
+        // The report-only menu is normal for non-followed users and some story types.
+        // Derive the native tile width from the report item, not from a second action.
+        Context c=root.getContext();
+        for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()){
+            if(q==root)break;
+            ViewGroup row=(ViewGroup)q;
+            if(!(row instanceof GridLayout)&&!(row instanceof LinearLayout&&((LinearLayout)row).getOrientation()==LinearLayout.HORIZONTAL))continue;
+            View template=childOf(first,row);if(template==null)continue;
+            int w=template.getWidth();if(w<dp(c,44)||w>dp(c,160)||row.getWidth()<w*2-dp(c,2)||template.getHeight()>dp(c,155))continue;
+            int occupied=0,visible=0;
+            for(int i=0;i<row.getChildCount();i++){View child=row.getChildAt(i);if(child.getVisibility()==View.GONE)continue;visible++;occupied+=child.getWidth();if(child.getLayoutParams() instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams lp=(ViewGroup.MarginLayoutParams)child.getLayoutParams();occupied+=lp.leftMargin+lp.rightMargin;}}
+            int size=Math.min(dp(c,56),Math.round(w*.72f));
+            View mine=storyTile(root,first,size,act,e);
+            if(row instanceof LinearLayout){
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,-2);
+                if(template.getLayoutParams() instanceof LinearLayout.LayoutParams){LinearLayout.LayoutParams src=(LinearLayout.LayoutParams)template.getLayoutParams();lp.topMargin=src.topMargin;lp.bottomMargin=src.bottomMargin;lp.leftMargin=src.leftMargin;lp.rightMargin=src.rightMargin;lp.gravity=src.gravity;}
+                if(occupied+w+lp.leftMargin+lp.rightMargin>row.getWidth()-row.getPaddingLeft()-row.getPaddingRight()+dp(c,2))continue;
+                row.addView(mine,row.indexOfChild(template)+1,lp);
+            }else{
+                GridLayout grid=(GridLayout)row;int cols=grid.getColumnCount();if(cols<2||visible>=cols)continue;
+                GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=w;lp.height=-2;grid.addView(mine,lp);
+            }
+            buttons.put(root,mine);if(e!=null)bound.put(root,e);return;
+        }
+        // Fallback in the actual measured sheet, immediately after the native report row.
         for(android.view.ViewParent q=first.getParent();q instanceof ViewGroup;q=q.getParent()){
             if(q==root)break;
             if(!(q instanceof LinearLayout))continue;
-            LinearLayout host=(LinearLayout)q;
-            if(host.getOrientation()!=LinearLayout.VERTICAL)continue;
-            View one=childOf(first,host),two=childOf(second,host);
-            if(one==null||one!=two||one.getWidth()<step*2||one.getWidth()<host.getWidth()*.65f)continue;
-            if(one.getHeight()>dp(root.getContext(),180))continue;
-            LinearLayout extra=new LinearLayout(root.getContext());extra.setTag(ACTION,Boolean.TRUE);
-            extra.setOrientation(LinearLayout.HORIZONTAL);extra.setGravity(Gravity.START);
-            extra.setPadding(one.getPaddingLeft(),dp(root.getContext(),4),one.getPaddingRight(),dp(root.getContext(),4));
-            extra.addView(mine,new LinearLayout.LayoutParams(step,-2));
+            LinearLayout host=(LinearLayout)q;if(host.getOrientation()!=LinearLayout.VERTICAL||host.getWidth()<root.getWidth()*.65f)continue;
+            View one=childOf(first,host);
+            if(one==null||one.getWidth()<host.getWidth()*.65f||one.getHeight()>dp(c,180)||one.getHeight()<dp(c,42))continue;
+            if(second!=null&&childOf(second,host)!=one)continue;
+            if(s.link!=null&&childOf(s.link,host)==one)continue;
+            int step=Math.max(dp(c,56),Math.round(host.getWidth()/6f));int size=Math.min(dp(c,56),Math.round(step*.72f));
+            LinearLayout extra=new LinearLayout(c);extra.setTag(ACTION,Boolean.TRUE);extra.setOrientation(LinearLayout.HORIZONTAL);extra.setGravity(Gravity.START);
+            extra.setPadding(one.getPaddingLeft(),dp(c,4),one.getPaddingRight(),dp(c,4));
+            extra.addView(storyTile(root,first,size,act,e),new LinearLayout.LayoutParams(step,-2));
             host.addView(extra,host.indexOfChild(one)+1,new LinearLayout.LayoutParams(-1,-2));
-            buttons.put(root,extra);bound.put(root,e);return;
+            buttons.put(root,extra);if(e!=null)bound.put(root,e);return;
         }
+    }
+    private static View storyTile(View root,TextView sample,int diameter,Activity act,VideoTracker.Entry e){
+        // A button can be shown while the native media model is still loading.
+        // Do not silently download a previously seen or prefetched story.
+        View tile=tile(root.getContext(),sample,diameter,e,false);
+        tile.setContentDescription("Скачать историю");
+        tile.setOnClickListener(v->{
+            if(!Prefs.dlAlways||CrashGuard.tripped)return;
+            VideoTracker.Entry entry=bound.get(root);
+            if(entry==null||!entry.isStory()){
+                if(act!=null&&!act.isFinishing()&&!act.isDestroyed()){
+                    View decor=act.getWindow().getDecorView();Scan behind=scan(decor);
+                    NativeDates.Binding cell=NativeDates.visible(decor);
+                    if(cell!=null&&cell.entry.isStory()&&storyContext(behind))entry=cell.entry;
+                    else entry=select(behind);
+                }
+            }
+            if(entry==null||!entry.isStory()){Toasts.show(root.getContext(),"История ещё не распознана. Откройте её заново.");return;}
+            Context ctx=root.getContext();Context app=ctx.getApplicationContext();VideoSaver.start(app==null?ctx:app,entry);
+        });return tile;
     }
 }
