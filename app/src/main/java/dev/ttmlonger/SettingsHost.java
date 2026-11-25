@@ -52,12 +52,12 @@ final class SettingsHost {
                 // The footer is fixed for the whole settings activity (including its subpages).
                 // It never depends on recycled rows, Compose semantics, or scroll position.
                 int inset=bottomOverlap();
-                int height=dp(act,66)+inset;
+                int height=dp(act,50)+inset;
                 if(reserved!=height){
                     reserved=height;
                     FrameLayout.LayoutParams fp=(FrameLayout.LayoutParams)footer.getLayoutParams();
                     if(fp.height!=height){fp.height=height;footer.setLayoutParams(fp);}
-                    footer.setPadding(dp(act,8),dp(act,6),dp(act,8),dp(act,6)+inset);
+                    footer.setPadding(dp(act,8),0,dp(act,8),inset);
                 }
                 // Reserve space using real layout parameters on the existing content
                 // children. Do not reparent a fragment or a Compose view.
@@ -68,7 +68,7 @@ final class SettingsHost {
                     FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)raw;
                     Integer original=nativeMargins.get(child);
                     if(original==null){original=lp.bottomMargin;nativeMargins.put(child,original);}
-                    int wanted=original+reserved;
+                    int wanted=Math.max(original+dp(act,50),reserved);
                     if(lp.bottomMargin!=wanted){lp.bottomMargin=wanted;child.setLayoutParams(lp);}
                 }
                 if(host.indexOfChild(footer)!=host.getChildCount()-1)footer.bringToFront();
@@ -103,19 +103,19 @@ final class SettingsHost {
             reserved=-1;footer=new LinearLayout(act);footer.setTag(Ui.OWN_TAG);
             footer.setOrientation(LinearLayout.VERTICAL);footer.setGravity(Gravity.CENTER_VERTICAL);
             action=new LinearLayout(act);action.setGravity(Gravity.CENTER_VERTICAL);action.setOrientation(LinearLayout.HORIZONTAL);
-            action.setPadding(dp(act,16),0,dp(act,16),0);
-            icon=new ImageView(act);action.addView(icon,new LinearLayout.LayoutParams(dp(act,20),dp(act,20)));
-            text=new TextView(act);text.setText("Настройки мода");text.setTextSize(16);text.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);text.setSingleLine(true);text.setGravity(Gravity.CENTER_VERTICAL);
+            action.setPadding(dp(act,12),0,dp(act,12),0);
+            icon=new ImageView(act);action.addView(icon,new LinearLayout.LayoutParams(dp(act,18),dp(act,18)));
+            text=new TextView(act);text.setText("Настройки мода");text.setTextSize(15);text.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));text.setSingleLine(true);text.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-1,1);tp.setMarginStart(dp(act,12));action.addView(text,tp);
             chevron=new ImageView(act);action.addView(chevron,new LinearLayout.LayoutParams(dp(act,18),dp(act,18)));
             action.setContentDescription("Настройки мода");action.setClickable(true);action.setFocusable(true);
-            action.setOnClickListener(v->ModMenu.show(act));footer.addView(action,new LinearLayout.LayoutParams(-1,dp(act,54)));
+            action.setOnClickListener(v->ModMenu.show(act));footer.addView(action,new LinearLayout.LayoutParams(-1,dp(act,48)));
             style(isDark());
-            FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(-1,dp(act,66),Gravity.BOTTOM);host.addView(footer,fp);
+            FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(-1,dp(act,50),Gravity.BOTTOM);host.addView(footer,fp);
         }
         private void style(boolean night){
             dark=night;int ink=dark?0xfff5f5f5:0xff161823,muted=dark?0xffa1a1a1:0xff74747c;
-            footer.setBackgroundColor(dark?0xff000000:0xffffffff);
+            footer.setBackgroundColor(android.graphics.Color.TRANSPARENT);
             action.setBackground(new RippleDrawable(ColorStateList.valueOf(dark?0x22ffffff:0x16000000),rounded(dark?0xff1d1d1d:0xfff3f3f5,dp(act,14)),null));
             icon.setImageDrawable(Icons.of(Icons.SLIDERS,muted));chevron.setImageDrawable(Icons.of(Icons.CHEVRON_RIGHT,muted));text.setTextColor(ink);
         }
@@ -124,7 +124,7 @@ final class SettingsHost {
                 if(child==null||!(child.getLayoutParams() instanceof FrameLayout.LayoutParams))continue;
                 Integer old=nativeMargins.get(child);if(old==null)continue;
                 FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)child.getLayoutParams();
-                if(lp.bottomMargin==old+reserved){lp.bottomMargin=old;child.setLayoutParams(lp);}
+                if(lp.bottomMargin==Math.max(old+dp(act,50),reserved)){lp.bottomMargin=old;child.setLayoutParams(lp);}
             }
             nativeMargins.clear();if(footer!=null&&footer.getParent() instanceof ViewGroup)((ViewGroup)footer.getParent()).removeView(footer);
             footer=null;host=null;reserved=-1;

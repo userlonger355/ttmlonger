@@ -291,7 +291,7 @@ final class ModMenu extends Screen {
         return grid;
     }
     private void filter(){
-        String q=VideoScreen.normalize(search.getText().toString());
+        String q=SettingsSearch.normalize(search.getText().toString());
         int count=0;
         for(int i=0;i<grid.getChildCount();i++){
             View row=grid.getChildAt(i);TextView title=Ui.titleOf(row),value=Ui.valueOf(row);
@@ -301,6 +301,7 @@ final class ModMenu extends Screen {
             row.setVisibility(match?View.VISIBLE:View.GONE);
             if(match){count++;if(changed&&Ui.motionEnabled()){row.animate().cancel();row.setAlpha(.7f);row.setTranslationY(ui.dp(5));row.animate().alpha(1f).translationY(0).setStartDelay(0).setDuration(260).setInterpolator(Ui.motionCurve()).start();}}
         }
+        grid.setVisibility(count==0?View.GONE:View.VISIBLE);
         functionResults.removeAllViews();
         java.util.List<SettingsSearch.Entry> hits=functionIndex.find(q);
         functionResults.setVisibility(hits.isEmpty()?View.GONE:View.VISIBLE);

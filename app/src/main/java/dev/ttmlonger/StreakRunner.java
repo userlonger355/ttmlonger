@@ -40,7 +40,9 @@ final class StreakRunner {
     private static Context app;
     private static volatile Handler handler;
     private static StreakSchedule schedule;
-    private static boolean pending;
+    private static long requestedAt=Long.MAX_VALUE;
+    private static final Runnable REQUESTED=()->{synchronized(StreakRunner.class){requestedAt=Long.MAX_VALUE;}try{round(false);}catch(Throwable e){FlagStore.log(e);}};
+    private static volatile long nextScheduledAt;
     private static final ArrayDeque<String> LOG = new ArrayDeque<>();
     private static final Runnable DAILY = new Runnable() {
         @Override
@@ -66,6 +68,7 @@ final class StreakRunner {
     }
     private static volatile Overview overview;
     static Overview overview(String owner){Overview o=overview;return owner!=null&&o!=null&&owner.equals(o.owner)?o:null;}
+    static long nextScheduledAt(){return nextScheduledAt;}
     static long holdRemaining(){return Math.max(0,autoHoldUntil-SystemClock.elapsedRealtime());}
 
     private StreakRunner() {
@@ -105,6 +108,7 @@ final class StreakRunner {
         h.removeCallbacks(DAILY);
         long now=System.currentTimeMillis();
         long wait=Prefs.streakAuto?schedule.nextWait(StreakHooks.liveOwner(),now,Zones.current()):Long.MAX_VALUE;
+        nextScheduledAt=wait==Long.MAX_VALUE?0:now+wait+2000L;
         if(wait!=Long.MAX_VALUE){
             // Задержка Handler считается по времени работы процессора и во сне не идёт: сам по себе он
             // сработает позже срока. Поэтому рядом ставится будильник по настоящему времени, а на включение
@@ -239,22 +243,11 @@ final class StreakRunner {
 
     /** Запросить проход через delayMs; повторные запросы, пока один ждёт, склеиваются. */
     static synchronized void request(long delayMs) {
-        Handler h = handler;
-        if (h == null || pending || !Prefs.streakAuto) return;
-        pending = true;
-        h.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                synchronized (StreakRunner.class) {
-                    pending = false;
-                }
-                try {
-                    round(false);
-                } catch (Throwable e) {
-                    FlagStore.log(e);
-                }
-            }
-        }, delayMs);
+        Handler h=handler;if(h==null||!Prefs.streakAuto)return;
+        long delay=Math.max(0,delayMs);long at=SystemClock.uptimeMillis()+delay;
+        if(at>=requestedAt)return;
+        h.removeCallbacks(REQUESTED);requestedAt=at;
+        if(!h.postAtTime(REQUESTED,at))requestedAt=Long.MAX_VALUE;
     }
 
     /** Проверка без отправки: для кнопки на экране. done вызывается на главном потоке. */
@@ -303,7 +296,7 @@ final class StreakRunner {
      */
     static void round(boolean dry) {
         if (CrashGuard.tripped || (!dry && !Prefs.streakAuto)) return;
-        if(!dry&&holdRemaining()>0){hint="Автоотправка временно приостановлена после ошибок";return;}
+        if(!dry&&holdRemaining()>0){hint="Автоотправка временно приостановлена после ошибок";request(holdRemaining());return;}
         if (schedule == null) {
             hint = "Мод ещё подключается к TikTok. Повторите проверку.";
             return;
@@ -392,7 +385,7 @@ final class StreakRunner {
         if (!online()) {
             last = "нет сети, отправка отложена; " + head;
             hint += " · нет сети, отправка отложена";
-            return;
+            request(120_000L);return;
         }
         Object sticker = StreakSticker.get();
         if (sticker == null) {
@@ -404,10 +397,10 @@ final class StreakRunner {
         int ok = 0;
         int bad = 0;
         java.util.List<String> greySubmitted=new java.util.ArrayList<>();
-        int done = 0,consecutive=0;
+        int done = 0,consecutive=0;boolean networkLost=false;
         for (String conv : due) {
             if (done++ >= StreakLogic.MAX_PER_ROUND) break;
-            if(!online())break;
+            if(!online()){networkLost=true;break;}
             hint="Автопродление: "+done+" из "+Math.min(due.size(),StreakLogic.MAX_PER_ROUND);
             if (!Prefs.streakAuto || !owner.equals(StreakHooks.liveOwner())) break;
             int minute=schedule.effective(owner,conv);
@@ -443,6 +436,7 @@ final class StreakRunner {
         hint = "Передано TikTok: " + ok + " · серые огоньки стали активными: "+confirmed
                 + " из "+greySubmitted.size()+(bad > 0 ? " · ошибок: " + bad : "");
         if(holdRemaining()>0){hint+=" · пауза 30 минут после трёх ошибок подряд";request(holdRemaining());}
+        else if(networkLost){hint+=" · сеть потеряна, повторная проверка через 2 минуты";request(120_000L);}
         else if (bad > 0 || due.size() > StreakLogic.MAX_PER_ROUND) request(StreakLogic.FAIL_BACKOFF_MS);
     }
 

@@ -41,7 +41,7 @@ final class SettingsSearch {
         group("Скачивание","Скачивание",DownloadScreen::show,
           "Без водяного знака|watermark чистое видео","Скачивать всегда|скачать истории фото","Кнопка «Сохранить через мод»|скачать музыку звук аудио видео","Качество видео|разрешение 1080p 720p","Расширенный лимит до 9000|офлайн видео","Сохранение стикеров|скачать стикер");
         group("Огоньки","Огоньки",StreakScreen::show,
-          "Автопродление|серия streak огонек","Время отправки|расписание часы минуты вибрация ручное время","Стикер для отправки|обычные избранное лайк анимация","Снять выбор стикера","Кому продлевать|персональное индивидуальное время собеседник","Состояние серий|статистика","Предпросмотр отправки|видео стикер","Проверить огоньки","Отправить сейчас");
+          "Автопродление|серия streak огонек","Время отправки|расписание часы минуты вибрация ручное время","Стикер для отправки|обычные избранное лайк анимация","Снять выбор стикера","Кому продлевать|персональное индивидуальное время собеседник","Состояние серий|статистика ближайшая проверка расписание пауза","Предпросмотр отправки|видео стикер","Проверить огоньки","Отправить сейчас");
         group("Невидимка","Невидимка",InvisibleScreen::show,"Не отправлять статус прочтения|анонимно прочитано","Отмечать прочитанным при ответе","Галочки прочтения","Не показывать «печатает…»|набор текста","Не сообщать, что я в сети|онлайн");
         group("Реклама и LIVE","Реклама и LIVE",AdsScreen::show,"Пропускать рекламу|блокировать реклама adblock","Пропускать размеченные отрезки|спонсор sponsorblock","Рекламные видео","Рекламные карточки","AI-реклама","Скрыть кнопку LIVE|эфир","Убирать эфиры из ленты");
         group("Нижняя панель","Нижняя панель",GlassBarScreen::show,"Вид панели|жидкое стекло liquid glass","Стекло|пресеты","Мои профили|сохранить оформление","Непрозрачность","Насыщенность","Яркость","Преломление при касании","Блик по кромке","Хроматическая аберрация","Увеличение под линзой","Смещение значков","Фон под капсулой","Размытие фона","Жёсткость пружины","Затухание","Желейность","Надувание при касании","Линза","Сжатие панели","Кнопка «+»");
@@ -54,12 +54,17 @@ final class SettingsSearch {
         String q=normalize(query),w=normalize(words);if(q.isEmpty())return true;
         for(String token:q.split(" +"))if(!w.contains(token))return false;return true;
     }
+    private static boolean near(String a,String b){
+        if(a.length()<5||Math.abs(a.length()-b.length())>1)return false;
+        int i=0,j=0,errors=0;while(i<a.length()&&j<b.length()){if(a.charAt(i)==b.charAt(j)){i++;j++;continue;}if(++errors>1)return false;if(a.length()==b.length()){if(i+1<a.length()&&j+1<b.length()&&a.charAt(i)==b.charAt(j+1)&&a.charAt(i+1)==b.charAt(j)){i+=2;j+=2;}else{i++;j++;}}else if(a.length()>b.length())i++;else j++;}return errors+(a.length()-i)+(b.length()-j)<=1;
+    }
+    static boolean fuzzy(String words,String query){String[] terms=normalize(words).split(" +");for(String token:normalize(query).split(" +")){boolean hit=false;for(String term:terms)if(term.contains(token)||near(token,term)){hit=true;break;}if(!hit)return false;}return true;}
     List<Entry> find(String q){
         String query=normalize(q);List<Entry> out=new ArrayList<>();if(query.isEmpty())return out;
-        for(Entry e:entries)if(matches(e.words,query))out.add(e);
+        for(Entry e:entries)if(matches(e.words,query)||fuzzy(e.words,query))out.add(e);
         out.sort((a,b)->Integer.compare(rank(b,query),rank(a,query)));return out;
     }
-    private static int rank(Entry e,String q){String title=normalize(e.title);return title.equals(q)?100:title.startsWith(q)?80:title.contains(q)?60:matches(title,q)?40:20;}
+    private static int rank(Entry e,String q){String title=normalize(e.title);return title.equals(q)?100:title.startsWith(q)?80:title.contains(q)?60:matches(title,q)?40:matches(e.words,q)?20:5;}
     private static final ThreadLocal<Entry> pending=new ThreadLocal<>();
     static void open(Activity a,Entry e){pending.set(e);try{e.open.show(a);}finally{pending.remove();}}
     static Entry take(String page){Entry e=pending.get();if(e==null||!e.page.equals(page))return null;pending.remove();return e;}

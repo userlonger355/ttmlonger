@@ -40,7 +40,7 @@ final class ProfileDatePicker {
     static void show(Activity a,String user){
         if(user==null||!user.matches("[A-Za-z0-9_.]{1,64}"))return;
         StreakSheet s=new StreakSheet(a,"Перейти к дате");Ui ui=s.ui;List<Post> loaded=get(user);
-        int now=Calendar.getInstance().get(Calendar.YEAR);int[] year={now},month={-1};boolean[] newest={true};
+        Calendar calendar=Calendar.getInstance(Zones.current());int now=calendar.get(Calendar.YEAR);int latest=now;long max=0;for(Post post:loaded)max=Math.max(max,post.seconds);if(max>0){calendar.setTimeInMillis(max*1000L);latest=calendar.get(Calendar.YEAR);}int[] year={latest},month={-1};boolean[] newest={true};
         LinearLayout panel=new LinearLayout(a);panel.setOrientation(1);panel.setPadding(ui.dp(14),0,ui.dp(14),0);
         HorizontalScrollView years=new HorizontalScrollView(a);years.setHorizontalScrollBarEnabled(false);LinearLayout yr=new LinearLayout(a);years.addView(yr);panel.addView(years,ui.matchWrap());
         TextView all=TtStyle.neutral(a,"Весь год",42,14);panel.addView(all,ui.matchWrap());
@@ -48,8 +48,8 @@ final class ProfileDatePicker {
         for(int row=0;row<3;row++){LinearLayout line=new LinearLayout(a);for(int col=0;col<4;col++){int m=row*4+col;TextView b=TtStyle.neutral(a,months[m],40,13);buttons[m]=b;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(40),1);lp.setMargins(ui.dp(2),ui.dp(3),ui.dp(2),0);line.addView(b,lp);}panel.addView(line);}
         TextView order=TtStyle.neutral(a,"Сначала новые",42,14);panel.addView(order,ui.matchWrap());TextView status=s.note("");panel.addView(status);
         final Runnable[] draw=new Runnable[1];draw[0]=()->{yr.removeAllViews();for(int y=now;y>=2016;y--){final int v=y;TextView b=ui.medium(String.valueOf(y),14,y==year[0]?Theme.onColor(Theme.accent()):Ui.INK);b.setGravity(Gravity.CENTER);b.setBackground(ui.round(y==year[0]?Theme.accent():Ui.FIELD,12));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(62),ui.dp(38));lp.rightMargin=ui.dp(5);yr.addView(b,lp);b.setOnClickListener(w->{year[0]=v;draw[0].run();});}
-            all.setText("Весь "+year[0]+" год");all.setBackground(ui.round(month[0]<0?Theme.accent():Ui.FIELD,14));all.setTextColor(month[0]<0?Theme.onColor(Theme.accent()):Ui.INK);
-            for(int m=0;m<12;m++){buttons[m].setBackground(ui.round(m==month[0]?Theme.accent():Ui.FIELD,14));buttons[m].setTextColor(m==month[0]?Theme.onColor(Theme.accent()):Ui.INK);}
+            all.setText("Весь "+year[0]+" год · "+matches(loaded,year[0],-1,true).size());all.setBackground(ui.round(month[0]<0?Theme.accent():Ui.FIELD,14));all.setTextColor(month[0]<0?Theme.onColor(Theme.accent()):Ui.INK);
+            for(int m=0;m<12;m++){int count=matches(loaded,year[0],m,true).size();buttons[m].setText(months[m]+(count>0?" · "+count:""));buttons[m].setBackground(ui.round(m==month[0]?Theme.accent():Ui.FIELD,14));buttons[m].setTextColor(m==month[0]?Theme.onColor(Theme.accent()):Ui.INK);}
             order.setText(newest[0]?"Сначала новые ↓":"Сначала старые ↑");
             status.setText("Найдено в загруженных публикациях: "+matches(loaded,year[0],month[0],newest[0]).size()+" из "+loaded.size());
         };

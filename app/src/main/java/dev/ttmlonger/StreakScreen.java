@@ -123,7 +123,7 @@ final class StreakScreen extends Screen {
                 ? "Только отмеченные · " + StreakStore.pickedCount() : "Все чаты с действующей серией");
         forgetRow.setVisibility(chosen || StreakSticker.armed() ? View.VISIBLE : View.GONE);
         if(chatPreview!=null)chatPreview.update(Prefs.streakAuto,minute);
-        StreakRunner.Overview o=StreakRunner.overview(StreakHooks.liveOwner());if(overviewTime!=null){int[] nums=o==null?null:new int[]{o.active,o.grey,o.sent,o.due};for(int i=0;i<metrics.length;i++)if(metrics[i]!=null)metrics[i].setText(nums==null?"—":String.valueOf(nums[i]));String status=o==null?"Нажмите «Проверить огоньки»":("Последняя проверка: "+new java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(o.at))+(o.unknown>0?" · не прочитано: "+o.unknown:""));if(StreakRunner.holdRemaining()>0)status+=" · пауза после ошибок";overviewTime.setText(status);}
+        StreakRunner.Overview o=StreakRunner.overview(StreakHooks.liveOwner());if(overviewTime!=null){int[] nums=o==null?null:new int[]{o.active,o.grey,o.sent,o.due};for(int i=0;i<metrics.length;i++)if(metrics[i]!=null)metrics[i].setText(nums==null?"—":String.valueOf(nums[i]));String status=o==null?"Нажмите «Проверить огоньки»":("Последняя проверка: "+new java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(o.at))+(o.unknown>0?" · не прочитано: "+o.unknown:""));long hold=StreakRunner.holdRemaining();if(hold>0)status+="\nПауза после ошибок: ещё "+((hold+59999)/60000)+" мин.";long next=StreakRunner.nextScheduledAt();if(Prefs.streakAuto&&next>System.currentTimeMillis()){java.text.SimpleDateFormat fmt=new java.text.SimpleDateFormat("d MMM, HH:mm",java.util.Locale.getDefault());fmt.setTimeZone(Zones.current());status+="\nСледующее время по расписанию: "+fmt.format(new java.util.Date(next));}overviewTime.setText(status);}
     }
 
     private void pickTime() {
@@ -143,7 +143,7 @@ final class StreakScreen extends Screen {
             return;
         }
         schedule.setMinute(owner, minute);
-        if (minute >= 0 && !autoSwitch.isOn()) autoSwitch.toggle();
+        // Editing a time does not implicitly authorize automatic sending.
         StreakRunner.async(() -> {
             StreakRunner.reschedule();
             StreakRunner.request(0);
