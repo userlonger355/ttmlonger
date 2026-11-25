@@ -106,6 +106,9 @@ public final class PreviewActivity extends Activity {
     }
 
     private static void verifyFixes() {
+        expect(CommentCopyText.matches("Алекс: @друг, привет!", "@друг, привет!", java.util.Collections.singleton("Алекс")),"copy author prefix");
+        expect(!CommentCopyText.matches("@друг, привет!", "@друг, привет!", java.util.Collections.singleton("Алекс")),"preserve genuine mention");
+        expect(CommentCopyText.matches("Алекс\nТекст", "Текст", java.util.Collections.singleton("Алекс")),"copy multiline prefix");
         expect(StreakTimeSheet.parseTime("0","00")==0,"manual midnight");
         expect(StreakTimeSheet.parseTime("23","59")==1439,"manual end of day");
         expect(StreakTimeSheet.parseTime("24","00")==-1&&StreakTimeSheet.parseTime("12","60")==-1&&StreakTimeSheet.parseTime("","10")==-1,"invalid manual time");

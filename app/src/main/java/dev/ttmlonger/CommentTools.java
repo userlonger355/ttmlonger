@@ -15,7 +15,8 @@ final class CommentTools {
     static int modelHooks;
     private static volatile int visibleTextCount,visiblePanelCount;
     private static final java.util.concurrent.atomic.AtomicLong matchedRows=new java.util.concurrent.atomic.AtomicLong();
-    static String diagnostics(){synchronized(facts){return "Хуки: "+modelHooks+" · модели: "+facts.size()+" · совпадения строк: "+matchedRows.get()+" · текстовых элементов: "+visibleTextCount+" · панели: "+visiblePanelCount;}}
+    private static final java.util.concurrent.atomic.AtomicLong cleanCopies=new java.util.concurrent.atomic.AtomicLong();
+    static String diagnostics(){synchronized(facts){return "Хуки: "+modelHooks+" · модели: "+facts.size()+" · совпадения строк: "+matchedRows.get()+" · текстовых элементов: "+visibleTextCount+" · панели: "+visiblePanelCount+" · очищено копирований: "+cleanCopies.get()+" · "+CommentSelect.diagnostics();}}
     private static final LinkedHashMap<String,List<Fact>> facts=new LinkedHashMap<>();
     private static final ThreadLocal<Boolean> reading=new ThreadLocal<>();
     private static final WeakHashMap<TextView,Edit> edits=new WeakHashMap<>();
@@ -86,6 +87,11 @@ final class CommentTools {
         }};
         try{XposedBridge.hookAllMethods(android.app.Activity.class,"dispatchTouchEvent",events);}catch(Throwable ignored){}
         try{XposedBridge.hookAllMethods(android.app.Dialog.class,"dispatchTouchEvent",events);}catch(Throwable ignored){}
+        try{XposedBridge.hookAllMethods(View.class,"performClick",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
+            if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||!(p.thisObject instanceof View)||!fresh())return;View v=(View)p.thisObject;if(Screen.isOwnDecor(v.getRootView())||!copyLabel(v,0,new int[]{20}))return;
+            // Keep the remembered target while the native menu closes and writes to the clipboard.
+            recentAt=SystemClock.uptimeMillis();
+        }});}catch(Throwable ignored){}
         try{XposedBridge.hookAllMethods(ClipboardManager.class,"setPrimaryClip",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
             if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||p.args.length!=1||!(p.args[0] instanceof ClipData))return;
             String body=recentBody();Fact fact=recent;
@@ -93,11 +99,23 @@ final class CommentTools {
             String raw=clip.getItemAt(0).getText().toString();
             String clean=null;if(body!=null&&fact!=null){Set<String> names=new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle));if(prefixed(raw,body,names))clean=body;}
             if(clean==null&&fresh()&&!tappedBody.isEmpty()&&prefixed(raw,tappedBody,tappedAuthors))clean=tappedBody;
-            if(clean!=null)p.args[0]=new ClipData("Комментарий",new String[]{"text/plain"},new ClipData.Item(clean));
+            if(clean==null&&nativeCommentCopy())clean=knownBody(raw);
+            if(clean!=null&&!raw.equals(clean)){p.args[0]=new ClipData("Комментарий",new String[]{"text/plain"},new ClipData.Item(clean));cleanCopies.incrementAndGet();}
         }});}catch(Throwable ignored){}
     }
+    private static boolean copyLabel(View v,int depth,int[] budget){if(v==null||depth>4||--budget[0]<0)return false;String s=norm(v.getContentDescription()).toLowerCase(Locale.ROOT);if(s.equals("копировать")||s.equals("copy")||s.equals("копировать текст"))return true;if(v instanceof TextView){s=norm(((TextView)v).getText()).toLowerCase(Locale.ROOT);if(s.equals("копировать")||s.equals("copy")||s.equals("копировать текст"))return true;}if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(copyLabel(g.getChildAt(i),depth+1,budget))return true;}return false;}
     private static boolean fresh(){android.app.Activity a=ScreenWatcher.top();return a!=null&&owner.get()==a&&SystemClock.uptimeMillis()-recentAt<20000;}
-    private static boolean prefixed(String raw,String body,Set<String> authors){if(body==null||body.isEmpty())return false;String clean=norm(raw);for(String name:authors){if(name==null||name.isEmpty()||name.equals("@"))continue;for(String separator:new String[]{": ",":","：","： "," · "," "})if(clean.equals(norm(name+separator+body)))return true;}return false;}
+    private static boolean prefixed(String raw,String body,Set<String> authors){return CommentCopyText.matches(raw,body,authors);}
+    private static boolean nativeCommentCopy(){
+        if(CommentSelect.inNativeCopy())return true;
+        for(StackTraceElement frame:Thread.currentThread().getStackTrace()){String name=frame.getClassName().toLowerCase(Locale.ROOT),method=frame.getMethodName().toLowerCase(Locale.ROOT);if(name.startsWith("com.ss.android.ugc.aweme.comment.")&&(name.contains("longpress")||name.contains("copy")||method.contains("copy")))return true;}
+        return false;
+    }
+    private static String knownBody(String raw){
+        if(raw==null||raw.length()>20500)return null;String hit=null;
+        synchronized(facts){for(List<Fact> list:facts.values())for(Fact fact:list){if(!prefixed(raw,fact.content,new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle))))continue;if(hit!=null&&!hit.equals(fact.content))return null;hit=fact.content;}}
+        return hit;
+    }
     static String recentBody(){return fresh()&&recent!=null?recent.content:null;}
     private static void rememberTap(View panel,float x,float y){
         recent=null;recentAt=0;tappedBody="";tappedAuthors.clear();Rect rect=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});
@@ -197,7 +215,7 @@ final class CommentTools {
     static void touch(View root,MotionEvent event){
         if(CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
         int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action)return;lastEvent=stamp;lastAction=action;
-        if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null)rememberTap(panel,downX,downY);return;}
+        if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null&&!touchCopy(root,downX,downY,0,new int[]{1600}))rememberTap(panel,downX,downY);return;}
         if(!InterfaceHooks.on("comment_double"))return;
         if(action!=MotionEvent.ACTION_UP||event.getEventTime()-downAt>300||Math.abs(event.getRawX()-downX)>20||Math.abs(event.getRawY()-downY)>20)return;
         View panel=CommentWallpaper.panel(root);if(panel==null)return;
@@ -212,6 +230,7 @@ final class CommentTools {
             }
         }else{lastTap=new java.lang.ref.WeakReference<>(hit);lastAt=now;}
     }
+    private static boolean touchCopy(View v,float x,float y,int depth,int[] budget){if(v==null||depth>30||--budget[0]<0||!v.isShown())return false;Rect rect=new Rect();if(!v.getGlobalVisibleRect(rect)||!rect.contains((int)x,(int)y))return false;if(v instanceof TextView&&copyLabel(v,0,new int[]{1}))return true;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(touchCopy(g.getChildAt(i),x,y,depth+1,budget))return true;}return false;}
     private static View like(View v,int depth,int[] b){
         if(--b[0]<0||depth>7||v.getVisibility()!=View.VISIBLE)return null;
         String s=String.valueOf(v.getContentDescription()).toLowerCase(Locale.ROOT).trim(),n=name(v);

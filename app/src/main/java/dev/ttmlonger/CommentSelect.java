@@ -17,6 +17,9 @@ import de.robv.android.xposed.XposedHelpers;
 /** Native comment action list. Copy uses the exact model body, never a formatted username prefix. */
 final class CommentSelect {
     private static volatile int hooks;
+    private static final java.util.concurrent.atomic.AtomicLong nativeCopies=new java.util.concurrent.atomic.AtomicLong();
+    static String diagnostics(){return "хуки меню: "+hooks+" · штатные копирования: "+nativeCopies.get();}
+    static boolean inNativeCopy(){return activeCopy.get()!=null;}
     private static final java.util.WeakHashMap<Object,Object> originals=new java.util.WeakHashMap<>();
     private static final String FRAGMENT="com.ss.android.ugc.aweme.comment.longpresspanel.ui.CommentLongPressFragment";
     static void install(ClassLoader cl){
@@ -42,12 +45,12 @@ final class CommentSelect {
                         for(int i=0;i<old.size();i++){
                             Object row=old.get(i);if(!item.isInstance(row))return;
                             String k=String.valueOf(key.get(row)),label=String.valueOf(title.get(row));
-                            if("ttm_select_text".equals(k))return;
+                            if("ttm_select_text".equals(k))continue;
                             if("ttm_copy_body".equals(k))continue;
                             if(isCopy(k,label)){pos=i;nativeCopy=row;break;}
                         }
                         if(pos<0||nativeCopy==null)return;
-                        ArrayList<Object> result=new ArrayList<>(old);
+                        ArrayList<Object> result=new ArrayList<>(old);result.removeIf(row->{try{String k=String.valueOf(key.get(row));return k.equals("ttm_select_text")||k.equals("ttm_copy_body");}catch(Throwable ignored){return false;}});
                         if(InterfaceHooks.on("comment_copy_body")){
                             // Reuse the native row: no constructor/extra action required to repair Copy.
                             Object current=action.get(nativeCopy);
@@ -97,7 +100,7 @@ final class CommentSelect {
             method.invoke(original,args);
         }catch(Throwable ignored){}
         finally{if(prior==null)activeCopy.remove();else activeCopy.set(prior);}
-        if(!scope.written)copy(a,text);else Toasts.show(a,"Скопировано без юзернейма");
+        if(!scope.written)copy(a,text);nativeCopies.incrementAndGet();
         return unit;
     }
     private static boolean isCopy(String key,String label){
@@ -152,7 +155,7 @@ final class CommentSelect {
     }
     private static void copy(Activity a,String text){
         android.content.ClipboardManager cm=(android.content.ClipboardManager)a.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-        if(cm==null)return;cm.setPrimaryClip(plain(text));Toasts.show(a,"Скопировано без юзернейма");
+        if(cm==null)return;cm.setPrimaryClip(plain(text));
     }
     static void show(Activity a,String text){
         Ui ui=new Ui(a);TextView t=ui.text(text,17,Ui.INK,false);
