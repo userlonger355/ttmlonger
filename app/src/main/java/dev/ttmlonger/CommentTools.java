@@ -139,7 +139,7 @@ final class CommentTools {
         try{
             if(!any()&&edits.isEmpty()&&limits.isEmpty()&&buttons.isEmpty())return;
             View panel=CrashGuard.tripped||!any()?null:CommentWallpaper.panel(root);
-            if(panel==null && InterfaceHooks.on("comment_full"))for(View old:new ArrayList<>(expandedHosts.keySet()))if(old!=null&&old.getRootView()==root&&old.isShown()&&header(root,old)!=null){panel=old;break;}
+            if(InterfaceHooks.on("comment_full"))for(View old:new ArrayList<>(expandedHosts.keySet()))if(old!=null&&old.getRootView()==root&&old.isShown()&&header(root,old)!=null){View outer=expandedHosts.get(old);if(panel==null||inside(panel,outer)||inside(outer,panel)){panel=old;break;}}
             for(TextView t:new ArrayList<>(edits.keySet())){
                 if(t==null||t.getRootView()!=root)continue;
                 Edit e=edits.get(t);if(e==null)continue;
@@ -209,7 +209,7 @@ final class CommentTools {
     private static final WeakHashMap<View,View> buttonPanels=new WeakHashMap<>();
     private static final WeakHashMap<View,View> expandedHosts=new WeakHashMap<>();
     private static boolean headerTitle(TextView t){return norm(t.getText()).toLowerCase(Locale.ROOT).matches("(?:[0-9., kкmм]+ )?(?:comments?|комментарии|комментариев|комментария|комментарий)(?: *\\(?[0-9., kкmм]+\\)?)?");}
-    private static final WeakHashMap<View,Integer> originalBehavior=new WeakHashMap<>();
+    private static final WeakHashMap<View,CommentFullLayout> fullLayouts=new WeakHashMap<>();
     private static TextView header(View root,View panel){
         Rect area=new Rect();if(!panel.getGlobalVisibleRect(area))return null;float dp=root.getResources().getDisplayMetrics().density;
         List<TextView> all=new ArrayList<>();collect(root,all,0,new int[]{3000});TextView best=null;int distance=Integer.MAX_VALUE;
@@ -221,16 +221,16 @@ final class CommentTools {
         for(ViewParent q=panel.getParent();q instanceof ViewGroup&&q!=root;q=q.getParent()){
             ViewGroup g=(ViewGroup)q;if(g.getWidth()<root.getWidth()*.82f)break;
             Object b=DownloadHooks.call(g.getLayoutParams(),"getBehavior");
-            if(b!=null&&DownloadHooks.call(b,"getState") instanceof Number)return g;
+            if(b!=null&&DownloadHooks.call(b,"getState") instanceof Number&&title!=null&&inside(title,g))return g;
             if(g.getHeight()>root.getHeight()*.96f)break;
-            if(title!=null&&inside(title,g)&&g.getHeight()>=panel.getHeight()&&g.getHeight()-panel.getHeight()<dp*180)target=g;
+            if(title!=null&&inside(title,g)&&g.getHeight()>=panel.getHeight()&&g.getHeight()-panel.getHeight()<dp*180){target=g;View input=CommentWallpaper.composer(g,0,new int[]{600});if(input!=null&&inside(input,g))break;}
         }
         return target;
     }
     private static void addFull(View root,View panel,List<TextView> list){
         if(!(root instanceof FrameLayout)||panel.getParent()==null)return;
         FrameLayout host=(FrameLayout)root;float dp=root.getResources().getDisplayMetrics().density;int size=Math.round(dp*34);
-        TextView title=header(root,panel);if(title==null)return;
+        TextView title=header(root,panel);if(title==null){View old=buttons.remove(root);if(old!=null&&old.getParent() instanceof ViewGroup)((ViewGroup)old.getParent()).removeView(old);return;}
         Rect label=new Rect(),area=new Rect();if(!title.getGlobalVisibleRect(label)||!panel.getGlobalVisibleRect(area))return;int[] origin=new int[2];root.getLocationOnScreen(origin);
         // In the native header: immediately left of the translation action, never over a comment avatar.
         int x=Math.round(area.left+area.width()*.73f-size/2f)-origin[0],y=label.centerY()-origin[1]-size/2;
@@ -244,28 +244,29 @@ final class CommentTools {
             button.setOnClickListener(v->{toggleFull(root,target,header(root,target));control.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);});
             host.addView(button,new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.LEFT));buttons.put(root,button);buttonPanels.put(root,panel);
         }
-        boolean expanded=expandedHosts.containsKey(panel);button.setText(expanded?"↙":"⛶");button.setContentDescription(expanded?"Свернуть комментарии":"Развернуть комментарии");button.setTextColor(title.getCurrentTextColor());
+        boolean expanded=expandedHosts.containsKey(panel);String glyph=expanded?"↙":"⛶";if(!glyph.contentEquals(button.getText()))button.setText(glyph);button.setContentDescription(expanded?"Свернуть комментарии":"Развернуть комментарии");button.setTextColor(title.getCurrentTextColor());
         if(button.getTranslationX()!=x)button.setTranslationX(x);if(button.getTranslationY()!=y)button.setTranslationY(y);
         if(host.indexOfChild(button)!=host.getChildCount()-1)button.bringToFront();
     }
     private static void toggleFull(View root,View panel,TextView title){
         if(!panel.isAttachedToWindow())return;
-        View previous=expandedHosts.remove(panel);
-        if(previous!=null){restoreFull(previous);return;}
+        View previous=expandedHosts.get(panel);
+        if(previous!=null){
+            CommentFullLayout layout=fullLayouts.get(previous);
+            if(layout!=null){layout.toggle();return;}
+            expandedHosts.remove(panel);restoreFull(previous);return;
+        }
         View target=sheet(root,panel,title);if(target==panel&&(title==null||!inside(title,target))){Toasts.show(root.getContext(),"Не найден внешний контейнер комментариев");return;}
-        ViewGroup.LayoutParams lp=target.getLayoutParams();if(lp==null)return;
-        Object behavior=DownloadHooks.call(lp,"getBehavior");Object state=DownloadHooks.call(behavior,"getState");
-        if(state instanceof Number)originalBehavior.put(target,((Number)state).intValue());
-        originalHeight.put(target,lp.height);expandedHosts.put(panel,target);
-        lp.height=ViewGroup.LayoutParams.MATCH_PARENT;target.setLayoutParams(lp);target.requestLayout();
-        final View expanded=target;expanded.post(()->{if(expandedHosts.get(panel)!=expanded)return;setBehavior(expanded,3);expanded.requestLayout();});
+        CommentFullLayout layout=CommentFullLayout.create(root,target,panel,title,()->{
+            expandedHosts.remove(panel);originalHeight.remove(target);fullLayouts.remove(target);CommentWallpaper.invalidatePanel(root);
+        });
+        if(layout==null){Toasts.show(root.getContext(),"Не удалось определить размеры комментариев");return;}
+        originalHeight.put(target,target.getLayoutParams().height);expandedHosts.put(panel,target);fullLayouts.put(target,layout);layout.toggle();
     }
     private static void restoreFull(View target){
-        Integer h=originalHeight.remove(target),state=originalBehavior.remove(target);
-        if(h!=null&&target.getLayoutParams()!=null){ViewGroup.LayoutParams lp=target.getLayoutParams();lp.height=h;target.setLayoutParams(lp);target.requestLayout();}
-        if(state!=null)setBehavior(target,state);
+        CommentFullLayout layout=fullLayouts.remove(target);if(layout!=null){layout.restore();originalHeight.remove(target);return;}
+        Integer h=originalHeight.remove(target);if(h!=null&&target.getLayoutParams()!=null){ViewGroup.LayoutParams lp=target.getLayoutParams();lp.height=h;target.setLayoutParams(lp);}
     }
-    private static void setBehavior(View v,int state){try{Object b=DownloadHooks.call(v.getLayoutParams(),"getBehavior");if(b!=null&&DownloadHooks.call(b,"getState") instanceof Number)b.getClass().getMethod("setState",int.class).invoke(b,state);}catch(Throwable ignored){}}
     static void touch(View root,MotionEvent event){
         if(CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
         int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action&&eventRoot.get()==root)return;lastEvent=stamp;lastAction=action;eventRoot=new java.lang.ref.WeakReference<>(root);

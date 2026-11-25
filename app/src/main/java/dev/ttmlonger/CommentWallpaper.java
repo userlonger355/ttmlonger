@@ -188,7 +188,7 @@ final class CommentWallpaper {
         if(listSurface(v)&&v.getHeight()>0)return true;
         if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(hasList(g.getChildAt(i),depth+1,budget))return true;}return false;
     }
-    private static View composer(View v,int depth,int[] budget){
+    static View composer(View v,int depth,int[] budget){
         if(v==null||!v.isShown()||depth>30||--budget[0]<0)return null;
         String name=viewName(v).toLowerCase(Locale.ROOT);
         if(v instanceof android.widget.TextView){
