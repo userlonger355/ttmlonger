@@ -18,7 +18,8 @@ final class ModMenu extends Screen {
     private final java.util.Map<View,String> searchWords=new java.util.IdentityHashMap<>();
     private EditText search;
     private TextView empty;
-    private LinearLayout functionResults;
+    private LinearLayout functionResults,historyRows;
+    private SearchHistory history;
     private final SettingsSearch functionIndex=new SettingsSearch();
     private LinearLayout streakMenuRow;
 
@@ -45,6 +46,9 @@ final class ModMenu extends Screen {
         page.setFocusableInTouchMode(true);
         page.requestFocus();
         page.addView(search, inset);
+        history=new SearchHistory(act);historyRows=new LinearLayout(act);historyRows.setOrientation(1);historyRows.setPadding(ui.dp(16),ui.dp(5),ui.dp(16),0);page.addView(historyRows,ui.matchWrap());
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        search.setOnEditorActionListener((v,id,event)->{if(id!=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH&&(event==null||event.getKeyCode()!=android.view.KeyEvent.KEYCODE_ENTER))return false;rememberSearch();search.clearFocus();android.view.inputmethod.InputMethodManager im=(android.view.inputmethod.InputMethodManager)act.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);if(im!=null)im.hideSoftInputFromWindow(search.getWindowToken(),0);return true;});
         if (CrashGuard.tripped) {
             page.addView(ui.menuRow(Icons.FLAG, "Включена защита от сбоев",
                     "После нескольких неудачных запусков функции приостановлены. Нажмите для восстановления",
@@ -295,8 +299,15 @@ final class ModMenu extends Screen {
         if(grid==null){grid=new CardGrid(act,ui);page.addView(grid,ui.matchWrap());}
         return grid;
     }
+    private void rememberSearch(){if(history!=null&&search!=null)history.add(search.getText().toString());}
+    private void showHistory(boolean emptyQuery){
+        historyRows.removeAllViews();java.util.List<String> recent=history.list();historyRows.setVisibility(emptyQuery&&!recent.isEmpty()?View.VISIBLE:View.GONE);if(!emptyQuery||recent.isEmpty())return;
+        LinearLayout title=new LinearLayout(act);title.setGravity(Gravity.CENTER_VERTICAL);title.addView(ui.medium("Недавние запросы",14,Ui.INK),new LinearLayout.LayoutParams(0,-2,1));TextView clear=ui.medium("Очистить",13,Theme.accent());clear.setPadding(ui.dp(10),ui.dp(8),0,ui.dp(8));title.addView(clear);clear.setOnClickListener(v->{history.clear();showHistory(true);});historyRows.addView(title,ui.matchWrap());
+        for(String q:recent){LinearLayout row=ui.row(Icons.CLOCK,q,null,null,false,null);row.setBackground(ui.round(Ui.FIELD,14));row.setOnClickListener(v->{search.setText(q);search.setSelection(search.length());});TextView del=ui.medium("×",20,Ui.MUTED);del.setGravity(Gravity.CENTER);del.setContentDescription("Удалить запрос");del.setOnClickListener(v->{history.remove(q);showHistory(true);});row.addView(del,new LinearLayout.LayoutParams(ui.dp(40),ui.dp(40)));LinearLayout.LayoutParams lp=ui.matchWrap();lp.bottomMargin=ui.dp(4);historyRows.addView(row,lp);}
+    }
     private void filter(){
         String q=SettingsSearch.normalize(search.getText().toString());
+        showHistory(q.isEmpty());
         int count=0;
         for(int i=0;i<grid.getChildCount();i++){
             View row=grid.getChildAt(i);TextView title=Ui.titleOf(row),value=Ui.valueOf(row);
@@ -315,7 +326,7 @@ final class ModMenu extends Screen {
             int shown=0;for(SettingsSearch.Entry hit:hits){if(shown++>=80)break;
                 LinearLayout item=ui.menuRow(Icons.SEARCH,hit.title,hit.path,null,v->{
                     android.view.inputmethod.InputMethodManager keyboard=(android.view.inputmethod.InputMethodManager)act.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-                    if(keyboard!=null)keyboard.hideSoftInputFromWindow(search.getWindowToken(),0);search.clearFocus();SettingsSearch.open(act,hit);
+                    if(keyboard!=null)keyboard.hideSoftInputFromWindow(search.getWindowToken(),0);rememberSearch();search.clearFocus();SettingsSearch.open(act,hit);
                 });item.setBackground(ui.round(Ui.FIELD,16));LinearLayout.LayoutParams lp=ui.matchWrap();lp.bottomMargin=ui.dp(6);functionResults.addView(item,lp);
             }
             if(hits.size()>80)functionResults.addView(ui.note("Уточните запрос, чтобы увидеть остальные функции"));

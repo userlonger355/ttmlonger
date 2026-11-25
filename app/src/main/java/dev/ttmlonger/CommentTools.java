@@ -47,10 +47,11 @@ final class CommentTools {
     }
     private static boolean author(View v){String n=name(v);return n.contains("comment_nickname")||n.contains("comment_username")||n.contains("comment_user_name")||n.contains("comment_author");}
     private static boolean time(View v){String n=name(v);return n.contains("comment_time")||n.contains("comment_date")||n.contains("comment_create_time");}
-    static boolean enabled(){return any()||InterfaceHooks.on("comment_select");}
+    static boolean enabled(){return any();}
     private static boolean any(){for(String k:KEYS)if(InterfaceHooks.on(k))return true;return false;}
     private static final WeakHashMap<TextView,Fact> bound=new WeakHashMap<>();
-    private static Fact recent;private static long recentAt;private static java.lang.ref.WeakReference<android.app.Activity> owner=new java.lang.ref.WeakReference<>(null);
+    private static Fact recent;
+    private static String tappedBody="";private static final Set<String> tappedAuthors=new HashSet<>();private static long recentAt;private static java.lang.ref.WeakReference<android.app.Activity> owner=new java.lang.ref.WeakReference<>(null);
     private static long lastEvent=-1;private static int lastAction=-1;
     private static String norm(CharSequence s){return Targets.norm(s);}
     private static String value(Object o,String key){Object x=RepostTimes.readField(o,key);return x==null?"":x.toString().trim();}
@@ -78,7 +79,7 @@ final class CommentTools {
             for(String getter:new String[]{"getText","getUser","getCid","getCreateTime","getDiggCount","getReplyId","getAwemeId","setText","setUser","setCid","setCreateTime"})try{modelHooks+=XposedBridge.hookAllMethods(type,getter,observe).size();}catch(Throwable ignored){}
         }
         XC_MethodHook events=new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
-            if(!any()&&!InterfaceHooks.on("comment_select")||CrashGuard.tripped||p.args.length!=1||!(p.args[0] instanceof MotionEvent))return;
+            if(!any()||CrashGuard.tripped||p.args.length!=1||!(p.args[0] instanceof MotionEvent))return;
             View root=null;if(p.thisObject instanceof android.app.Activity)root=((android.app.Activity)p.thisObject).getWindow().getDecorView();
             else if(p.thisObject instanceof android.app.Dialog){android.app.Dialog d=(android.app.Dialog)p.thisObject;if(!Screen.isOwn(d)&&d.getWindow()!=null)root=d.getWindow().getDecorView();}
             if(root!=null)touch(root,(MotionEvent)p.args[0]);
@@ -87,24 +88,30 @@ final class CommentTools {
         try{XposedBridge.hookAllMethods(android.app.Dialog.class,"dispatchTouchEvent",events);}catch(Throwable ignored){}
         try{XposedBridge.hookAllMethods(ClipboardManager.class,"setPrimaryClip",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
             if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||p.args.length!=1||!(p.args[0] instanceof ClipData))return;
-            String body=recentBody();Fact fact=recent;if(body==null||fact==null)return;
+            String body=recentBody();Fact fact=recent;
             ClipData clip=(ClipData)p.args[0];if(clip.getItemCount()!=1||clip.getItemAt(0).getText()==null)return;
             String raw=clip.getItemAt(0).getText().toString();
-            for(String author:new String[]{fact.nick,fact.handle,"@"+fact.handle})if(!author.isEmpty())for(String separator:new String[]{": ",":\\n","：","： ","\\n"," · "," "})if(raw.equals(author+separator+body)){p.args[0]=new ClipData("Комментарий",new String[]{"text/plain"},new ClipData.Item(body));return;}
-        }});}catch(Throwable ignored){}
-        try{XposedBridge.hookAllMethods(View.class,"performLongClick",new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){
-            if(Boolean.TRUE.equals(p.getResult())||CrashGuard.tripped||!(p.thisObject instanceof TextView)||!InterfaceHooks.on("comment_select"))return;
-            TextView t=(TextView)p.thisObject;View panel=CommentWallpaper.panel(t.getRootView());if(panel==null||!inside(t,panel))return;Fact hit=bound.get(t);android.app.Activity a=ScreenWatcher.top();
-            if(hit!=null&&a!=null&&!a.isFinishing()){CommentSelect.show(a,hit.content);p.setResult(true);}
+            String clean=null;if(body!=null&&fact!=null){Set<String> names=new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle));if(prefixed(raw,body,names))clean=body;}
+            if(clean==null&&fresh()&&!tappedBody.isEmpty()&&prefixed(raw,tappedBody,tappedAuthors))clean=tappedBody;
+            if(clean!=null)p.args[0]=new ClipData("Комментарий",new String[]{"text/plain"},new ClipData.Item(clean));
         }});}catch(Throwable ignored){}
     }
-    static String recentBody(){android.app.Activity a=ScreenWatcher.top();return a!=null&&owner.get()==a&&SystemClock.uptimeMillis()-recentAt<12000&&recent!=null?recent.content:null;}
+    private static boolean fresh(){android.app.Activity a=ScreenWatcher.top();return a!=null&&owner.get()==a&&SystemClock.uptimeMillis()-recentAt<20000;}
+    private static boolean prefixed(String raw,String body,Set<String> authors){if(body==null||body.isEmpty())return false;String clean=norm(raw);for(String name:authors){if(name==null||name.isEmpty()||name.equals("@"))continue;for(String separator:new String[]{": ",":","：","： "," · "," "})if(clean.equals(norm(name+separator+body)))return true;}return false;}
+    static String recentBody(){return fresh()&&recent!=null?recent.content:null;}
+    private static void rememberTap(View panel,float x,float y){
+        recent=null;recentAt=0;tappedBody="";tappedAuthors.clear();Rect rect=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});
+        for(TextView t:cells){if(t instanceof EditText||!t.getGlobalVisibleRect(rect)||!rect.contains((int)x,(int)y))continue;Fact hit=bound.get(t);if(hit==null)hit=format(t,panel);if(hit!=null){recent=hit;recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}
+            String shown=t.getText().toString();if(shown.trim().isEmpty()||relativeTime(norm(shown))||author(t)||shown.length()>20000)continue;
+            for(View row=t.getParent() instanceof View?(View)t.getParent():null;row!=null&&row!=panel;row=row.getParent() instanceof View?(View)row.getParent():null){if(row.getHeight()>panel.getHeight()*.6f)break;List<TextView> neighbors=new ArrayList<>();collect(row,neighbors,0,new int[]{65});boolean timestamp=false;Set<String> names=new HashSet<>();int[] tp=new int[2];t.getLocationOnScreen(tp);for(TextView n:neighbors){if(n==t||n instanceof EditText)continue;String s=n.getText().toString().trim();int[] np=new int[2];n.getLocationOnScreen(np);if(relativeTime(norm(s))||time(n))timestamp=true;else if(!s.isEmpty()&&s.length()<=100&&(author(n)||np[1]<tp[1]))names.add(s);}if(timestamp&&!names.isEmpty()){tappedBody=shown;tappedAuthors.addAll(names);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}}
+        }
+    }
     private static boolean inside(View child,View parent){for(View v=child;v!=null;){if(v==parent)return true;v=v.getParent() instanceof View?(View)v.getParent():null;}return false;}
     static void apply(View root){
         if(root==null||Screen.isOwnDecor(root))return;
         try{
-            if(!any()&&!InterfaceHooks.on("comment_select")&&edits.isEmpty()&&limits.isEmpty()&&buttons.isEmpty())return;
-            View panel=CrashGuard.tripped||!any()&&!InterfaceHooks.on("comment_select")?null:CommentWallpaper.panel(root);
+            if(!any()&&edits.isEmpty()&&limits.isEmpty()&&buttons.isEmpty())return;
+            View panel=CrashGuard.tripped||!any()?null:CommentWallpaper.panel(root);
             if(panel==null && InterfaceHooks.on("comment_full"))for(View old:new ArrayList<>(originalHeight.keySet()))if(old!=null&&old.getRootView()==root&&old.isShown()){panel=old;break;}
             for(TextView t:new ArrayList<>(edits.keySet())){
                 if(t==null||t.getRootView()!=root)continue;
@@ -190,7 +197,7 @@ final class CommentTools {
     static void touch(View root,MotionEvent event){
         if(CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
         int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action)return;lastEvent=stamp;lastAction=action;
-        if(action==MotionEvent.ACTION_DOWN){View currentPanel=CommentWallpaper.panel(root);if(currentPanel!=null){recent=null;recentAt=0;}downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null){Rect r=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});for(TextView t:cells)if(bound.containsKey(t)&&t.getGlobalVisibleRect(r)&&r.contains((int)downX,(int)downY)){recent=bound.get(t);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());break;}}return;}
+        if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null)rememberTap(panel,downX,downY);return;}
         if(!InterfaceHooks.on("comment_double"))return;
         if(action!=MotionEvent.ACTION_UP||event.getEventTime()-downAt>300||Math.abs(event.getRawX()-downX)>20||Math.abs(event.getRawY()-downY)>20)return;
         View panel=CommentWallpaper.panel(root);if(panel==null)return;

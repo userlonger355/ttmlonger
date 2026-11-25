@@ -27,7 +27,7 @@ final class CommentSelect {
             if(m.getReturnType()!=void.class||m.getParameterTypes().length!=1||!List.class.isAssignableFrom(m.getParameterTypes()[0])||Modifier.isAbstract(m.getModifiers())||Modifier.isStatic(m.getModifiers()))continue;
             try{XposedBridge.hookMethod(m,new XC_MethodHook(){
                 @Override protected void beforeHookedMethod(MethodHookParam p){
-                    if((!InterfaceHooks.on("comment_select")&&!InterfaceHooks.on("comment_copy_body"))||CrashGuard.tripped||!(p.args[0] instanceof List))return;
+                    if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||!(p.args[0] instanceof List))return;
                     try{
                         String resolved=body(resolve(p.thisObject));final String text=resolved==null||resolved.isEmpty()?CommentTools.recentBody():resolved;if(text==null||text.isEmpty())return;
                         Activity a=ScreenWatcher.top();if(a==null||a.isFinishing()||a.isDestroyed())return;
@@ -69,14 +69,6 @@ final class CommentSelect {
                                 }
                             });
                             action.set(nativeCopy,replacement);
-                        }
-                        if(InterfaceHooks.on("comment_select")&&icon!=null){
-                            try{
-                                Object row=make(item,key,title,icon,action,fn,cl,unit,icon.get(nativeCopy),"ttm_select_text","Выделить текст",()->{
-                                    if(!a.isFinishing()&&InterfaceHooks.on("comment_select")&&!CrashGuard.tripped)show(a,text);
-                                },a);
-                                result.add(pos+1,row);
-                            }catch(Throwable ignored){}
                         }
                         p.args[0]=result;
                     }catch(Throwable ignored){}
