@@ -127,7 +127,7 @@ final class CommentSelect {
         }
         return found;
     }
-    private static boolean isComment(Object model){
+    static boolean isComment(Object model){
         if(model==null)return false;for(Class<?> k=model.getClass();k!=null;k=k.getSuperclass()){
             String n=k.getName();if(n.equals("com.ss.android.ugc.aweme.comment.model.Comment")||n.equals("com.ss.android.ugc.aweme.comment.model.CommentItem"))return true;
         }return false;
@@ -145,7 +145,7 @@ final class CommentSelect {
         }));return row;
     }
     static String body(Object model){
-        Object text=RepostTimes.readField(model,"text");
+        Object text=RepostTimes.readField(model,"text");if(!(text instanceof CharSequence)&&isComment(model))for(String key:new String[]{"content","comment_text"}){Object v=RepostTimes.readField(model,key);if(v instanceof CharSequence){text=v;break;}}
         if(!(text instanceof CharSequence)&&isComment(model))try{Field f=DownloadHooks.findField(model.getClass(),"text");if(f!=null)text=f.get(model);}catch(Throwable ignored){}
         return text instanceof CharSequence&&((CharSequence)text).length()<=20000?text.toString():null;
     }

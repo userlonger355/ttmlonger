@@ -53,11 +53,12 @@ final class CommentTools {
     private static final WeakHashMap<TextView,Fact> bound=new WeakHashMap<>();
     private static Fact recent;
     private static String tappedBody="";private static final Set<String> tappedAuthors=new HashSet<>();private static long recentAt;private static java.lang.ref.WeakReference<android.app.Activity> owner=new java.lang.ref.WeakReference<>(null);
+    private static long copyPressedAt;
     private static long lastEvent=-1;private static int lastAction=-1;
     private static String norm(CharSequence s){return Targets.norm(s);}
     private static String value(Object o,String key){Object x=RepostTimes.readField(o,key);return x==null?"":x.toString().trim();}
     static void observe(Object model){
-        if(model==null)return;String name=model.getClass().getName();if(name.equals("com.ss.android.ugc.aweme.comment.model.Comment")||name.equals("com.ss.android.ugc.aweme.comment.model.CommentItem"))remember(model);
+        if(CommentSelect.isComment(model))remember(model);
     }
     private static void remember(Object model){
         if(model==null||CrashGuard.tripped||reading.get()!=null)return;
@@ -65,10 +66,10 @@ final class CommentTools {
             String content=CommentSelect.body(model);if(content==null||content.trim().isEmpty()||content.length()>20000)return;
             Object u=RepostTimes.readField(model,"user");if(u==null)u=RepostTimes.readField(model,"author");
             String id=value(model,"cid");if(id.isEmpty())id=value(model,"comment_id");
-            String nick=value(u,"nickname"),handle=value(u,"unique_id");
+            String nick=value(u,"nickname"),handle=value(u,"unique_id");if(nick.isEmpty())nick=value(model,"nickname");if(handle.isEmpty())handle=value(model,"unique_id");
             long sec=VideoInfo.parseEventTime(RepostTimes.readField(model,"create_time"));
             if(sec<1262304000L||sec>System.currentTimeMillis()/1000L+300)sec=0;
-            if(id.isEmpty()||nick.isEmpty()&&handle.isEmpty())return;
+            if(id.isEmpty())return;
             Fact fact=new Fact(id,nick,handle,sec,content);
             synchronized(facts){String key=norm(content);List<Fact> list=facts.get(key);if(list==null){list=new ArrayList<>();facts.put(key,list);}list.removeIf(x->x.id.equals(fact.id));list.add(fact);if(list.size()>8)list.remove(0);while(facts.size()>600)facts.remove(facts.keySet().iterator().next());}
         }catch(Throwable ignored){}finally{reading.remove();}
@@ -90,7 +91,7 @@ final class CommentTools {
         try{XposedBridge.hookAllMethods(View.class,"performClick",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
             if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||!(p.thisObject instanceof View)||!fresh())return;View v=(View)p.thisObject;if(Screen.isOwnDecor(v.getRootView())||!copyLabel(v,0,new int[]{20}))return;
             // Keep the remembered target while the native menu closes and writes to the clipboard.
-            recentAt=SystemClock.uptimeMillis();
+            recentAt=SystemClock.uptimeMillis();copyPressedAt=recentAt;
         }});}catch(Throwable ignored){}
         try{XposedBridge.hookAllMethods(ClipboardManager.class,"setPrimaryClip",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
             if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||p.args.length!=1||!(p.args[0] instanceof ClipData))return;
@@ -99,7 +100,8 @@ final class CommentTools {
             String raw=clip.getItemAt(0).getText().toString();
             String clean=null;if(body!=null&&fact!=null){Set<String> names=new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle));if(prefixed(raw,body,names))clean=body;}
             if(clean==null&&fresh()&&!tappedBody.isEmpty()&&prefixed(raw,tappedBody,tappedAuthors))clean=tappedBody;
-            if(clean==null&&nativeCommentCopy())clean=knownBody(raw);
+            if(clean==null&&fresh()&&fact!=null&&copyPressedAt>0&&SystemClock.uptimeMillis()-copyPressedAt<3000&&CommentCopyText.verifiedSuffix(raw,fact.content))clean=fact.content;
+            if(clean==null&&(nativeCommentCopy()||fresh()&&copyPressedAt>0&&SystemClock.uptimeMillis()-copyPressedAt<3000))clean=knownBody(raw);
             if(clean!=null&&!raw.equals(clean)){p.args[0]=new ClipData("Комментарий",new String[]{"text/plain"},new ClipData.Item(clean));cleanCopies.incrementAndGet();}
         }});}catch(Throwable ignored){}
     }
@@ -118,7 +120,7 @@ final class CommentTools {
     }
     static String recentBody(){return fresh()&&recent!=null?recent.content:null;}
     private static void rememberTap(View panel,float x,float y){
-        recent=null;recentAt=0;tappedBody="";tappedAuthors.clear();Rect rect=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});
+        recent=null;recentAt=0;copyPressedAt=0;tappedBody="";tappedAuthors.clear();Rect rect=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});
         for(TextView t:cells){if(t instanceof EditText||!t.getGlobalVisibleRect(rect)||!rect.contains((int)x,(int)y))continue;Fact hit=bound.get(t);if(hit==null)hit=format(t,panel);if(hit!=null){recent=hit;recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}
             String shown=t.getText().toString();if(shown.trim().isEmpty()||relativeTime(norm(shown))||author(t)||shown.length()>20000)continue;
             for(View row=t.getParent() instanceof View?(View)t.getParent():null;row!=null&&row!=panel;row=row.getParent() instanceof View?(View)row.getParent():null){if(row.getHeight()>panel.getHeight()*.6f)break;List<TextView> neighbors=new ArrayList<>();collect(row,neighbors,0,new int[]{65});boolean timestamp=false;Set<String> names=new HashSet<>();int[] tp=new int[2];t.getLocationOnScreen(tp);for(TextView n:neighbors){if(n==t||n instanceof EditText)continue;String s=n.getText().toString().trim();int[] np=new int[2];n.getLocationOnScreen(np);if(relativeTime(norm(s))||time(n))timestamp=true;else if(!s.isEmpty()&&s.length()<=100&&(author(n)||np[1]<tp[1]))names.add(s);}if(timestamp&&!names.isEmpty()){tappedBody=shown;tappedAuthors.addAll(names);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}}
@@ -145,11 +147,11 @@ final class CommentTools {
                 }
             }
             View button=buttons.get(root);
-            if(button!=null&&(panel==null||!InterfaceHooks.on("comment_full")||!inside(button,panel))){
+            if(button!=null&&(panel==null||!InterfaceHooks.on("comment_full")||!button.isAttachedToWindow())){
                 buttons.remove(root);if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
             }
-            for(View expanded:new ArrayList<>(originalHeight.keySet()))if(expanded!=null&&expanded.getRootView()==root&&(panel==null||panel!=expanded||!InterfaceHooks.on("comment_full"))){
-                Integer height=originalHeight.remove(expanded);if(height!=null){ViewGroup.LayoutParams lp=expanded.getLayoutParams();lp.height=height;expanded.setLayoutParams(lp);}
+            for(View expanded:new ArrayList<>(originalHeight.keySet()))if(expanded!=null&&expanded.getRootView()==root&&(panel==null||panel!=expanded&&!inside(panel,expanded)||!InterfaceHooks.on("comment_full"))){
+                expandedHosts.values().removeIf(v->v==expanded);Integer height=originalHeight.remove(expanded);if(height!=null){ViewGroup.LayoutParams lp=expanded.getLayoutParams();lp.height=height;expanded.setLayoutParams(lp);}
             }
             if(panel==null)return;
             visiblePanelCount++;List<TextView> list=new ArrayList<>();collect(panel,list,0,new int[]{1800});visibleTextCount=list.size();
@@ -159,7 +161,7 @@ final class CommentTools {
                 if((hit!=null||body(t))&&InterfaceHooks.on("comment_expand")&&!limits.containsKey(t)){limits.put(t,new Limits(t));t.setMaxLines(Integer.MAX_VALUE);t.setEllipsize(null);}
                 if(hit!=null&&InterfaceHooks.on("comment_expand")&&!norm(t.getText()).equals(norm(hit.content))&&truncated(t.getText(),hit.content))edit(t,hit.content,"comment_expand");
             }
-            if(InterfaceHooks.on("comment_full")&&buttons.get(root)==null)addFull(root,panel,list);
+            if(InterfaceHooks.on("comment_full"))addFull(root,panel,list);
         }catch(Throwable ignored){}
     }
     private static void collect(View v,List<TextView> out,int depth,int[] b){
@@ -197,25 +199,45 @@ final class CommentTools {
         CharSequence orig=old!=null&&old.after.contentEquals(t.getText())?old.before:t.getText();
         edits.put(t,new Edit(orig,value,key));t.setText(value);
     }
+    private static final WeakHashMap<View,View> buttonPanels=new WeakHashMap<>();
+    private static final WeakHashMap<View,View> expandedHosts=new WeakHashMap<>();
+    private static boolean headerTitle(TextView t){return norm(t.getText()).toLowerCase(Locale.ROOT).matches("(?:[0-9., kкmм]+ )?(?:comments?|комментарии|комментариев|комментария|комментарий)(?: *\\(?[0-9., kкmм]+\\)?)?");}
     private static void addFull(View root,View panel,List<TextView> list){
-        if(panel.getParent()==null)return;
-        for(TextView t:list){
-            String s=t.getText().toString().trim().toLowerCase(Locale.ROOT);
-            if(!Targets.norm(s).matches("(?:[0-9., kмкm]+ )?(?:comments?|комментарии|комментариев|комментария|комментарий)(?: *\\(?[0-9., ]+\\)?)?"))continue;
-            ViewGroup row=null;
-            for(ViewParent q=t.getParent();q instanceof ViewGroup;q=q.getParent()){ViewGroup g=(ViewGroup)q;if(g==panel)break;if(g.getWidth()<panel.getWidth()*.7f||g.getHeight()>panel.getHeight()*.22f)continue;if(g instanceof FrameLayout||g instanceof LinearLayout&&((LinearLayout)g).getOrientation()==LinearLayout.HORIZONTAL){row=g;break;}}
-            if(row==null)continue;
-            TextView b=new TextView(root.getContext());b.setTag(Ui.OWN_TAG);b.setText("⛶");b.setTextSize(23);b.setTextColor(t.getCurrentTextColor());b.setGravity(Gravity.CENTER);b.setContentDescription("Развернуть комментарии");
-            int size=Math.round(root.getResources().getDisplayMetrics().density*40);
-            if(row instanceof FrameLayout){FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(size,size,Gravity.START|Gravity.CENTER_VERTICAL);fp.leftMargin=Math.round(size*.12f);row.addView(b,fp);}else row.addView(b,0,new LinearLayout.LayoutParams(size,size));buttons.put(root,b);
-            b.setOnClickListener(v->{ViewGroup.LayoutParams lp=panel.getLayoutParams();Integer h=originalHeight.remove(panel);if(h==null){originalHeight.put(panel,lp.height);lp.height=-1;}else lp.height=h;panel.setLayoutParams(lp);});
-            return;
+        if(!(root instanceof FrameLayout)||panel.getParent()==null)return;
+        FrameLayout host=(FrameLayout)root;float density=root.getResources().getDisplayMetrics().density;int size=Math.round(density*40);
+        Rect area=new Rect();if(!panel.getGlobalVisibleRect(area))return;int[] origin=new int[2];root.getLocationOnScreen(origin);
+        int x=area.left-origin[0]+Math.round(8*density),y=area.top-origin[1]+Math.round(4*density);
+        // Prefer the header's vertical center, but do not depend on its resource/class name.
+        for(TextView t:list){if(!headerTitle(t))continue;Rect label=new Rect();if(t.getGlobalVisibleRect(label)&&label.top-area.top<density*80){y=label.centerY()-origin[1]-size/2;break;}}
+        y=Math.max(area.top-origin[1],y);
+        View old=buttons.get(root);TextView button=old instanceof TextView?(TextView)old:null;
+        if(button!=null&&buttonPanels.get(root)!=panel){if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);buttons.remove(root);button=null;}
+        if(button==null){
+            button=new TextView(root.getContext());button.setTag(Ui.OWN_TAG);button.setTextSize(23);button.setGravity(Gravity.CENTER);button.setIncludeFontPadding(false);button.setFocusable(true);
+            button.setTextColor(VideoInfo.isNight(root.getContext())?0xffeeeeee:0xff222222);
+            android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(VideoInfo.isNight(root.getContext())?0xcc292929:0xeef4f4f4);bg.setCornerRadius(size/2f);button.setBackground(bg);
+            final View target=panel;final TextView control=button;
+            button.setOnClickListener(v->{toggleFull(root,target);control.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);control.setText(expandedHosts.containsKey(target)?"↙":"⛶");control.setContentDescription(expandedHosts.containsKey(target)?"Свернуть комментарии":"Развернуть комментарии");});
+            host.addView(button,new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.LEFT));buttons.put(root,button);buttonPanels.put(root,panel);
         }
+        button.setText(expandedHosts.containsKey(panel)?"↙":"⛶");button.setContentDescription(expandedHosts.containsKey(panel)?"Свернуть комментарии":"Развернуть комментарии");
+        if(button.getTranslationX()!=x)button.setTranslationX(x);if(button.getTranslationY()!=y)button.setTranslationY(y);
+        if(host.indexOfChild(button)!=host.getChildCount()-1)button.bringToFront();
     }
+    private static void toggleFull(View root,View panel){
+        if(!panel.isAttachedToWindow())return;
+        View previous=expandedHosts.remove(panel);
+        if(previous!=null){Integer h=originalHeight.remove(previous);if(h!=null){ViewGroup.LayoutParams lp=previous.getLayoutParams();lp.height=h;previous.setLayoutParams(lp);}setBehavior(previous,4);return;}
+        View target=panel;
+        for(ViewParent q=panel.getParent();q instanceof ViewGroup&&q!=root;q=q.getParent()){ViewGroup g=(ViewGroup)q;if(g.getWidth()<root.getWidth()*.75f)break;Object behavior=DownloadHooks.call(g.getLayoutParams(),"getBehavior");if(behavior!=null&&behavior.getClass().getName().toLowerCase(Locale.ROOT).contains("bottomsheet")){target=g;break;}if(g.getHeight()>root.getHeight()*.95f)break;if(g.getHeight()>=target.getHeight()&&Math.abs(g.getHeight()-target.getHeight())<root.getResources().getDisplayMetrics().density*48)target=g;}
+        ViewGroup.LayoutParams lp=target.getLayoutParams();if(lp==null)return;
+        originalHeight.put(target,lp.height);expandedHosts.put(panel,target);lp.height=ViewGroup.LayoutParams.MATCH_PARENT;target.setLayoutParams(lp);setBehavior(target,3);
+    }
+    private static void setBehavior(View v,int state){try{Object b=DownloadHooks.call(v.getLayoutParams(),"getBehavior");if(b!=null&&b.getClass().getName().toLowerCase(Locale.ROOT).contains("bottomsheet")){b.getClass().getMethod("setState",int.class).invoke(b,state);}}catch(Throwable ignored){}}
     static void touch(View root,MotionEvent event){
         if(CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
         int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action)return;lastEvent=stamp;lastAction=action;
-        if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(panel!=null&&!touchCopy(root,downX,downY,0,new int[]{1600}))rememberTap(panel,downX,downY);return;}
+        if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(touchCopy(root,downX,downY,0,new int[]{1600})&&fresh()){copyPressedAt=SystemClock.uptimeMillis();}else if(panel!=null)rememberTap(panel,downX,downY);return;}
         if(!InterfaceHooks.on("comment_double"))return;
         if(action!=MotionEvent.ACTION_UP||event.getEventTime()-downAt>300||Math.abs(event.getRawX()-downX)>20||Math.abs(event.getRawY()-downY)>20)return;
         View panel=CommentWallpaper.panel(root);if(panel==null)return;

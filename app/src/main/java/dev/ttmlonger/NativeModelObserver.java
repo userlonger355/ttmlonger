@@ -20,7 +20,7 @@ final class NativeModelObserver {
     }
     private static void observe(Object value){
         if(value==null||CrashGuard.tripped||active.get()!=null)return;
-        if(!wanted(value.getClass().getName()))return;
+        if(!wanted(value.getClass().getName())&&!(value instanceof List))return;
         active.set(true);try{visit(value,0,Collections.newSetFromMap(new IdentityHashMap<>()));}catch(Throwable ignored){}finally{active.remove();}
     }
     private static void visit(Object o,int depth,Set<Object> seen){
@@ -29,6 +29,6 @@ final class NativeModelObserver {
         if(!wanted(o.getClass().getName()))return;
         SoundPage.observe(o);ProfileFacts.observe(o);CommentTools.observe(o);RepostTimes.observe(o);
         if(o.getClass().getName().equals(DownloadHooks.AWEME)){SoundPage.observe(RepostTimes.readField(o,"music"));ProfileFacts.observe(RepostTimes.readField(o,"author"));return;}
-        for(String key:new String[]{"user","author","music","comments","comment_list","items","aweme_list"})visit(RepostTimes.readField(o,key),depth+1,seen);
+        for(String key:new String[]{"user","author","music","comments","comment_list","items","aweme_list","repost_list","upvote_list","repost_info","upvote_info","repost_records","upvote_records"})visit(RepostTimes.readField(o,key),depth+1,seen);
     }
 }
