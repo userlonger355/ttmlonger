@@ -55,6 +55,7 @@ abstract class Screen {
     abstract void build(LinearLayout body);
 
     final void open(String title, String description) {
+        SettingsSearch.Entry searchTarget=SettingsSearch.take(title);
         dialog = new Dialog(act, Ui.pageTheme());
         markOwn(dialog);
 
@@ -154,6 +155,7 @@ abstract class Screen {
             page.setScaleX(.99f);page.setScaleY(.99f);
         }
         dialog.show();
+        SettingsSearch.reveal(act,scroll,body,searchTarget);
         if(animate) page.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f)
                 .setDuration(290L).setInterpolator(new android.view.animation.PathInterpolator(.18f,.82f,.22f,1f)).start();
     }

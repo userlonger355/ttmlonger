@@ -18,6 +18,8 @@ final class ModMenu extends Screen {
     private final java.util.Map<View,String> searchWords=new java.util.IdentityHashMap<>();
     private EditText search;
     private TextView empty;
+    private LinearLayout functionResults;
+    private final SettingsSearch functionIndex=new SettingsSearch();
     private LinearLayout streakMenuRow;
 
 
@@ -33,7 +35,7 @@ final class ModMenu extends Screen {
     void build(LinearLayout page) {
         search = new EditText(act);
         search.setSingleLine(true);
-        search.setHint("Поиск по настройкам мода");
+        search.setHint("Поиск функций и настроек");
         search.setTextColor(Ui.INK);
         search.setHintTextColor(Ui.MUTED);
         search.setBackground(ui.glassCard(0xff8562bd,18));
@@ -158,7 +160,8 @@ final class ModMenu extends Screen {
         grid.removeView(streakMenuRow);grid.removeView(interfaceRow);
         grid.addView(streakMenuRow,0);grid.addView(interfaceRow,1);
         for(int j=0;j<grid.getChildCount();j++)makeCard((LinearLayout)grid.getChildAt(j));
-        empty=ui.note("По этому запросу настроек нет");page.addView(empty);empty.setVisibility(View.GONE);
+        functionResults=new LinearLayout(act);functionResults.setOrientation(LinearLayout.VERTICAL);functionResults.setPadding(ui.dp(14),0,ui.dp(14),0);page.addView(functionResults,ui.matchWrap());
+        empty=ui.note("Ничего не найдено");page.addView(empty);empty.setVisibility(View.GONE);
         LinearLayout footer=new LinearLayout(act);
         footer.setGravity(Gravity.CENTER);
         footer.setOrientation(LinearLayout.HORIZONTAL);
@@ -293,12 +296,25 @@ final class ModMenu extends Screen {
         for(int i=0;i<grid.getChildCount();i++){
             View row=grid.getChildAt(i);TextView title=Ui.titleOf(row),value=Ui.valueOf(row);
             String words=searchWords.getOrDefault(row,"")+" "+(title==null?"":title.getText())+" "+(value==null?"":value.getText());
-            boolean match=q.isEmpty()||VideoScreen.normalize(words).contains(q);
+            boolean match=q.isEmpty()||SettingsSearch.matches(words,q);
             boolean changed=row.getVisibility()!=View.VISIBLE&&match;
             row.setVisibility(match?View.VISIBLE:View.GONE);
             if(match){count++;if(changed&&Ui.motionEnabled()){row.animate().cancel();row.setAlpha(.7f);row.setTranslationY(ui.dp(5));row.animate().alpha(1f).translationY(0).setStartDelay(0).setDuration(260).setInterpolator(Ui.motionCurve()).start();}}
         }
-        empty.setVisibility(count==0?View.VISIBLE:View.GONE);
+        functionResults.removeAllViews();
+        java.util.List<SettingsSearch.Entry> hits=functionIndex.find(q);
+        functionResults.setVisibility(hits.isEmpty()?View.GONE:View.VISIBLE);
+        if(!hits.isEmpty()){
+            functionResults.addView(ui.header("Функции · "+hits.size()));
+            int shown=0;for(SettingsSearch.Entry hit:hits){if(shown++>=80)break;
+                LinearLayout item=ui.menuRow(Icons.SEARCH,hit.title,hit.path,null,v->{
+                    android.view.inputmethod.InputMethodManager keyboard=(android.view.inputmethod.InputMethodManager)act.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                    if(keyboard!=null)keyboard.hideSoftInputFromWindow(search.getWindowToken(),0);search.clearFocus();SettingsSearch.open(act,hit);
+                });item.setBackground(ui.round(Ui.FIELD,16));LinearLayout.LayoutParams lp=ui.matchWrap();lp.bottomMargin=ui.dp(6);functionResults.addView(item,lp);
+            }
+            if(hits.size()>80)functionResults.addView(ui.note("Уточните запрос, чтобы увидеть остальные функции"));
+        }
+        empty.setVisibility(count==0&&hits.isEmpty()?View.VISIBLE:View.GONE);
     }
     static String[] compact(String title){
         switch(title){
