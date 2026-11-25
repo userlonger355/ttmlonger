@@ -131,22 +131,6 @@ final class ModMenu extends Screen {
                     }
                 }));
 
-        body.addView(ui.menuRow(Icons.VIDEO, "Видео и истории", "Сохранить то, что показывал TikTok", null,
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        VideoScreen.show(act);
-                    }
-                }));
-
-        body.addView(ui.menuRow(Icons.STICKER, "Стикеры", "Сохранить стикеры с экрана", null,
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        StickerScreen.show(act);
-                    }
-                }));
-
         body.addView(ui.menuRow(Icons.TRASH,"Очистка отметок","Репосты · выбор и массовая очистка",null,v -> RepostManager.show(act)));
         body.addView(ui.menuRow(Icons.EYE_OFF,"Скрытые авторы","Локальный список по UID; без блокировки аккаунта",null,v -> FeedMute.show(act)));
         body = section(page, "Личные сообщения");
@@ -351,8 +335,6 @@ final class ModMenu extends Screen {
             case "Невидимка": return new String[]{title,"Приватность"};
             case "Реклама и LIVE": return new String[]{title,"Фильтр ленты"};
             case "Скачивание": return new String[]{title,"Видео и фото"};
-            case "Видео и истории": return new String[]{title,"Сохранение"};
-            case "Стикеры": return new String[]{title,"Сохранение"};
             case "Скрытые авторы": return new String[]{title,"Локальный список"};
             case "Огоньки": return new String[]{title,"Автопродление"};
             case "Баннер профиля": return new String[]{title,"Оформление"};
