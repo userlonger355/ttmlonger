@@ -19,6 +19,12 @@ final class CommentFullLayout {
     private final int initialTop;
     private int safeHeight,safeBottom,safeTop;
     private float fraction;
+    private boolean transitioning,laidOut;
+    private int generation;
+    private final float baseTranslation;
+    private final int initialContentHeight;
+    boolean expanded(){return expanded;}
+    boolean transitioning(View v){return root==v&&transitioning;}
     private boolean expanded,restored;
     private ValueAnimator animator;
     private final View.OnAttachStateChangeListener attach=new View.OnAttachStateChangeListener(){
@@ -45,7 +51,8 @@ final class CommentFullLayout {
     }
     private CommentFullLayout(View r,View t,View p,View h,View input,Runnable done){
         root=r;target=t;panel=p;header=h;composer=input;finished=done;
-        initialHeight=t.getHeight();int[] xy=new int[2];t.getLocationOnScreen(xy);initialTop=xy[1];initialBottom=xy[1]+initialHeight;
+        initialHeight=t.getHeight();baseTranslation=t.getTranslationY();int[] xy=new int[2];t.getLocationOnScreen(xy);initialTop=xy[1];initialBottom=xy[1]+initialHeight;
+        int content=initialHeight;if(input!=null){int[] hp=new int[2],ip=new int[2];h.getLocationOnScreen(hp);input.getLocationOnScreen(ip);content=Math.max(1,ip[1]+input.getHeight()-hp[1]+Math.round(t.getResources().getDisplayMetrics().density*28));}initialContentHeight=Math.min(initialHeight,content);
         behavior=DownloadHooks.call(t.getLayoutParams(),"getBehavior");nativeState=number(DownloadHooks.call(behavior,"getState"),-1);
         nativeOffset=number(DownloadHooks.call(behavior,"getExpandedOffset"),-1);
         nativeFit=Boolean.TRUE.equals(DownloadHooks.call(behavior,"isFitToContents"));
@@ -97,15 +104,34 @@ final class CommentFullLayout {
         safeHeight=Math.max(initialHeight,bottom-top);
     }
     void toggle(){
-        if(restored)return;expanded=!expanded;
+        if(restored)return;expanded=!expanded;final int token=++generation;transitioning=true;
         if(animator!=null){animator.removeAllListeners();animator.cancel();animator=null;}
-        if(expanded){computeBounds();prepareBehavior();}
-        final float end=expanded?1f:0f;
-        if(!Ui.motionEnabled()){apply(end);complete(end);return;}
-        animator=ValueAnimator.ofFloat(fraction,end);animator.setDuration(Math.max(120,Math.round((expanded?340:290)*Math.abs(end-fraction))));animator.setInterpolator(Ui.motionCurve());
-        animator.addUpdateListener(a->{if(!restored&&target.isAttachedToWindow())apply((Float)a.getAnimatedValue());});
-        animator.addListener(new AnimatorListenerAdapter(){public void onAnimationEnd(Animator a){if(!restored)complete(end);}});
-        animator.start();
+        if(expanded&&!laidOut){
+            computeBounds();apply(1f);laidOut=true;prepareBehavior();
+            // Do the expensive measure/layout once, before the visual transition starts.
+            root.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
+                public boolean onPreDraw(){
+                    if(root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnPreDrawListener(this);
+                    if(restored||token!=generation)return true;
+                    fraction=0f;translate(0f);animateTo(1f,token);return true;
+                }
+            });target.requestLayout();return;
+        }
+        animateTo(expanded?1f:0f,token);
+    }
+    private void translate(float f){
+        fraction=f;int[] xy=new int[2];target.getLocationOnScreen(xy);
+        float natural=xy[1]-target.getTranslationY()+baseTranslation;
+        // Move between actual initial and final top; never resize the RecyclerView per frame.
+        float desired=initialTop+(safeTop-initialTop)*f;
+        target.setTranslationY(baseTranslation+desired-natural);
+        CommentTools.positionFull(root);
+    }
+    private void animateTo(float end,int token){
+        if(!Ui.motionEnabled()){translate(end);complete(end);return;}
+        animator=ValueAnimator.ofFloat(fraction,end);animator.setDuration(Math.max(100,Math.round((end>fraction?300:260)*Math.abs(end-fraction))));
+        animator.setInterpolator(Ui.motionCurve());animator.addUpdateListener(a->{if(!restored&&token==generation&&target.isAttachedToWindow())translate((Float)a.getAnimatedValue());});
+        animator.addListener(new AnimatorListenerAdapter(){public void onAnimationEnd(Animator a){if(!restored&&token==generation)complete(end);}});animator.start();
     }
     private void prepareBehavior(){
         if(behavior==null)return;
@@ -114,15 +140,15 @@ final class CommentFullLayout {
     }
     private void invoke(String method,int value){if(behavior!=null)try{behavior.getClass().getMethod(method,int.class).invoke(behavior,value);}catch(Throwable ignored){}}
     private void apply(float f){
-        fraction=f;int delta=Math.round((safeHeight-initialHeight)*f);
+        fraction=f;int delta=Math.round(Math.max(0,safeHeight-initialContentHeight)*f);
         for(Slot s:slots.values()){
             View v=s.view;ViewGroup.LayoutParams lp=v.getLayoutParams();if(lp==null)continue;boolean change=false;
             if(s.grow){
                 // MATCH_PARENT and weighted LinearLayout children grow naturally. Explicit pixel
                 // heights are the source of the blank bottom on 47.9.3.
                 boolean weighted=lp instanceof LinearLayout.LayoutParams&&((LinearLayout.LayoutParams)lp).weight>0;
-                if(v==target||s.height>=0&&!weighted||s.height==ViewGroup.LayoutParams.WRAP_CONTENT&&v!=header&&v!=composer&&s.measured>target.getResources().getDisplayMetrics().density*100){
-                    int h=Math.max(1,s.measured+delta);if(lp.height!=h){lp.height=h;change=true;}
+                if(v==target||!weighted&&v!=header&&v!=composer&&s.measured>target.getResources().getDisplayMetrics().density*100){
+                    int h=v==target?safeHeight:Math.max(1,s.measured+delta);if(lp.height!=h){lp.height=h;change=true;}
                 }
             }
             if(s.move&&lp instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams m=(ViewGroup.MarginLayoutParams)lp;int top=s.top+delta;if(m.topMargin!=top){m.topMargin=top;change=true;}}
@@ -143,9 +169,9 @@ final class CommentFullLayout {
         }
         root.invalidate();
     }
-    private void complete(float end){animator=null;if(end==0f){restore();return;}target.requestLayout();}
+    private void complete(float end){animator=null;if(end==0f){restore();return;}transitioning=false;CommentWallpaper.invalidatePanel(root);CommentTools.positionFull(root);root.post(()->{CommentTools.apply(root);CommentWallpaper.refreshRoot(root);});}
     void restore(){
-        if(restored)return;restored=true;if(animator!=null){animator.removeAllListeners();animator.cancel();animator=null;}
+        if(restored)return;restored=true;transitioning=false;generation++;target.setTranslationY(baseTranslation);if(animator!=null){animator.removeAllListeners();animator.cancel();animator=null;}
         target.removeOnAttachStateChangeListener(attach);
         for(Slot s:slots.values())s.restore();
         if(!nativeFit&&nativeOffset>=0)invoke("setExpandedOffset",nativeOffset);

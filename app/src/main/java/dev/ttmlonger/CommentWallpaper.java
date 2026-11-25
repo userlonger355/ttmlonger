@@ -58,7 +58,7 @@ final class CommentWallpaper {
                 View root=d.getWindow().getDecorView();
                 if(root==null||!dialogs.add(root))return;
                 watch(root);
-                root.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(root.isShown()){invalidatePanel(root);CommentTools.apply(root);if(enabled)scan(root);}});
+                root.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(root.isShown()&&!CommentTools.transitioning(root)){invalidatePanel(root);CommentTools.apply(root);if(enabled)scan(root);}});
                 root.post(()->{CommentTools.apply(root);if(enabled)scan(root);});
             }
         });}catch(Throwable e){FlagStore.log(e);}
@@ -205,6 +205,7 @@ final class CommentWallpaper {
     private static final class PanelCache {long at;boolean dirty=true;java.lang.ref.WeakReference<View> hit=new java.lang.ref.WeakReference<>(null);}
     static View panel(View root){
         if(root==null||root.getWidth()==0||root.getHeight()==0||Screen.isOwnDecor(root))return null;
+        if(CommentTools.transitioning(root)){PanelCache held=panels.get(root);return held==null?null:held.hit.get();}
         PanelCache c=panels.get(root);if(c==null){c=new PanelCache();panels.put(root,c);}
         long now=SystemClock.uptimeMillis();View old=c.hit.get();
         if(!c.dirty&&now-c.at<180&&(old==null||old.isShown()&&old.isAttachedToWindow()))return old;
@@ -249,7 +250,9 @@ final class CommentWallpaper {
         Activity a=ScreenWatcher.top();if(a!=null)apply(a);
         for(View root:new ArrayList<>(dialogs))if(root!=null&&root.isShown())scan(root);
     }
+    static void refreshRoot(View root){if(enabled&&image!=null)scan(root);}
     private static void scan(View root){
+        if(CommentTools.transitioning(root))return;
         if(CrashGuard.tripped||!enabled||image==null||!root.isShown()||Screen.isOwnDecor(root))return;
         View target=panel(root);
         for(View old:new ArrayList<>(painted.keySet()))if(old!=null&&(!old.isAttachedToWindow()||old.getRootView()==root&&!within(old,target)))restore(old);

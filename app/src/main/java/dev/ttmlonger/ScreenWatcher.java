@@ -169,6 +169,7 @@ final class ScreenWatcher {
         }
 
         private void check() {
+            if(CommentTools.transitioning(act.getWindow().getDecorView()))return;
             CommentWallpaper.apply(act);
             // Страницу настроек и экран аватарки ведут SettingsHost и AvatarScreen: запасной
             // обход по тексту там не нужен и дал бы второй блок поверх первого.

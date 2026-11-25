@@ -136,6 +136,7 @@ final class CommentTools {
     private static boolean inside(View child,View parent){for(View v=child;v!=null;){if(v==parent)return true;v=v.getParent() instanceof View?(View)v.getParent():null;}return false;}
     static void apply(View root){
         if(root==null||Screen.isOwnDecor(root))return;
+        if(transitioning(root)){positionFull(root);return;}
         try{
             if(!any()&&edits.isEmpty()&&limits.isEmpty()&&buttons.isEmpty())return;
             View panel=CrashGuard.tripped||!any()?null:CommentWallpaper.panel(root);
@@ -155,7 +156,7 @@ final class CommentTools {
             }
             View button=buttons.get(root);
             if(button!=null&&(panel==null||!InterfaceHooks.on("comment_full")||!button.isAttachedToWindow())){
-                buttons.remove(root);if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
+                buttons.remove(root);fullTitles.remove(root);if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
             }
             for(View expanded:new ArrayList<>(originalHeight.keySet()))if(expanded!=null&&expanded.getRootView()==root&&(panel==null||panel!=expanded&&!inside(panel,expanded)||!InterfaceHooks.on("comment_full"))){
                 expandedHosts.values().removeIf(v->v==expanded);restoreFull(expanded);
@@ -227,26 +228,37 @@ final class CommentTools {
         }
         return target;
     }
+    private static final WeakHashMap<View,TextView> fullTitles=new WeakHashMap<>();
+    static boolean transitioning(View root){for(CommentFullLayout l:fullLayouts.values())if(l!=null&&l.transitioning(root))return true;return false;}
+    static void positionFull(View root){
+        View button=buttons.get(root);TextView title=fullTitles.get(root);
+        if(button==null||title==null||!title.isAttachedToWindow())return;
+        int[] a=new int[2],o=new int[2];title.getLocationOnScreen(a);root.getLocationOnScreen(o);
+        float dp=root.getResources().getDisplayMetrics().density;int w=button.getWidth()>0?button.getWidth():Math.round(dp*36);
+        float x=root.getWidth()*.73f-w/2f,y=a[1]-o[1]+title.getHeight()/2f-w/2f;
+        if(button.getTranslationX()!=x)button.setTranslationX(x);if(button.getTranslationY()!=y)button.setTranslationY(y);
+    }
     private static void addFull(View root,View panel,List<TextView> list){
         if(!(root instanceof FrameLayout)||panel.getParent()==null)return;
-        FrameLayout host=(FrameLayout)root;float dp=root.getResources().getDisplayMetrics().density;int size=Math.round(dp*34);
-        TextView title=header(root,panel);if(title==null){View old=buttons.remove(root);if(old!=null&&old.getParent() instanceof ViewGroup)((ViewGroup)old.getParent()).removeView(old);return;}
-        Rect label=new Rect(),area=new Rect();if(!title.getGlobalVisibleRect(label)||!panel.getGlobalVisibleRect(area))return;int[] origin=new int[2];root.getLocationOnScreen(origin);
-        // In the native header: immediately left of the translation action, never over a comment avatar.
-        int x=Math.round(area.left+area.width()*.73f-size/2f)-origin[0],y=label.centerY()-origin[1]-size/2;
-        x=Math.max(x,label.right-origin[0]+Math.round(dp*3));
-        if(x+size>area.left+area.width()*.80f-origin[0])x=Math.round(area.left+area.width()*.73f-size/2f)-origin[0];
-        View old=buttons.get(root);TextView button=old instanceof TextView?(TextView)old:null;
-        if(button!=null&&buttonPanels.get(root)!=panel){if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);buttons.remove(root);button=null;}
+        FrameLayout host=(FrameLayout)root;float dp=root.getResources().getDisplayMetrics().density;int size=Math.round(dp*36);
+        TextView title=header(root,panel);if(title==null){View old=buttons.remove(root);fullTitles.remove(root);if(old!=null&&old.getParent() instanceof ViewGroup)((ViewGroup)old.getParent()).removeView(old);return;}
+        View old=buttons.get(root);ImageView button=old instanceof ImageView?(ImageView)old:null;
+        if(old!=null&&(button==null||buttonPanels.get(root)!=panel)){if(old.getParent() instanceof ViewGroup)((ViewGroup)old.getParent()).removeView(old);buttons.remove(root);button=null;}
         if(button==null){
-            button=new TextView(root.getContext());button.setTag(Ui.OWN_TAG);button.setTextSize(22);button.setGravity(Gravity.CENTER);button.setIncludeFontPadding(false);button.setTypeface(android.graphics.Typeface.create("sans-serif",0));button.setFocusable(true);button.setBackground(null);
-            final View target=panel;final TextView control=button;
-            button.setOnClickListener(v->{toggleFull(root,target,header(root,target));control.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);});
+            button=new ImageView(root.getContext());button.setTag(Ui.OWN_TAG);button.setScaleType(ImageView.ScaleType.FIT_CENTER);int pad=Math.round(dp*6);button.setPadding(pad,pad,pad,pad);button.setBackground(null);button.setFocusable(true);
+            final View target=panel;final ImageView control=button;
+            button.setOnClickListener(v->{toggleFull(root,target,fullTitles.get(root));control.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);updateIcon(root,target);});
             host.addView(button,new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.LEFT));buttons.put(root,button);buttonPanels.put(root,panel);
         }
-        boolean expanded=expandedHosts.containsKey(panel);String glyph=expanded?"↙":"⛶";if(!glyph.contentEquals(button.getText()))button.setText(glyph);button.setContentDescription(expanded?"Свернуть комментарии":"Развернуть комментарии");button.setTextColor(title.getCurrentTextColor());
-        if(button.getTranslationX()!=x)button.setTranslationX(x);if(button.getTranslationY()!=y)button.setTranslationY(y);
+        fullTitles.put(root,title);updateIcon(root,panel);positionFull(root);
         if(host.indexOfChild(button)!=host.getChildCount()-1)button.bringToFront();
+    }
+    private static void updateIcon(View root,View panel){
+        View v=buttons.get(root);TextView title=fullTitles.get(root);if(!(v instanceof ImageView)||title==null)return;
+        View target=expandedHosts.get(panel);CommentFullLayout l=fullLayouts.get(target);
+        boolean expanded=l!=null&&l.expanded();String desc=expanded?"Свернуть комментарии":"Развернуть комментарии";
+        int tint=title.getCurrentTextColor();int key=expanded?Icons.COLLAPSE:Icons.EXPAND;Integer last=(Integer)v.getTag(0x54544649),color=(Integer)v.getTag(0x54544643);
+        if(last==null||last!=key||color==null||color!=tint){((ImageView)v).setImageDrawable(Icons.of(key,tint));v.setTag(0x54544649,key);v.setTag(0x54544643,tint);v.setContentDescription(desc);}
     }
     private static void toggleFull(View root,View panel,TextView title){
         if(!panel.isAttachedToWindow())return;
@@ -258,7 +270,7 @@ final class CommentTools {
         }
         View target=sheet(root,panel,title);if(target==panel&&(title==null||!inside(title,target))){Toasts.show(root.getContext(),"Не найден внешний контейнер комментариев");return;}
         CommentFullLayout layout=CommentFullLayout.create(root,target,panel,title,()->{
-            expandedHosts.remove(panel);originalHeight.remove(target);fullLayouts.remove(target);CommentWallpaper.invalidatePanel(root);
+            expandedHosts.remove(panel);originalHeight.remove(target);fullLayouts.remove(target);CommentWallpaper.invalidatePanel(root);root.post(()->{CommentTools.apply(root);CommentWallpaper.refreshRoot(root);});
         });
         if(layout==null){Toasts.show(root.getContext(),"Не удалось определить размеры комментариев");return;}
         originalHeight.put(target,target.getLayoutParams().height);expandedHosts.put(panel,target);fullLayouts.put(target,layout);layout.toggle();

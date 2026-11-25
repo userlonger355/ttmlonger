@@ -40,11 +40,13 @@ final class Icons {
     static final int COPY = 19;
     static final int EYE_OFF = 20;
     static final int MUSIC = 21;
-    static final int COUNT = 22;
+    static final int EXPAND = 22;
+    static final int COLLAPSE = 23;
+    static final int COUNT = 24;
 
     static final String[] NAMES = {"globe", "palette", "download", "video", "sticker", "flame", "image",
             "mic", "flag", "sliders", "chevron-right", "chevron-left", "check", "clock", "refresh", "trash",
-            "close", "search", "send", "copy", "eye-off", "music"};
+            "close", "search", "send", "copy", "eye-off", "music", "expand", "collapse"};
 
     /** Описания значков в порядке констант. */
     private static final String[] DATA = {
@@ -100,6 +102,8 @@ final class Icons {
                     + " C 8.4 18.4 5 16.4 2.6 12 Z S  O 12 12 3  M 4.6 4.6 L 19.4 19.4 S",
             // MUSIC: single musical note, distinct from video download
             "D 9 18 3.2 M 12 18 L 12 4 L 19 6 L 19 10 L 12 8 S",
+            "M 14 4 L 20 4 L 20 10 S M 20 4 L 13.5 10.5 S M 4 14 L 4 20 L 10 20 S M 4 20 L 10.5 13.5 S",
+            "M 20 4 L 13.5 10.5 S M 13.5 4.5 L 13.5 10.5 L 19.5 10.5 S M 4 20 L 10.5 13.5 S M 4.5 13.5 L 10.5 13.5 L 10.5 19.5 S",
     };
 
     private Icons() {
