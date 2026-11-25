@@ -40,23 +40,40 @@ final class ProfileDatePicker {
     static void show(Activity a,String user){
         if(user==null||!user.matches("[A-Za-z0-9_.]{1,64}"))return;
         StreakSheet s=new StreakSheet(a,"Перейти к дате");Ui ui=s.ui;List<Post> loaded=get(user);
-        Calendar calendar=Calendar.getInstance(Zones.current());int now=calendar.get(Calendar.YEAR);int latest=now;long max=0;for(Post post:loaded)max=Math.max(max,post.seconds);if(max>0){calendar.setTimeInMillis(max*1000L);latest=calendar.get(Calendar.YEAR);}int[] year={latest},month={-1};boolean[] newest={true};
-        LinearLayout panel=new LinearLayout(a);panel.setOrientation(1);panel.setPadding(ui.dp(14),0,ui.dp(14),0);
-        HorizontalScrollView years=new HorizontalScrollView(a);years.setHorizontalScrollBarEnabled(false);LinearLayout yr=new LinearLayout(a);years.addView(yr);panel.addView(years,ui.matchWrap());
-        TextView all=TtStyle.neutral(a,"Весь год",42,14);panel.addView(all,ui.matchWrap());
-        String[] months={"Янв","Фев","Март","Апр","Май","Июнь","Июль","Авг","Сент","Окт","Нояб","Дек"};TextView[] buttons=new TextView[12];
-        for(int row=0;row<3;row++){LinearLayout line=new LinearLayout(a);for(int col=0;col<4;col++){int m=row*4+col;TextView b=TtStyle.neutral(a,months[m],40,13);buttons[m]=b;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(40),1);lp.setMargins(ui.dp(2),ui.dp(3),ui.dp(2),0);line.addView(b,lp);}panel.addView(line);}
-        TextView order=TtStyle.neutral(a,"Сначала новые",42,14);panel.addView(order,ui.matchWrap());TextView status=s.note("");panel.addView(status);
-        final Runnable[] draw=new Runnable[1];draw[0]=()->{yr.removeAllViews();for(int y=now;y>=2016;y--){final int v=y;TextView b=ui.medium(String.valueOf(y),14,y==year[0]?Theme.onColor(Theme.accent()):Ui.INK);b.setGravity(Gravity.CENTER);b.setBackground(ui.round(y==year[0]?Theme.accent():Ui.FIELD,12));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(62),ui.dp(38));lp.rightMargin=ui.dp(5);yr.addView(b,lp);b.setOnClickListener(w->{year[0]=v;draw[0].run();});}
-            all.setText("Весь "+year[0]+" год · "+matches(loaded,year[0],-1,true).size());all.setBackground(ui.round(month[0]<0?Theme.accent():Ui.FIELD,14));all.setTextColor(month[0]<0?Theme.onColor(Theme.accent()):Ui.INK);
-            for(int m=0;m<12;m++){int count=matches(loaded,year[0],m,true).size();buttons[m].setText(months[m]+(count>0?" · "+count:""));buttons[m].setBackground(ui.round(m==month[0]?Theme.accent():Ui.FIELD,14));buttons[m].setTextColor(m==month[0]?Theme.onColor(Theme.accent()):Ui.INK);}
-            order.setText(newest[0]?"Сначала новые ↓":"Сначала старые ↑");
-            status.setText("Найдено в загруженных публикациях: "+matches(loaded,year[0],month[0],newest[0]).size()+" из "+loaded.size());
+        Calendar calendar=Calendar.getInstance(Zones.current());int now=calendar.get(Calendar.YEAR),latest=now;long max=0;
+        for(Post post:loaded)max=Math.max(max,post.seconds);if(max>0){calendar.setTimeInMillis(max*1000L);latest=calendar.get(Calendar.YEAR);}
+        int[] year={latest},month={-1};boolean[] newest={true};int accent=Theme.accent();
+        ScrollView scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout panel=new LinearLayout(a);panel.setOrientation(1);panel.setPadding(ui.dp(16),ui.dp(2),ui.dp(16),ui.dp(8));scroll.addView(panel,new ScrollView.LayoutParams(-1,-2));
+        panel.addView(label(ui,"Год"));
+        HorizontalScrollView years=new HorizontalScrollView(a);years.setHorizontalScrollBarEnabled(false);LinearLayout yr=new LinearLayout(a);yr.setPadding(0,ui.dp(2),0,ui.dp(2));years.addView(yr);panel.addView(years,ui.matchWrap());
+        Map<Integer,TextView> yearCells=new LinkedHashMap<>();
+        final Runnable[] draw=new Runnable[1];
+        for(int y=now;y>=2016;y--){final int value=y;TextView cell=ui.medium(String.valueOf(y),14,Ui.INK);cell.setGravity(Gravity.CENTER);cell.setIncludeFontPadding(false);cell.setPadding(0,0,0,0);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(62),ui.dp(44));lp.rightMargin=ui.dp(6);yr.addView(cell,lp);yearCells.put(y,cell);cell.setOnClickListener(v->{year[0]=value;month[0]=-1;draw[0].run();});}
+        panel.addView(label(ui,"Период"));TextView all=ui.medium("",14,Ui.INK);all.setGravity(Gravity.CENTER);all.setIncludeFontPadding(false);LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,ui.dp(44));ap.bottomMargin=ui.dp(6);panel.addView(all,ap);
+        String[] months={"Янв","Фев","Март","Апр","Май","Июнь","Июль","Авг","Сент","Окт","Нояб","Дек"};LinearLayout[] cells=new LinearLayout[12];TextView[] names=new TextView[12],counts=new TextView[12];
+        for(int row=0;row<3;row++){LinearLayout line=new LinearLayout(a);
+            for(int col=0;col<4;col++){final int m=row*4+col;LinearLayout cell=new LinearLayout(a);cell.setOrientation(1);cell.setGravity(Gravity.CENTER);cell.setPadding(ui.dp(2),ui.dp(5),ui.dp(2),ui.dp(5));cells[m]=cell;
+                names[m]=ui.medium(months[m],13,Ui.INK);names[m].setGravity(Gravity.CENTER);names[m].setIncludeFontPadding(false);cell.addView(names[m],ui.matchWrap());
+                counts[m]=ui.text("",11,Ui.MUTED,false);counts[m].setGravity(Gravity.CENTER);counts[m].setIncludeFontPadding(false);cell.addView(counts[m],ui.matchWrap());
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(52),1);if(col>0)lp.leftMargin=ui.dp(6);lp.bottomMargin=ui.dp(6);line.addView(cell,lp);cell.setOnClickListener(v->{month[0]=m;draw[0].run();});
+            }panel.addView(line,ui.matchWrap());
+        }
+        TextView order=ui.medium("",14,Ui.INK);order.setGravity(Gravity.CENTER);order.setBackground(ui.round(Ui.FIELD,14));LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(-1,ui.dp(44));op.topMargin=ui.dp(4);panel.addView(order,op);
+        TextView status=ui.medium("",14,Ui.INK);status.setGravity(Gravity.CENTER);status.setPadding(0,ui.dp(12),0,ui.dp(3));panel.addView(status,ui.matchWrap());
+        TextView info=ui.text("Показаны только загруженные видео. Для старых публикаций прокрутите профиль.",12,Ui.MUTED,false);info.setGravity(Gravity.CENTER);info.setPadding(ui.dp(6),0,ui.dp(6),ui.dp(4));panel.addView(info,ui.matchWrap());
+        int height=Math.min(ui.dp(408),(int)(a.getResources().getDisplayMetrics().heightPixels*.54f));s.root.addView(scroll,new LinearLayout.LayoutParams(-1,height));
+        TextView submit=s.button("Показать публикации",true,()->{List<Post> hits=matches(loaded,year[0],month[0],newest[0]);if(hits.isEmpty())return;s.dialog.dismiss();results(a,user,hits);});
+        draw[0]=()->{
+            for(Map.Entry<Integer,TextView> e:yearCells.entrySet()){boolean on=e.getKey()==year[0];e.getValue().setBackground(ui.round(on?accent:Ui.FIELD,12));e.getValue().setTextColor(on?Theme.onColor(accent):Ui.INK);}
+            int yearly=matches(loaded,year[0],-1,true).size();all.setText("Весь "+year[0]+" год  ·  "+yearly);all.setBackground(ui.round(month[0]<0?Ui.alpha(accent,0x30):Ui.FIELD,14));all.setTextColor(month[0]<0?accent:Ui.INK);
+            for(int m=0;m<12;m++){int count=matches(loaded,year[0],m,true).size();boolean on=m==month[0];cells[m].setBackground(ui.round(on?accent:Ui.FIELD,12));names[m].setTextColor(on?Theme.onColor(accent):Ui.INK);counts[m].setTextColor(on?Theme.onColor(accent):Ui.MUTED);counts[m].setText(count==0?"—":String.valueOf(count));cells[m].setContentDescription(months[m]+", публикаций: "+count);}
+            order.setText(newest[0]?"↓  Сначала новые":"↑  Сначала старые");int n=matches(loaded,year[0],month[0],newest[0]).size();status.setText(n==0?"В этом периоде ничего не загружено":"Найдено "+n+" из "+loaded.size()+" публикаций");submit.setEnabled(n>0);submit.setAlpha(n>0?1f:.45f);submit.setText(n>0?"Показать публикации · "+n:"Нет публикаций");
         };
-        all.setOnClickListener(v->{month[0]=-1;draw[0].run();});for(int m=0;m<12;m++){final int idx=m;buttons[m].setOnClickListener(v->{month[0]=idx;draw[0].run();});}order.setOnClickListener(v->{newest[0]=!newest[0];draw[0].run();});draw[0].run();
-        s.root.addView(panel);s.root.addView(s.note("Старые видео появятся после загрузки в самом TikTok. Полный архив сервером не предоставлен."));
-        s.button("Показать публикации",true,()->{s.dialog.dismiss();results(a,user,matches(loaded,year[0],month[0],newest[0]));});s.show();
+        all.setOnClickListener(v->{month[0]=-1;draw[0].run();});order.setOnClickListener(v->{newest[0]=!newest[0];draw[0].run();});draw[0].run();s.show();
+        years.post(()->{TextView selected=yearCells.get(year[0]);if(selected!=null)years.smoothScrollTo(Math.max(0,selected.getLeft()-years.getWidth()/2+selected.getWidth()/2),0);});
     }
+    private static TextView label(Ui ui,String text){TextView t=ui.medium(text,12,Ui.MUTED);t.setPadding(0,ui.dp(7),0,ui.dp(6));return t;}
     static List<Post> matches(List<Post> all,int year,int month,boolean newest){
         ArrayList<Post> out=new ArrayList<>();Calendar date=Calendar.getInstance(Zones.current());for(Post p:all){date.setTimeInMillis(p.seconds*1000L);if(date.get(Calendar.YEAR)==year&&(month<0||date.get(Calendar.MONTH)==month))out.add(p);}
         out.sort((a,b)->newest?Long.compare(b.seconds,a.seconds):Long.compare(a.seconds,b.seconds));return out;

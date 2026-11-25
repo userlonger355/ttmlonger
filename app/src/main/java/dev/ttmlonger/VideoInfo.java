@@ -495,7 +495,7 @@ final class VideoInfo {
         }
         long repost = repostTimeOf(post);
         if (repost > 0) {
-            addDetail(rows, "Время репоста", fullTime(repost, Zones.current()));
+            addDetail(rows, "Последний репост", fullTime(repost, Zones.current()));
             addDetail(rows, "Репост в UTC", fullTime(repost, TimeZone.getTimeZone("UTC")));
         }
         addDetail(rows, "Регион публикации", get(post, "getRegion", "region"));
@@ -902,7 +902,7 @@ final class VideoInfo {
             }
             timeView.setVisibility(wantTime ? View.VISIBLE : View.GONE);
             boolean showRepost=Prefs.vtRepost&&reposted>0;
-            if(showRepost){String label="Репост · "+fullTime(reposted,Zones.current());
+            if(showRepost){String label="Последний репост · "+fullTime(reposted,Zones.current());
                 if(!TextUtils.equals(pills.repostView.getText(),label))pills.repostView.setText(label);}
             pills.repostView.setVisibility(showRepost?View.VISIBLE:View.GONE);
             if (wantRegion) {
@@ -1185,7 +1185,7 @@ final class VideoInfo {
             overlay.show(hit.view, hit.entry, m, wantTime, wantRegion);
 
             // Keep polling incomplete native metadata quickly; never substitute the account region.
-            delay = (Prefs.vtRegion && m.region==null || Prefs.vtTime && m.created<=0) ? 140L : 650L;
+            delay = (Prefs.vtRegion && m.region==null || Prefs.vtTime && m.created<=0 || Prefs.vtRepost&&!wantRepost) ? 250L : 650L;
         } catch (Throwable t) {
             FlagStore.log(t);
             delay = 2500L;

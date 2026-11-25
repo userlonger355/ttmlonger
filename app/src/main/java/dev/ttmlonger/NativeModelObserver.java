@@ -5,7 +5,7 @@ import de.robv.android.xposed.*;
 final class NativeModelObserver {
     private static final ThreadLocal<Boolean> active=new ThreadLocal<>();
     private static final Set<Class<?>> adapters=new HashSet<>();
-    private static boolean wanted(String n){return n.equals(DownloadHooks.AWEME)||n.equals(AvatarHooks.USER)||n.equals(BadgeHooks.PROFILE)||n.equals("com.ss.android.ugc.aweme.music.model.Music")||n.startsWith("com.ss.android.ugc.aweme.comment.model.")||n.contains(".music.model.MusicDetail")||n.contains(".profile.model.UserResponse");}
+    private static boolean wanted(String n){return n.equals(DownloadHooks.AWEME)||n.equals(AvatarHooks.USER)||n.equals(BadgeHooks.PROFILE)||n.equals("com.ss.android.ugc.aweme.music.model.Music")||n.startsWith("com.ss.android.ugc.aweme.comment.model.")||n.contains(".music.model.MusicDetail")||n.contains(".profile.model.UserResponse")||n.startsWith("com.ss.android.ugc.aweme.upvote.")&&n.contains(".model.")||n.startsWith("com.ss.android.ugc.aweme.repost.")&&n.contains(".model.");}
     static void install(ClassLoader cl){
         Class<?> gson=XposedHelpers.findClassIfExists("com.google.gson.Gson",cl);if(gson==null)return;
         XC_MethodHook after=new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable())observe(p.getResult());}};
@@ -27,7 +27,7 @@ final class NativeModelObserver {
         if(o==null||depth>3||seen.size()>250||!seen.add(o))return;
         if(o instanceof List){for(Object v:(List<?>)o){if(seen.size()>250)break;visit(v,depth+1,seen);}return;}
         if(!wanted(o.getClass().getName()))return;
-        SoundPage.observe(o);ProfileFacts.observe(o);CommentTools.observe(o);
+        SoundPage.observe(o);ProfileFacts.observe(o);CommentTools.observe(o);RepostTimes.observe(o);
         if(o.getClass().getName().equals(DownloadHooks.AWEME)){SoundPage.observe(RepostTimes.readField(o,"music"));ProfileFacts.observe(RepostTimes.readField(o,"author"));return;}
         for(String key:new String[]{"user","author","music","comments","comment_list","items","aweme_list"})visit(RepostTimes.readField(o,key),depth+1,seen);
     }
