@@ -61,7 +61,7 @@ final class SettingsSearch {
     static boolean fuzzy(String words,String query){String[] terms=normalize(words).split(" +");for(String token:normalize(query).split(" +")){boolean hit=false;for(String term:terms)if(term.contains(token)||near(token,term)){hit=true;break;}if(!hit)return false;}return true;}
     List<Entry> find(String q){
         String query=normalize(q);List<Entry> out=new ArrayList<>();if(query.isEmpty())return out;
-        for(Entry e:entries)if(matches(e.words,query)||fuzzy(e.words,query))out.add(e);
+        for(Entry e:entries)if((DeveloperScreen.unlocked()||!e.path.startsWith("Разработчик"))&&(matches(e.words,query)||fuzzy(e.words,query)))out.add(e);
         out.sort((a,b)->Integer.compare(rank(b,query),rank(a,query)));return out;
     }
     private static int rank(Entry e,String q){String title=normalize(e.title);return title.equals(q)?100:title.startsWith(q)?80:title.contains(q)?60:matches(title,q)?40:matches(e.words,q)?20:5;}

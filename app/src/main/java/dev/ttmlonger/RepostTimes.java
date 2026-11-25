@@ -31,11 +31,13 @@ final class RepostTimes {
         return t;
     }
     private static final WeakHashMap<Object,Long> wireTimes=new WeakHashMap<>();
+    private static final java.util.concurrent.atomic.AtomicLong reads=new java.util.concurrent.atomic.AtomicLong(),found=new java.util.concurrent.atomic.AtomicLong(),conflicts=new java.util.concurrent.atomic.AtomicLong(),wireFound=new java.util.concurrent.atomic.AtomicLong();
+    static String diagnostics(){return "Проверки: "+reads.get()+" · точное время: "+found.get()+" · конфликт: "+conflicts.get()+" · из JSON: "+wireFound.get();}
     static long read(Object aweme){
-        if(aweme==null)return 0;Object id=DownloadHooks.call(aweme,"getAid");String aid=id==null?null:id.toString();
+        if(aweme==null)return 0;reads.incrementAndGet();Object id=DownloadHooks.call(aweme,"getAid");String aid=id==null?null:id.toString();
         long now=System.currentTimeMillis()/1000L,published=VideoInfo.parseEventTime(DownloadHooks.call(aweme,"getCreateTime"));
         long t=fieldsTime(aweme,DIRECT,published,now);Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
-        for(String key:NESTED)t=merge(t,event(read(aweme,key),aid,published,now,0,seen,key.contains("info")));synchronized(wireTimes){Long wire=wireTimes.get(aweme);if(wire!=null)t=merge(t,wire>0&&valid(wire,published,now)==0?0:wire);}return Math.max(0,t);
+        for(String key:NESTED)t=merge(t,event(read(aweme,key),aid,published,now,0,seen,key.contains("info")));synchronized(wireTimes){Long wire=wireTimes.get(aweme);if(wire!=null)t=merge(t,wire>0&&valid(wire,published,now)==0?0:wire);}if(t>0)found.incrementAndGet();else if(t<0)conflicts.incrementAndGet();return Math.max(0,t);
     }
     private static void captureWire(Object model,Object raw){
         if(model==null||raw==null||!Prefs.vtRepost||CrashGuard.tripped)return;
@@ -54,7 +56,7 @@ final class RepostTimes {
             long t=fieldsTime(obj,DIRECT,published,now);if(record&&t==0)t=fieldsTime(obj,RECORD,published,now);
             Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
             for(String key:NESTED)t=merge(t,event(read(obj,key),aid,published,now,0,seen,key.contains("info")));
-            if(t!=0){synchronized(wireTimes){if(wireTimes.size()>600)wireTimes.clear();wireTimes.put(model,t);}VideoInfo.nudge();}
+            if(t!=0){if(t>0)wireFound.incrementAndGet();synchronized(wireTimes){if(wireTimes.size()>600)wireTimes.clear();wireTimes.put(model,t);}VideoInfo.nudge();}
         }catch(Throwable ignored){}
     }
     static void install(ClassLoader cl){

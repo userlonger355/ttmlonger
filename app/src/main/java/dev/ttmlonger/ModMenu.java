@@ -154,8 +154,7 @@ final class ModMenu extends Screen {
         body.addView(streakMenuRow);
         body.addView(ui.menuRow(Icons.DOWNLOAD,"Резервная копия настроек","Экспорт и импорт JSON без данных аккаунта",null,v -> SettingsBackup.show(act)));
         body.addView(ui.menuRow(Icons.SLIDERS,"Плагины","Локальные JSON-команды · установка и управление",null,v -> CommandPlugins.show(act)));
-        body.addView(ui.menuRow(Icons.SLIDERS, "Настройки разработчика TikTok",
-                "Флаги A/B · расширенные настройки", null, v -> FlagsScreen.show(act)));
+        // Advanced flags and diagnostics live behind the version tap gesture.
 
         grid.removeView(streakMenuRow);grid.removeView(interfaceRow);
         grid.addView(streakMenuRow,0);grid.addView(interfaceRow,1);
@@ -167,6 +166,12 @@ final class ModMenu extends Screen {
         footer.setOrientation(LinearLayout.HORIZONTAL);
         footer.setPadding(ui.dp(12),ui.dp(20),ui.dp(12),ui.dp(16));
         TextView ver=ui.medium(Targets.VERSION,13,Ui.INK);
+        ver.setPadding(ui.dp(10),ui.dp(12),ui.dp(10),ui.dp(12));ver.setBackground(ui.ripple());ver.setFocusable(true);ver.setContentDescription("Версия "+Targets.VERSION);Ui.pressMotion(ver);
+        final int[] taps={0};final long[] lastTap={0};
+        ver.setOnClickListener(v->{long now=android.os.SystemClock.uptimeMillis();if(now-lastTap[0]>3000)taps[0]=0;lastTap[0]=now;int count=++taps[0];
+            if(count==8){taps[0]=0;v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);DeveloperScreen.show(act);}
+            else if(count>=5){v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);Toasts.show(act,"До меню разработчика: "+(8-count));}
+        });
         TextView author=ui.medium("Автор: @Ueod5",13,Ui.INK);
         author.setPadding(ui.dp(12),ui.dp(8),ui.dp(8),ui.dp(8));
         author.setBackground(ui.ripple());

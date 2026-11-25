@@ -13,6 +13,8 @@ final class CommentTools {
     static final String[] KEYS={"comment_expand","comment_copy_body","comment_nick","comment_exact","comment_double","comment_full"};
     static final String[] TITLES={"Разворачивать длинные комментарии","Копировать текст без имени автора","Ник вместо имени","Точное время комментариев","Двойное нажатие для лайка","Кнопка полноэкранных комментариев"};
     static int modelHooks;
+    private static final java.util.concurrent.atomic.AtomicLong matchedRows=new java.util.concurrent.atomic.AtomicLong();
+    static String diagnostics(){synchronized(facts){return "Хуки: "+modelHooks+" · модели: "+facts.size()+" · совпадения строк: "+matchedRows.get();}}
     private static final LinkedHashMap<String,List<Fact>> facts=new LinkedHashMap<>();
     private static final ThreadLocal<Boolean> reading=new ThreadLocal<>();
     private static final WeakHashMap<TextView,Edit> edits=new WeakHashMap<>();
@@ -122,7 +124,7 @@ final class CommentTools {
             if(panel==null)return;
             List<TextView> list=new ArrayList<>();collect(panel,list,0,new int[]{1800});
             for(TextView t:list){
-                Fact hit=format(t,panel);if(hit!=null)bound.put(t,hit);else bound.remove(t);
+                Fact hit=format(t,panel);if(hit!=null){Fact previous=bound.put(t,hit);if(previous==null||!previous.id.equals(hit.id))matchedRows.incrementAndGet();}else bound.remove(t);
                 if((hit!=null||body(t))&&InterfaceHooks.on("comment_expand")&&!limits.containsKey(t)){limits.put(t,new Limits(t));t.setMaxLines(Integer.MAX_VALUE);t.setEllipsize(null);}
                 if(hit!=null&&InterfaceHooks.on("comment_expand")&&!norm(t.getText()).equals(norm(hit.content))&&truncated(t.getText(),hit.content))edit(t,hit.content,"comment_expand");
             }

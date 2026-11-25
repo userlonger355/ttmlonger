@@ -22,6 +22,7 @@ import de.robv.android.xposed.XposedBridge;
 final class ProfileFacts {
     private static final LruCache<String, Object> users = new LruCache<>(64);
     private static final ThreadLocal<Boolean> remembering=new ThreadLocal<>();
+    static String diagnostics(){return "Модели профиля в памяти: "+users.size();}
     private TextView extras;
     private TextView dateAction;
     private TextView anchor;

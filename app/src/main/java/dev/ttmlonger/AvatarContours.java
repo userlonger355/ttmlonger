@@ -25,6 +25,7 @@ final class AvatarContours {
     static final int CUSTOM=12;
     private static volatile AvatarShape custom=AvatarShape.initial();
     static AvatarShape customShape(){return custom;}
+    static String diagnostics(){return "Хуки: "+hooks+" · построители: "+builderHooks+" · замены контуров: "+substitutions.get();}
     static boolean isCustom(){return shape==CUSTOM;}
     static int speed(){return spinSeconds;}
     static void saveCustom(Context c,AvatarShape value,boolean rotate,int seconds){
