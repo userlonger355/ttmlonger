@@ -13,9 +13,12 @@ final class RepostTimes {
     private static final Map<Class<?>,Map<String,Field>> FIELDS=new HashMap<>();
     private static Map<String,Field> fields(Class<?> c){synchronized(FIELDS){Map<String,Field> old=FIELDS.get(c);if(old!=null)return old;Map<String,Field> map=new HashMap<>();for(Class<?> k=c;k!=null&&k!=Object.class;k=k.getSuperclass())for(Field f:k.getDeclaredFields())try{if(Modifier.isStatic(f.getModifiers()))continue;f.setAccessible(true);map.putIfAbsent(norm(f.getName()),f);for(java.lang.annotation.Annotation a:f.getDeclaredAnnotations()){String n=a.annotationType().getName();if(!n.equals("com.google.gson.annotations.SerializedName")&&!n.endsWith(".JsonProperty"))continue;Object v=a.annotationType().getMethod("value").invoke(a);if(v instanceof String)map.putIfAbsent(norm((String)v),f);try{Object alt=a.annotationType().getMethod("alternate").invoke(a);if(alt instanceof String[])for(String alias:(String[])alt)map.putIfAbsent(norm(alias),f);}catch(Throwable ignored){}}}catch(Throwable ignored){}if(FIELDS.size()>200)FIELDS.clear();FIELDS.put(c,map);return map;}}
     static Object readField(Object o,String key){return read(o,key);}
-    private static Object read(Object o,String key){if(o==null)return null;if(o instanceof org.json.JSONObject){org.json.JSONObject json=(org.json.JSONObject)o;Object raw=json.opt(key);if(raw==null){Iterator<String> it=json.keys();while(it.hasNext()){String k=it.next();if(norm(k).equals(norm(key))){raw=json.opt(k);break;}}}return raw==org.json.JSONObject.NULL?null:raw;}Object v=DownloadHooks.call(o,"get"+camel(key));if(v!=null)return v;try{Field f=fields(o.getClass()).get(norm(key));return f==null?null:f.get(o);}catch(Throwable ignored){return null;}}
+    private static Object read(Object o,String key){if(o==null)return null;if(o instanceof Map){Map<?,?> m=(Map<?,?>)o;Object raw=m.get(key);if(raw!=null)return raw;for(Object k:m.keySet())if(k instanceof String&&norm((String)k).equals(norm(key)))return m.get(k);return null;}if(o instanceof org.json.JSONObject){org.json.JSONObject json=(org.json.JSONObject)o;Object raw=json.opt(key);if(raw==null){Iterator<String> it=json.keys();while(it.hasNext()){String k=it.next();if(norm(k).equals(norm(key))){raw=json.opt(k);break;}}}return raw==org.json.JSONObject.NULL?null:raw;}Object v=DownloadHooks.call(o,"get"+camel(key));if(v!=null)return v;try{Field f=fields(o.getClass()).get(norm(key));return f==null?null:f.get(o);}catch(Throwable ignored){return null;}}
     private static long valid(Object raw,long published,long now){long t=VideoInfo.parseEventTime(raw);return t>=1262304000L&&t<=now+300&&(published<=0||t>=published)?t:0;}
     private static long merge(long a,long b){if(a<0||b<0||a>0&&b>0&&a!=b)return -1;return Math.max(a,b);}
+    private static final Set<String> observedFields=Collections.synchronizedSet(new TreeSet<>());
+    private static boolean explicitTimeKey(String key){String k=norm(key);return (k.contains("repost")||k.contains("upvote"))&&(k.contains("time")||k.endsWith("at")||k.endsWith("date"))&&!k.contains("count")&&!k.contains("duration")&&!k.contains("expire")&&!k.contains("last")&&!k.contains("first")&&!k.contains("update");}
+    private static long extraTime(Object o,long published,long now){if(o==null)return 0;long t=0;Set<String> keys=new HashSet<>();if(o instanceof org.json.JSONObject){Iterator<String> it=((org.json.JSONObject)o).keys();while(it.hasNext())keys.add(it.next());}else if(o instanceof Map){for(Object k:((Map<?,?>)o).keySet())if(k instanceof String)keys.add((String)k);}else keys.addAll(fields(o.getClass()).keySet());for(String key:keys)if(explicitTimeKey(key)){if(observedFields.size()<40)observedFields.add(key);long v=valid(read(o,key),published,now);t=merge(t,v);if(t<0)return t;}return t;}
     private static long fieldsTime(Object o,String[] keys,long published,long now){long t=0;for(String key:keys){long v=valid(read(o,key),published,now);t=merge(t,v);if(t<0)return t;}return t;}
     private static long latest(long a,long b){return Math.max(Math.max(0,a),Math.max(0,b));}
     private static boolean recordType(String n){n=n.toLowerCase(Locale.ROOT);return n.contains("upvote")||n.contains("repost");}
@@ -24,13 +27,13 @@ final class RepostTimes {
         if(o instanceof org.json.JSONArray){long t=0;org.json.JSONArray a=(org.json.JSONArray)o;for(int i=0;i<Math.min(80,a.length());i++)t=latest(t,event(a.opt(i),aid,published,now,depth+1,seen,dedicated));return t;}
         if(o instanceof List){long t=0;for(Object x:(List<?>)o){t=latest(t,event(x,aid,published,now,depth+1,seen,dedicated));if(seen.size()>80)break;}return t;}
         if(o.getClass().isArray()&&!o.getClass().getComponentType().isPrimitive()){long t=0;for(int i=0;i<Math.min(80,Array.getLength(o));i++)t=latest(t,event(Array.get(o,i),aid,published,now,depth+1,seen,dedicated));return t;}
-        String cls=o.getClass().getName().toLowerCase(Locale.ROOT);if(o instanceof Number||o instanceof CharSequence||o instanceof Map||o instanceof Boolean||o.getClass().getName().equals(DownloadHooks.AWEME)||cls.endsWith(".user"))return 0;
+        String cls=o.getClass().getName().toLowerCase(Locale.ROOT);if(o instanceof Number||o instanceof CharSequence||o instanceof Boolean||o.getClass().getName().equals(DownloadHooks.AWEME)||cls.endsWith(".user"))return 0;
         Object item=read(o,"item_id");if(item==null)item=read(o,"aweme_id");if(item!=null&&!item.toString().isEmpty()&&!item.toString().equals("0")&&(aid==null||!aid.equals(item.toString())))return 0;
-        long t=fieldsTime(o,DIRECT,published,now);synchronized(wireTimes){Long wire=wireTimes.get(o);if(wire!=null)t=merge(t,wire>0&&valid(wire,published,now)==0?0:wire);}
+        long t=fieldsTime(o,DIRECT,published,now);if(t==0)t=extraTime(o,published,now);synchronized(wireTimes){Long wire=wireTimes.get(o);if(wire!=null)t=merge(t,wire>0&&valid(wire,published,now)==0?0:wire);}
         // Generic timestamp only for a dedicated repost/upvote record, never a nested User.
         if(t==0&&(dedicated||cls.contains("repost")||cls.contains("upvote")))t=fieldsTime(o,RECORD,published,now);
         if(t!=0)return t;
-        for(String key:NESTED)t=latest(t,event(read(o,key),aid,published,now,depth+1,seen,key.contains("info")||key.contains("record")));
+        for(String key:NESTED)t=latest(t,event(read(o,key),aid,published,now,depth+1,seen,key.contains("info")||key.contains("record")||key.contains("list")));
         return t;
     }
     private static final WeakHashMap<Object,Long> wireTimes=new WeakHashMap<>();
@@ -39,11 +42,12 @@ final class RepostTimes {
     private static void save(String aid,long t){if(aid==null||!aid.matches("[0-9]{5,24}")||t<=0)return;synchronized(byVideo){Long old=byVideo.get(aid);byVideo.put(aid,old==null?t:Math.max(old,t));}}
     private static long cached(String aid,long published,long now){if(aid==null)return 0;synchronized(byVideo){Long t=byVideo.get(aid);return t==null?0:valid(t,published,now);}}
     private static final java.util.concurrent.atomic.AtomicLong reads=new java.util.concurrent.atomic.AtomicLong(),found=new java.util.concurrent.atomic.AtomicLong(),conflicts=new java.util.concurrent.atomic.AtomicLong(),wireFound=new java.util.concurrent.atomic.AtomicLong();
-    static String diagnostics(){return "Проверки: "+reads.get()+" · точное время: "+found.get()+" · конфликт: "+conflicts.get()+" · из JSON: "+wireFound.get()+" · отдельные записи: "+records.get()+" · совпадения ID: "+cachedHits.get();}
+    static String diagnostics(){return "Проверки: "+reads.get()+" · точное время: "+found.get()+" · конфликт: "+conflicts.get()+" · из JSON: "+wireFound.get()+" · отдельные записи: "+records.get()+" · совпадения ID: "+cachedHits.get()+" · поля времени: "+fieldSummary();}
+    private static String fieldSummary(){synchronized(observedFields){return observedFields.isEmpty()?"нет":String.join(", ",observedFields);}}
     static long read(Object aweme){
         if(aweme==null)return 0;reads.incrementAndGet();Object id=read(aweme,"aid");if(id==null)id=read(aweme,"aweme_id");String aid=id==null?null:id.toString();
         long now=System.currentTimeMillis()/1000L,published=VideoInfo.parseEventTime(DownloadHooks.call(aweme,"getCreateTime"));
-        long t=fieldsTime(aweme,DIRECT,published,now);Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        long t=fieldsTime(aweme,DIRECT,published,now);if(t==0)t=extraTime(aweme,published,now);Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
         if(t==0){for(String key:NESTED)t=latest(t,event(read(aweme,key),aid,published,now,0,seen,key.contains("info")||key.contains("record")));}synchronized(wireTimes){Long wire=wireTimes.get(aweme);if(t==0&&wire!=null&&valid(wire,published,now)>0)t=wire;}if(t>0){save(aid,t);found.incrementAndGet();}else if(t<0)conflicts.incrementAndGet();else if((t=cached(aid,published,now))>0)cachedHits.incrementAndGet();return Math.max(0,t);
     }
     private static void captureWire(Object model,Object raw){
@@ -60,7 +64,7 @@ final class RepostTimes {
             if(id!=null&&!aid.isEmpty()&&!aid.equals(id.toString()))return;
             if(aid.isEmpty()&&id!=null)aid=id.toString();
             long published=post?VideoInfo.parseEventTime(DownloadHooks.call(model,"getCreateTime")):0;
-            long t=fieldsTime(obj,DIRECT,published,now);if(record&&t==0)t=fieldsTime(obj,RECORD,published,now);
+            long t=fieldsTime(obj,DIRECT,published,now);if(t==0)t=extraTime(obj,published,now);if(record&&t==0)t=fieldsTime(obj,RECORD,published,now);
             Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
             if(t==0)for(String key:NESTED)t=latest(t,event(read(obj,key),aid,published,now,0,seen,key.contains("info")||key.contains("record")));
             if(t!=0){if(t>0){wireFound.incrementAndGet();save(aid,t);}synchronized(wireTimes){if(wireTimes.size()>600)wireTimes.clear();wireTimes.put(model,t);}VideoInfo.nudge();}

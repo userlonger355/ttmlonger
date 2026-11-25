@@ -54,7 +54,7 @@ final class CommentTools {
     private static Fact recent;
     private static String tappedBody="";private static final Set<String> tappedAuthors=new HashSet<>();private static long recentAt;private static java.lang.ref.WeakReference<android.app.Activity> owner=new java.lang.ref.WeakReference<>(null);
     private static long copyPressedAt;
-    private static long lastEvent=-1;private static int lastAction=-1;
+    private static long lastEvent=-1;private static int lastAction=-1;private static java.lang.ref.WeakReference<View> eventRoot=new java.lang.ref.WeakReference<>(null);
     private static String norm(CharSequence s){return Targets.norm(s);}
     private static String value(Object o,String key){Object x=RepostTimes.readField(o,key);return x==null?"":x.toString().trim();}
     static void observe(Object model){
@@ -88,6 +88,11 @@ final class CommentTools {
         }};
         try{XposedBridge.hookAllMethods(android.app.Activity.class,"dispatchTouchEvent",events);}catch(Throwable ignored){}
         try{XposedBridge.hookAllMethods(android.app.Dialog.class,"dispatchTouchEvent",events);}catch(Throwable ignored){}
+        try{XposedBridge.hookAllMethods(View.class,"performLongClick",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
+            if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||!(p.thisObject instanceof View))return;View v=(View)p.thisObject;View panel=CommentWallpaper.panel(v.getRootView());if(panel==null||!inside(v,panel))return;
+            List<TextView> cells=new ArrayList<>();collect(v,cells,0,new int[]{100});Fact hit=null;for(TextView t:cells){Fact f=bound.get(t);if(f==null)continue;if(!norm(t.getText()).equals(norm(f.content))&&!truncated(t.getText(),f.content))continue;if(hit!=null&&!hit.id.equals(f.id))return;hit=f;}
+            if(hit!=null){recent=hit;recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());}
+        }});}catch(Throwable ignored){}
         try{XposedBridge.hookAllMethods(View.class,"performClick",new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
             if(!InterfaceHooks.on("comment_copy_body")||CrashGuard.tripped||!(p.thisObject instanceof View)||!fresh())return;View v=(View)p.thisObject;if(Screen.isOwnDecor(v.getRootView())||!copyLabel(v,0,new int[]{20}))return;
             // Keep the remembered target while the native menu closes and writes to the clipboard.
@@ -101,11 +106,13 @@ final class CommentTools {
             String clean=null;if(body!=null&&fact!=null){Set<String> names=new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle));if(prefixed(raw,body,names))clean=body;}
             if(clean==null&&fresh()&&!tappedBody.isEmpty()&&prefixed(raw,tappedBody,tappedAuthors))clean=tappedBody;
             if(clean==null&&fresh()&&fact!=null&&copyPressedAt>0&&SystemClock.uptimeMillis()-copyPressedAt<3000&&CommentCopyText.verifiedSuffix(raw,fact.content))clean=fact.content;
-            if(clean==null&&(nativeCommentCopy()||fresh()&&copyPressedAt>0&&SystemClock.uptimeMillis()-copyPressedAt<3000))clean=knownBody(raw);
+            boolean confirmed=nativeCommentCopy()||fresh()&&copyPressedAt>0&&SystemClock.uptimeMillis()-copyPressedAt<3000;
+            if(clean==null&&confirmed)clean=knownBody(raw);
+            if(clean==null&&confirmed&&fresh()&&!tappedBody.isEmpty()&&CommentCopyText.verifiedSuffix(raw,tappedBody))clean=tappedBody;
             if(clean!=null&&!raw.equals(clean)){p.args[0]=new ClipData("Комментарий",new String[]{"text/plain"},new ClipData.Item(clean));cleanCopies.incrementAndGet();}
         }});}catch(Throwable ignored){}
     }
-    private static boolean copyLabel(View v,int depth,int[] budget){if(v==null||depth>4||--budget[0]<0)return false;String s=norm(v.getContentDescription()).toLowerCase(Locale.ROOT);if(s.equals("копировать")||s.equals("copy")||s.equals("копировать текст"))return true;if(v instanceof TextView){s=norm(((TextView)v).getText()).toLowerCase(Locale.ROOT);if(s.equals("копировать")||s.equals("copy")||s.equals("копировать текст"))return true;}if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(copyLabel(g.getChildAt(i),depth+1,budget))return true;}return false;}
+    private static boolean copyLabel(View v,int depth,int[] budget){if(v==null||depth>4||--budget[0]<0)return false;String s=norm(v.getContentDescription()).toLowerCase(Locale.ROOT);if(s.equals("копировать")||s.equals("copy")||s.equals("копировать текст")||s.equals("копировать комментарий")||s.equals("copy comment"))return true;if(v instanceof TextView){s=norm(((TextView)v).getText()).toLowerCase(Locale.ROOT);if(s.equals("копировать")||s.equals("copy")||s.equals("копировать текст")||s.equals("копировать комментарий")||s.equals("copy comment"))return true;}if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(copyLabel(g.getChildAt(i),depth+1,budget))return true;}return false;}
     private static boolean fresh(){android.app.Activity a=ScreenWatcher.top();return a!=null&&owner.get()==a&&SystemClock.uptimeMillis()-recentAt<20000;}
     private static boolean prefixed(String raw,String body,Set<String> authors){return CommentCopyText.matches(raw,body,authors);}
     private static boolean nativeCommentCopy(){
@@ -115,15 +122,15 @@ final class CommentTools {
     }
     private static String knownBody(String raw){
         if(raw==null||raw.length()>20500)return null;String hit=null;
-        synchronized(facts){for(List<Fact> list:facts.values())for(Fact fact:list){if(!prefixed(raw,fact.content,new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle))))continue;if(hit!=null&&!hit.equals(fact.content))return null;hit=fact.content;}}
+        synchronized(facts){for(List<Fact> list:facts.values())for(Fact fact:list){if(!prefixed(raw,fact.content,new HashSet<>(Arrays.asList(fact.nick,fact.handle,"@"+fact.handle)))&&!(fresh()&&recent!=null&&recent.id.equals(fact.id)&&CommentCopyText.verifiedSuffix(raw,fact.content)))continue;if(hit!=null&&!hit.equals(fact.content))return null;hit=fact.content;}}
         return hit;
     }
     static String recentBody(){return fresh()&&recent!=null?recent.content:null;}
     private static void rememberTap(View panel,float x,float y){
         recent=null;recentAt=0;copyPressedAt=0;tappedBody="";tappedAuthors.clear();Rect rect=new Rect();List<TextView> cells=new ArrayList<>();collect(panel,cells,0,new int[]{1800});
-        for(TextView t:cells){if(t instanceof EditText||!t.getGlobalVisibleRect(rect)||!rect.contains((int)x,(int)y))continue;Fact hit=bound.get(t);if(hit==null)hit=format(t,panel);if(hit!=null){recent=hit;recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}
+        for(TextView t:cells){if(t instanceof EditText||!t.getGlobalVisibleRect(rect)||!rect.contains((int)x,(int)y))continue;Fact hit=bound.get(t);if(hit==null)hit=format(t,panel);if(hit!=null){recent=hit;tappedBody=hit.content;for(View row=t.getParent() instanceof View?(View)t.getParent():null;row!=null&&row!=panel;row=row.getParent() instanceof View?(View)row.getParent():null){if(row.getHeight()>panel.getHeight()*.45f)break;List<TextView> neighbors=new ArrayList<>();collect(row,neighbors,0,new int[]{70});for(TextView n:neighbors)if(n!=t&&authorMatches(original(n),hit)){tappedAuthors.add(norm(n.getText()));tappedAuthors.add(original(n));}}recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}
             String shown=t.getText().toString();if(shown.trim().isEmpty()||relativeTime(norm(shown))||author(t)||shown.length()>20000)continue;
-            for(View row=t.getParent() instanceof View?(View)t.getParent():null;row!=null&&row!=panel;row=row.getParent() instanceof View?(View)row.getParent():null){if(row.getHeight()>panel.getHeight()*.6f)break;List<TextView> neighbors=new ArrayList<>();collect(row,neighbors,0,new int[]{65});boolean timestamp=false;Set<String> names=new HashSet<>();int[] tp=new int[2];t.getLocationOnScreen(tp);for(TextView n:neighbors){if(n==t||n instanceof EditText)continue;String s=n.getText().toString().trim();int[] np=new int[2];n.getLocationOnScreen(np);if(relativeTime(norm(s))||time(n))timestamp=true;else if(!s.isEmpty()&&s.length()<=100&&(author(n)||np[1]<tp[1]))names.add(s);}if(timestamp&&!names.isEmpty()){tappedBody=shown;tappedAuthors.addAll(names);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}}
+            for(View row=t.getParent() instanceof View?(View)t.getParent():null;row!=null&&row!=panel;row=row.getParent() instanceof View?(View)row.getParent():null){if(row.getHeight()>panel.getHeight()*.6f)break;List<TextView> neighbors=new ArrayList<>();collect(row,neighbors,0,new int[]{65});boolean timestamp=false;Set<String> names=new HashSet<>();int[] tp=new int[2];t.getLocationOnScreen(tp);for(TextView n:neighbors){if(n==t||n instanceof EditText)continue;String s=n.getText().toString().trim();int[] np=new int[2];n.getLocationOnScreen(np);if(relativeTime(norm(s))||time(n)||norm(s).matches("[0-9]{1,2} .{2,12}, [0-9]{2}:[0-9]{2}:[0-9]{2}"))timestamp=true;else if(!s.isEmpty()&&s.length()<=100&&(author(n)||np[1]<tp[1]))names.add(s);}if(timestamp&&!names.isEmpty()){tappedBody=shown;tappedAuthors.addAll(names);recentAt=SystemClock.uptimeMillis();owner=new java.lang.ref.WeakReference<>(ScreenWatcher.top());return;}}
         }
     }
     private static boolean inside(View child,View parent){for(View v=child;v!=null;){if(v==parent)return true;v=v.getParent() instanceof View?(View)v.getParent():null;}return false;}
@@ -132,7 +139,7 @@ final class CommentTools {
         try{
             if(!any()&&edits.isEmpty()&&limits.isEmpty()&&buttons.isEmpty())return;
             View panel=CrashGuard.tripped||!any()?null:CommentWallpaper.panel(root);
-            if(panel==null && InterfaceHooks.on("comment_full"))for(View old:new ArrayList<>(originalHeight.keySet()))if(old!=null&&old.getRootView()==root&&old.isShown()){panel=old;break;}
+            if(panel==null && InterfaceHooks.on("comment_full"))for(View old:new ArrayList<>(expandedHosts.keySet()))if(old!=null&&old.getRootView()==root&&old.isShown()&&header(root,old)!=null){panel=old;break;}
             for(TextView t:new ArrayList<>(edits.keySet())){
                 if(t==null||t.getRootView()!=root)continue;
                 Edit e=edits.get(t);if(e==null)continue;
@@ -151,7 +158,7 @@ final class CommentTools {
                 buttons.remove(root);if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
             }
             for(View expanded:new ArrayList<>(originalHeight.keySet()))if(expanded!=null&&expanded.getRootView()==root&&(panel==null||panel!=expanded&&!inside(panel,expanded)||!InterfaceHooks.on("comment_full"))){
-                expandedHosts.values().removeIf(v->v==expanded);Integer height=originalHeight.remove(expanded);if(height!=null){ViewGroup.LayoutParams lp=expanded.getLayoutParams();lp.height=height;expanded.setLayoutParams(lp);}
+                expandedHosts.values().removeIf(v->v==expanded);restoreFull(expanded);
             }
             if(panel==null)return;
             visiblePanelCount++;List<TextView> list=new ArrayList<>();collect(panel,list,0,new int[]{1800});visibleTextCount=list.size();
@@ -202,41 +209,66 @@ final class CommentTools {
     private static final WeakHashMap<View,View> buttonPanels=new WeakHashMap<>();
     private static final WeakHashMap<View,View> expandedHosts=new WeakHashMap<>();
     private static boolean headerTitle(TextView t){return norm(t.getText()).toLowerCase(Locale.ROOT).matches("(?:[0-9., kкmм]+ )?(?:comments?|комментарии|комментариев|комментария|комментарий)(?: *\\(?[0-9., kкmм]+\\)?)?");}
+    private static final WeakHashMap<View,Integer> originalBehavior=new WeakHashMap<>();
+    private static TextView header(View root,View panel){
+        Rect area=new Rect();if(!panel.getGlobalVisibleRect(area))return null;float dp=root.getResources().getDisplayMetrics().density;
+        List<TextView> all=new ArrayList<>();collect(root,all,0,new int[]{3000});TextView best=null;int distance=Integer.MAX_VALUE;
+        for(TextView t:all){if(!headerTitle(t))continue;Rect b=new Rect();if(!t.getGlobalVisibleRect(b)||b.centerY()<area.top-dp*100||b.centerY()>area.top+dp*90)continue;int d=Math.abs(b.centerY()-area.top);if(d<distance){distance=d;best=t;}}
+        return best;
+    }
+    private static View sheet(View root,View panel,TextView title){
+        float dp=root.getResources().getDisplayMetrics().density;View target=panel;
+        for(ViewParent q=panel.getParent();q instanceof ViewGroup&&q!=root;q=q.getParent()){
+            ViewGroup g=(ViewGroup)q;if(g.getWidth()<root.getWidth()*.82f)break;
+            Object b=DownloadHooks.call(g.getLayoutParams(),"getBehavior");
+            if(b!=null&&DownloadHooks.call(b,"getState") instanceof Number)return g;
+            if(g.getHeight()>root.getHeight()*.96f)break;
+            if(title!=null&&inside(title,g)&&g.getHeight()>=panel.getHeight()&&g.getHeight()-panel.getHeight()<dp*180)target=g;
+        }
+        return target;
+    }
     private static void addFull(View root,View panel,List<TextView> list){
         if(!(root instanceof FrameLayout)||panel.getParent()==null)return;
-        FrameLayout host=(FrameLayout)root;float density=root.getResources().getDisplayMetrics().density;int size=Math.round(density*40);
-        Rect area=new Rect();if(!panel.getGlobalVisibleRect(area))return;int[] origin=new int[2];root.getLocationOnScreen(origin);
-        int x=area.left-origin[0]+Math.round(8*density),y=area.top-origin[1]+Math.round(4*density);
-        // Prefer the header's vertical center, but do not depend on its resource/class name.
-        for(TextView t:list){if(!headerTitle(t))continue;Rect label=new Rect();if(t.getGlobalVisibleRect(label)&&label.top-area.top<density*80){y=label.centerY()-origin[1]-size/2;break;}}
-        y=Math.max(area.top-origin[1],y);
+        FrameLayout host=(FrameLayout)root;float dp=root.getResources().getDisplayMetrics().density;int size=Math.round(dp*34);
+        TextView title=header(root,panel);if(title==null)return;
+        Rect label=new Rect(),area=new Rect();if(!title.getGlobalVisibleRect(label)||!panel.getGlobalVisibleRect(area))return;int[] origin=new int[2];root.getLocationOnScreen(origin);
+        // In the native header: immediately left of the translation action, never over a comment avatar.
+        int x=Math.round(area.left+area.width()*.73f-size/2f)-origin[0],y=label.centerY()-origin[1]-size/2;
+        x=Math.max(x,label.right-origin[0]+Math.round(dp*3));
+        if(x+size>area.left+area.width()*.80f-origin[0])x=Math.round(area.left+area.width()*.73f-size/2f)-origin[0];
         View old=buttons.get(root);TextView button=old instanceof TextView?(TextView)old:null;
         if(button!=null&&buttonPanels.get(root)!=panel){if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);buttons.remove(root);button=null;}
         if(button==null){
-            button=new TextView(root.getContext());button.setTag(Ui.OWN_TAG);button.setTextSize(23);button.setGravity(Gravity.CENTER);button.setIncludeFontPadding(false);button.setFocusable(true);
-            button.setTextColor(VideoInfo.isNight(root.getContext())?0xffeeeeee:0xff222222);
-            android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(VideoInfo.isNight(root.getContext())?0xcc292929:0xeef4f4f4);bg.setCornerRadius(size/2f);button.setBackground(bg);
+            button=new TextView(root.getContext());button.setTag(Ui.OWN_TAG);button.setTextSize(22);button.setGravity(Gravity.CENTER);button.setIncludeFontPadding(false);button.setTypeface(android.graphics.Typeface.create("sans-serif",0));button.setFocusable(true);button.setBackground(null);
             final View target=panel;final TextView control=button;
-            button.setOnClickListener(v->{toggleFull(root,target);control.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);control.setText(expandedHosts.containsKey(target)?"↙":"⛶");control.setContentDescription(expandedHosts.containsKey(target)?"Свернуть комментарии":"Развернуть комментарии");});
+            button.setOnClickListener(v->{toggleFull(root,target,header(root,target));control.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);});
             host.addView(button,new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.LEFT));buttons.put(root,button);buttonPanels.put(root,panel);
         }
-        button.setText(expandedHosts.containsKey(panel)?"↙":"⛶");button.setContentDescription(expandedHosts.containsKey(panel)?"Свернуть комментарии":"Развернуть комментарии");
+        boolean expanded=expandedHosts.containsKey(panel);button.setText(expanded?"↙":"⛶");button.setContentDescription(expanded?"Свернуть комментарии":"Развернуть комментарии");button.setTextColor(title.getCurrentTextColor());
         if(button.getTranslationX()!=x)button.setTranslationX(x);if(button.getTranslationY()!=y)button.setTranslationY(y);
         if(host.indexOfChild(button)!=host.getChildCount()-1)button.bringToFront();
     }
-    private static void toggleFull(View root,View panel){
+    private static void toggleFull(View root,View panel,TextView title){
         if(!panel.isAttachedToWindow())return;
         View previous=expandedHosts.remove(panel);
-        if(previous!=null){Integer h=originalHeight.remove(previous);if(h!=null){ViewGroup.LayoutParams lp=previous.getLayoutParams();lp.height=h;previous.setLayoutParams(lp);}setBehavior(previous,4);return;}
-        View target=panel;
-        for(ViewParent q=panel.getParent();q instanceof ViewGroup&&q!=root;q=q.getParent()){ViewGroup g=(ViewGroup)q;if(g.getWidth()<root.getWidth()*.75f)break;Object behavior=DownloadHooks.call(g.getLayoutParams(),"getBehavior");if(behavior!=null&&behavior.getClass().getName().toLowerCase(Locale.ROOT).contains("bottomsheet")){target=g;break;}if(g.getHeight()>root.getHeight()*.95f)break;if(g.getHeight()>=target.getHeight()&&Math.abs(g.getHeight()-target.getHeight())<root.getResources().getDisplayMetrics().density*48)target=g;}
+        if(previous!=null){restoreFull(previous);return;}
+        View target=sheet(root,panel,title);if(target==panel&&(title==null||!inside(title,target))){Toasts.show(root.getContext(),"Не найден внешний контейнер комментариев");return;}
         ViewGroup.LayoutParams lp=target.getLayoutParams();if(lp==null)return;
-        originalHeight.put(target,lp.height);expandedHosts.put(panel,target);lp.height=ViewGroup.LayoutParams.MATCH_PARENT;target.setLayoutParams(lp);setBehavior(target,3);
+        Object behavior=DownloadHooks.call(lp,"getBehavior");Object state=DownloadHooks.call(behavior,"getState");
+        if(state instanceof Number)originalBehavior.put(target,((Number)state).intValue());
+        originalHeight.put(target,lp.height);expandedHosts.put(panel,target);
+        lp.height=ViewGroup.LayoutParams.MATCH_PARENT;target.setLayoutParams(lp);target.requestLayout();
+        final View expanded=target;expanded.post(()->{if(expandedHosts.get(panel)!=expanded)return;setBehavior(expanded,3);expanded.requestLayout();});
     }
-    private static void setBehavior(View v,int state){try{Object b=DownloadHooks.call(v.getLayoutParams(),"getBehavior");if(b!=null&&b.getClass().getName().toLowerCase(Locale.ROOT).contains("bottomsheet")){b.getClass().getMethod("setState",int.class).invoke(b,state);}}catch(Throwable ignored){}}
+    private static void restoreFull(View target){
+        Integer h=originalHeight.remove(target),state=originalBehavior.remove(target);
+        if(h!=null&&target.getLayoutParams()!=null){ViewGroup.LayoutParams lp=target.getLayoutParams();lp.height=h;target.setLayoutParams(lp);target.requestLayout();}
+        if(state!=null)setBehavior(target,state);
+    }
+    private static void setBehavior(View v,int state){try{Object b=DownloadHooks.call(v.getLayoutParams(),"getBehavior");if(b!=null&&DownloadHooks.call(b,"getState") instanceof Number)b.getClass().getMethod("setState",int.class).invoke(b,state);}catch(Throwable ignored){}}
     static void touch(View root,MotionEvent event){
         if(CrashGuard.tripped||root==null||Screen.isOwnDecor(root))return;
-        int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action)return;lastEvent=stamp;lastAction=action;
+        int action=event.getActionMasked();long stamp=event.getEventTime();if(lastEvent==stamp&&lastAction==action&&eventRoot.get()==root)return;lastEvent=stamp;lastAction=action;eventRoot=new java.lang.ref.WeakReference<>(root);
         if(action==MotionEvent.ACTION_DOWN){downAt=stamp;downX=event.getRawX();downY=event.getRawY();View panel=CommentWallpaper.panel(root);if(touchCopy(root,downX,downY,0,new int[]{1600})&&fresh()){copyPressedAt=SystemClock.uptimeMillis();}else if(panel!=null)rememberTap(panel,downX,downY);return;}
         if(!InterfaceHooks.on("comment_double"))return;
         if(action!=MotionEvent.ACTION_UP||event.getEventTime()-downAt>300||Math.abs(event.getRawX()-downX)>20||Math.abs(event.getRawY()-downY)>20)return;

@@ -5,7 +5,7 @@ import de.robv.android.xposed.*;
 final class NativeModelObserver {
     private static final ThreadLocal<Boolean> active=new ThreadLocal<>();
     private static final Set<Class<?>> adapters=new HashSet<>();
-    private static boolean wanted(String n){return n.equals(DownloadHooks.AWEME)||n.equals(AvatarHooks.USER)||n.equals(BadgeHooks.PROFILE)||n.equals("com.ss.android.ugc.aweme.music.model.Music")||n.startsWith("com.ss.android.ugc.aweme.comment.model.")||n.contains(".music.model.MusicDetail")||n.contains(".profile.model.UserResponse")||n.startsWith("com.ss.android.ugc.aweme.upvote.")&&n.contains(".model.")||n.startsWith("com.ss.android.ugc.aweme.repost.")&&n.contains(".model.");}
+    private static boolean wanted(String n){return n.equals(DownloadHooks.AWEME)||n.equals(AvatarHooks.USER)||n.equals(BadgeHooks.PROFILE)||n.equals("com.ss.android.ugc.aweme.music.model.Music")||n.startsWith("com.ss.android.ugc.aweme.comment.model.")||n.contains(".music.model.MusicDetail")||n.contains(".profile.model.UserResponse")||n.startsWith("com.ss.android.ugc.aweme.upvote.")&&n.contains(".model.")||n.startsWith("com.ss.android.ugc.aweme.repost.")&&n.contains(".model.")||n.startsWith("com.ss.android.ugc.aweme.")&&(n.endsWith("UpvoteInfo")||n.endsWith("RepostInfo")||n.endsWith("RepostListResponse")||n.endsWith("UpvoteListResponse"));}
     static void install(ClassLoader cl){
         Class<?> gson=XposedHelpers.findClassIfExists("com.google.gson.Gson",cl);if(gson==null)return;
         XC_MethodHook after=new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable())observe(p.getResult());}};

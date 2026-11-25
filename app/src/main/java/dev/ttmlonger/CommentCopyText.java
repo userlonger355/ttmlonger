@@ -14,7 +14,7 @@ final class CommentCopyText {
         String normalized=Targets.norm(raw);if(normalized.equals(Targets.norm(body)))return false;
         for(String name:names){
             if(name==null||name.trim().isEmpty()||name.equals("@"))continue;
-            for(String sep:new String[]{": ",":","：","： ","\n","\n\n"," · "," — "," - "," ","\t","\n: ","：\n"})
+            for(String sep:new String[]{": ",":","：","： ","\n","\n\n"," · "," — "," - "," ","\t","\n: ","：\n"," : ","\n\n: ","： "," • "," – "})
                 if(normalized.equals(Targets.norm(name+sep+body)))return true;
         }
         return false;
