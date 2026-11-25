@@ -154,8 +154,11 @@ public final class MainHook implements IXposedHookLoadPackage {
             }
             try {
                 ProfileFacts.install(cl);
-                ProfileGrid.install(cl);
-                ProfileDatePicker.install(cl);
+            } catch (Throwable t) { FlagStore.log(t); }
+            try { ProfileGrid.install(cl); } catch(Throwable t){FlagStore.log(t);}
+            try { ProfileDatePicker.install(cl); } catch(Throwable t){FlagStore.log(t);}
+            try { NativeModelObserver.install(cl); } catch(Throwable t){FlagStore.log(t);}
+            try {
                 EmojiFonts.install(ctx);
             } catch (Throwable t) {
                 FlagStore.log(t);

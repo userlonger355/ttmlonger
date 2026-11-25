@@ -22,7 +22,10 @@ import de.robv.android.xposed.XposedBridge;
 final class ProfileFacts {
     private static final LruCache<String, Object> users = new LruCache<>(64);
     private static final ThreadLocal<Boolean> remembering=new ThreadLocal<>();
-    static String diagnostics(){return "Модели профиля в памяти: "+users.size();}
+    private static volatile int boundHeaders;
+    static String diagnostics(){return "Модели профиля в памяти: "+users.size()+" · распознано шапок: "+boundHeaders;}
+    static void observe(Object o){if(o==null||remembering.get()!=null||CrashGuard.tripped)return;String n=o.getClass().getName();if(!n.equals(AvatarHooks.USER)&&!n.equals(BadgeHooks.PROFILE))return;remembering.set(true);try{Object raw=RepostTimes.readField(o,"unique_id");if(raw==null)return;String key=raw.toString().toLowerCase(Locale.ROOT);if(!key.matches("[a-z0-9_.]{1,64}"))return;Object old=users.get(key);if(old==null||richness(o)>=richness(old))users.put(key,o);}catch(Throwable ignored){}finally{remembering.remove();}}
+    static boolean known(String key){return key!=null&&model(key)!=null;}
     private TextView extras;
     private TextView dateAction;
     private TextView anchor;
@@ -49,7 +52,7 @@ final class ProfileFacts {
                 View v = (View) p.thisObject;
                 String key = handles.get(v);
                 if (key == null || !v.isShown() || !(v instanceof TextView)
-                        || !("@" + key).equalsIgnoreCase(((TextView) v).getText().toString().trim())) return;
+                        || !("@" + key).equalsIgnoreCase(Targets.norm(((TextView) v).getText()))) return;
                 Activity a = ScreenWatcher.top();
                 if (a == null || a.getWindow().getDecorView() != v.getRootView()) return;
                 if(InterfaceHooks.on("profile_copy"))show(a,key);else ProfileDatePicker.show(a,key);
@@ -70,7 +73,7 @@ final class ProfileFacts {
     }
 
     private static String text(Object model, String getter) {
-        Object value = DownloadHooks.call(model, getter);
+        Object value = RepostTimes.readField(model,getter.equals("getNickname")?"nickname":getter.equals("getSignature")?"signature":getter);
         return value instanceof String ? ((String) value).trim() : "";
     }
 
@@ -112,7 +115,7 @@ final class ProfileFacts {
         }
         anchor = view;
         if (view == null) { remove(); return; }
-        String raw=view.getText().toString().trim();if(!raw.matches("@[A-Za-z0-9_.]{1,64}")){remove();return;}String key=raw.substring(1);
+        String raw=Targets.norm(view.getText());if(!raw.matches("@[A-Za-z0-9_.]{1,64}")){remove();return;}String key=raw.substring(1);boundHeaders++;
         if (InterfaceHooks.on("profile_copy")||InterfaceHooks.on("profile_date_jump")) {
             if (!handles.containsKey(view)) wasLongClickable = view.isLongClickable();
             handles.put(view, key);

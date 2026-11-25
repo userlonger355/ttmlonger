@@ -189,7 +189,9 @@ final class ScreenWatcher {
             Scan s = new Scan();
             scan(decor, s, 0, di);
 
-            boolean isProfile=!CrashGuard.tripped && s.handle!=null && (s.followers&&s.following||s.likes&&(s.followers||s.following));
+            String activityName=act.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+            boolean namedProfile=activityName.contains("profile")&&!activityName.contains("edit")&&!activityName.contains("setting");
+            boolean isProfile=!CrashGuard.tripped&&s.handle!=null&&(s.followers&&s.following||s.likes&&(s.followers||s.following)||namedProfile&&(s.followers||s.following||s.likes)&&ProfileFacts.known(Targets.norm(s.handle.getText()).substring(1)));
             profile.bind(isProfile?s.handle:null);
             ProfileStyle.apply(decor,isProfile);
             boolean page = s.settingsTitle || s.rows.size() >= Targets.SETTINGS_ROWS_MIN;
@@ -227,9 +229,9 @@ final class ScreenWatcher {
                 if (t == null || t.length() == 0 || t.length() > 60) return;
                 String n = Targets.norm(t);
                 if (v.isShown() && !Ui.OWN_TAG.equals(v.getTag())) {
-                    if (n.matches("(?i)(?:[0-9., kкmм]+\\s*)?(подписчики|followers)")) s.followers = true;
-                    if (n.matches("(?i)(?:[0-9., kкmм]+\\s*)?(подписки|following)")) s.following = true;
-                    if (n.matches("(?i)(?:[0-9., kкmм]+\\s*)?(лайки|нравится|likes)")) s.likes = true;
+                    if (n.matches("(?i)(?:[0-9., kкmм]+\\s*)?(подписчики|подписчиков|followers)(?:\\s*[0-9., kкmм]+)?")) s.followers = true;
+                    if (n.matches("(?i)(?:[0-9., kкmм]+\\s*)?(подписки|подписок|following)(?:\\s*[0-9., kкmм]+)?")) s.following = true;
+                    if (n.matches("(?i)(?:[0-9., kкmм]+\\s*)?(лайки|лайков|нравится|likes)(?:\\s*[0-9., kкmм]+)?")) s.likes = true;
                     if (n.startsWith("@") && n.matches("@[a-zA-Z0-9_.]{1,64}") && s.handle == null) {
                         Rect visible = new Rect();
                         if (v.getGlobalVisibleRect(visible) && visible.centerY() < di.height / 2) s.handle = (TextView) v;

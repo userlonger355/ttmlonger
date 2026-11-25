@@ -227,7 +227,7 @@ final class StoryShare {
         // Resolve against the sound page at click time rather than hiding the action.
         if(insertAction(root,s.soundReport,s.qr,(size)->{
             View v=tile(root.getContext(),s.soundReport,size,null,true);
-            v.setOnClickListener(w->{Object music=SoundPage.find(act);if(music==null){Toasts.show(root.getContext(),"Звук ещё не распознан. Откройте страницу звука заново.");return;}AudioSaver.startMusic(root.getContext(),music);});
+            v.setOnClickListener(w->{Object music=SoundPage.find(act,true);if(music==null){Toasts.show(root.getContext(),"Не удалось сопоставить звук. Запустите его предпросмотр и повторите.");return;}AudioSaver.startMusic(root.getContext(),music);});
             return v;
         }))return;
     }

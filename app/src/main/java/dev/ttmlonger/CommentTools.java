@@ -13,8 +13,9 @@ final class CommentTools {
     static final String[] KEYS={"comment_expand","comment_copy_body","comment_nick","comment_exact","comment_double","comment_full"};
     static final String[] TITLES={"Разворачивать длинные комментарии","Копировать текст без имени автора","Ник вместо имени","Точное время комментариев","Двойное нажатие для лайка","Кнопка полноэкранных комментариев"};
     static int modelHooks;
+    private static volatile int visibleTextCount,visiblePanelCount;
     private static final java.util.concurrent.atomic.AtomicLong matchedRows=new java.util.concurrent.atomic.AtomicLong();
-    static String diagnostics(){synchronized(facts){return "Хуки: "+modelHooks+" · модели: "+facts.size()+" · совпадения строк: "+matchedRows.get();}}
+    static String diagnostics(){synchronized(facts){return "Хуки: "+modelHooks+" · модели: "+facts.size()+" · совпадения строк: "+matchedRows.get()+" · текстовых элементов: "+visibleTextCount+" · панели: "+visiblePanelCount;}}
     private static final LinkedHashMap<String,List<Fact>> facts=new LinkedHashMap<>();
     private static final ThreadLocal<Boolean> reading=new ThreadLocal<>();
     private static final WeakHashMap<TextView,Edit> edits=new WeakHashMap<>();
@@ -46,12 +47,16 @@ final class CommentTools {
     }
     private static boolean author(View v){String n=name(v);return n.contains("comment_nickname")||n.contains("comment_username")||n.contains("comment_user_name")||n.contains("comment_author");}
     private static boolean time(View v){String n=name(v);return n.contains("comment_time")||n.contains("comment_date")||n.contains("comment_create_time");}
+    static boolean enabled(){return any()||InterfaceHooks.on("comment_select");}
     private static boolean any(){for(String k:KEYS)if(InterfaceHooks.on(k))return true;return false;}
     private static final WeakHashMap<TextView,Fact> bound=new WeakHashMap<>();
     private static Fact recent;private static long recentAt;private static java.lang.ref.WeakReference<android.app.Activity> owner=new java.lang.ref.WeakReference<>(null);
     private static long lastEvent=-1;private static int lastAction=-1;
-    private static String norm(CharSequence s){return s==null?"":s.toString().trim().replaceAll("\\s+"," ");}
+    private static String norm(CharSequence s){return Targets.norm(s);}
     private static String value(Object o,String key){Object x=RepostTimes.readField(o,key);return x==null?"":x.toString().trim();}
+    static void observe(Object model){
+        if(model==null)return;String name=model.getClass().getName();if(name.equals("com.ss.android.ugc.aweme.comment.model.Comment")||name.equals("com.ss.android.ugc.aweme.comment.model.CommentItem"))remember(model);
+    }
     private static void remember(Object model){
         if(model==null||CrashGuard.tripped||reading.get()!=null)return;
         reading.set(true);try{
@@ -70,7 +75,7 @@ final class CommentTools {
         for(String n:new String[]{"com.ss.android.ugc.aweme.comment.model.Comment","com.ss.android.ugc.aweme.comment.model.CommentItem"}){
             Class<?> type=XposedHelpers.findClassIfExists(n,cl);if(type==null)continue;
             XC_MethodHook observe=new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable())remember(p.thisObject);}};
-            for(String getter:new String[]{"getText","getUser","getCid","getCreateTime","setText","setUser","setCid","setCreateTime"})try{modelHooks+=XposedBridge.hookAllMethods(type,getter,observe).size();}catch(Throwable ignored){}
+            for(String getter:new String[]{"getText","getUser","getCid","getCreateTime","getDiggCount","getReplyId","getAwemeId","setText","setUser","setCid","setCreateTime"})try{modelHooks+=XposedBridge.hookAllMethods(type,getter,observe).size();}catch(Throwable ignored){}
         }
         XC_MethodHook events=new XC_MethodHook(){protected void beforeHookedMethod(MethodHookParam p){
             if(!any()&&!InterfaceHooks.on("comment_select")||CrashGuard.tripped||p.args.length!=1||!(p.args[0] instanceof MotionEvent))return;
@@ -122,8 +127,9 @@ final class CommentTools {
                 Integer height=originalHeight.remove(expanded);if(height!=null){ViewGroup.LayoutParams lp=expanded.getLayoutParams();lp.height=height;expanded.setLayoutParams(lp);}
             }
             if(panel==null)return;
-            List<TextView> list=new ArrayList<>();collect(panel,list,0,new int[]{1800});
+            visiblePanelCount++;List<TextView> list=new ArrayList<>();collect(panel,list,0,new int[]{1800});visibleTextCount=list.size();
             for(TextView t:list){
+                if(t.getTag()!=null)observe(t.getTag());
                 Fact hit=format(t,panel);if(hit!=null){Fact previous=bound.put(t,hit);if(previous==null||!previous.id.equals(hit.id))matchedRows.incrementAndGet();}else bound.remove(t);
                 if((hit!=null||body(t))&&InterfaceHooks.on("comment_expand")&&!limits.containsKey(t)){limits.put(t,new Limits(t));t.setMaxLines(Integer.MAX_VALUE);t.setEllipsize(null);}
                 if(hit!=null&&InterfaceHooks.on("comment_expand")&&!norm(t.getText()).equals(norm(hit.content))&&truncated(t.getText(),hit.content))edit(t,hit.content,"comment_expand");
@@ -170,7 +176,7 @@ final class CommentTools {
         if(panel.getParent()==null)return;
         for(TextView t:list){
             String s=t.getText().toString().trim().toLowerCase(Locale.ROOT);
-            if(!s.matches("(?:[0-9.,\\s]+[kmкм]?\\s+)?(?:comments?|комментарии|комментариев|комментарий)"))continue;
+            if(!Targets.norm(s).matches("(?:[0-9., kмкm]+ )?(?:comments?|комментарии|комментариев|комментария|комментарий)(?: *\\(?[0-9., ]+\\)?)?"))continue;
             ViewGroup row=null;
             for(ViewParent q=t.getParent();q instanceof ViewGroup;q=q.getParent()){ViewGroup g=(ViewGroup)q;if(g==panel)break;if(g.getWidth()<panel.getWidth()*.7f||g.getHeight()>panel.getHeight()*.22f)continue;if(g instanceof FrameLayout||g instanceof LinearLayout&&((LinearLayout)g).getOrientation()==LinearLayout.HORIZONTAL){row=g;break;}}
             if(row==null)continue;

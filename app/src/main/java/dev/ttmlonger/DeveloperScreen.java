@@ -45,6 +45,7 @@ final class DeveloperScreen extends Screen {
             {"Защита",CrashGuard.tripped?"Активна":"Не сработала"},
             {"Комментарии",CommentTools.diagnostics()},
             {"Репосты",RepostTimes.diagnostics()},
+            {"Звук",SoundPage.diagnostics()},
             {"Профиль",ProfileFacts.diagnostics()},
             {"Аватарки",AvatarContours.diagnostics()},
             {"Флаги","Всего: "+FlagStore.total()+" · прочитано: "+FlagStore.readThisSession()+" · изменено: "+FlagStore.overrideCount()},

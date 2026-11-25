@@ -239,12 +239,12 @@ final class CommentWallpaper {
     private static void watch(View root){
         if(watched.containsKey(root))return;watched.put(root,0L);
         root.getViewTreeObserver().addOnPreDrawListener(()->{
-            if(!enabled||image==null||!root.isShown())return true;
+            if(!root.isShown()||!enabled&&!CommentTools.enabled())return true;
             long now=SystemClock.uptimeMillis(),prev=watched.getOrDefault(root,0L);
-            if(now-prev>=120){watched.put(root,now);scan(root);}return true;
+            if(now-prev>=240){watched.put(root,now);if(CommentTools.enabled())CommentTools.apply(root);if(enabled&&image!=null)scan(root);}return true;
         });
     }
-    static void apply(Activity a){if(a!=null&&enabled&&image!=null&&!a.isFinishing()&&!a.isDestroyed()){View root=a.getWindow().getDecorView();watch(root);scan(root);}}
+    static void apply(Activity a){if(a!=null&&(enabled||CommentTools.enabled())&&!a.isFinishing()&&!a.isDestroyed()){View root=a.getWindow().getDecorView();watch(root);if(enabled&&image!=null)scan(root);}}
     private static void refresh(){
         Activity a=ScreenWatcher.top();if(a!=null)apply(a);
         for(View root:new ArrayList<>(dialogs))if(root!=null&&root.isShown())scan(root);

@@ -22,7 +22,7 @@ final class AudioSaver {
         if(entry==null){Toasts.show(context,"Звук не найден");return;}
         start(context,DownloadHooks.call(entry.aweme,"getMusic"),entry.video!=null?entry.video:DownloadHooks.call(entry.aweme,"getVideo"),entry.aweme!=null?entry.aweme:entry.video);
     }
-    static void startMusic(Context context,Object music){start(context,music,null,music);}
+    static void startMusic(Context context,Object music){start(context,music,SoundPage.matchingVideo(music),music);}
     private static void start(Context context,Object music,Object video,Object key){
         if(key==null){Toasts.show(context,"Звук не найден");return;}
         synchronized(running) {
@@ -39,8 +39,8 @@ final class AudioSaver {
                 String base="ttm_sound_"+stamp;
                 long deadline=System.currentTimeMillis()+240000L;
                 LinkedHashSet<String> urls=new LinkedHashSet<>();
-                for(String getter:new String[]{"getPlayUrl","getPlayUrlModel","getAudioUrl","getMusicUrl"}) {
-                    Object value=DownloadHooks.call(music,getter);
+                for(String getter:new String[]{"play_url","play_url_model","audio_url","music_url"}) {
+                    Object value=RepostTimes.readField(music,getter);
                     urls.addAll(VideoSaver.urlsOf(value));
                     if(value instanceof String) {
                         String u=AvatarHooks.secure((String)value);if(u!=null)urls.add(u);
